@@ -38,6 +38,9 @@ target_link_libraries(kdockw_qml_tests PRIVATE
 )
 
 set(KDOCKW_QML_TEST_FILES
+    tst_application_launcher
+    tst_application_launcher_settings
+    tst_application_launcher_popup
     tst_dockitem_zoom
     tst_dockitem_geometry
     tst_dockitem_indicators

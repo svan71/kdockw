@@ -20,6 +20,7 @@ add_executable(kdockw_unit_tests
     test_settings_migration.cpp
     test_dock_entries.cpp
     test_dock_entries_model.cpp
+    test_application_launcher.cpp
     test_dock_presentation_model.cpp
     test_folder_stack_model.cpp
     test_language_setting.cpp

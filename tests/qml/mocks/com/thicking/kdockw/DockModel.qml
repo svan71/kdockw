@@ -11,6 +11,25 @@ import kdockw.test
 QtObject {
     readonly property MockTasksModel tasksModel: MockTasksModel {}
     readonly property var dockPresentationModel: tasksModel
+    readonly property QtObject applicationCatalog: QtObject {
+        signal catalogChanged()
+        property bool ready: false
+        property var applications: []
+        property var menuTree: []
+        function ensureLoaded() { ready = true; catalogChanged() }
+        function refresh() { ready = true; catalogChanged() }
+        function search(query) { return [] }
+        function application(serviceId) { return ({}) }
+        function launch(serviceId) { return false }
+        function launchAction(serviceId, actionName) { return false }
+    }
+    readonly property QtObject applicationLauncherState: QtObject {
+        property string style: "launchpad"
+        property var pinnedApplicationIds: []
+        function isPinned(serviceId) { return pinnedApplicationIds.includes(serviceId) }
+        function togglePinned(serviceId) { }
+        function movePinned(fromIndex, toIndex) { return false }
+    }
     readonly property var dockEntriesModel: ListModel {
         id: entries
         property int _nextWidgetId: 0

@@ -109,6 +109,32 @@ TEST_CASE("Dock entries model preserves widget slots while syncing TaskManager l
     CHECK_FALSE(model.removeBuiltInWidget(start.id));
 }
 
+TEST_CASE("Application Launcher entry persists its icon and can be configured", "[dock-entries][application-launcher]")
+{
+    kdockw::DockEntriesModel model;
+    const QString id = model.appendApplicationLauncher(QStringLiteral("end"));
+    REQUIRE_FALSE(id.isEmpty());
+    REQUIRE(model.rowCount() == 1);
+    CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::WidgetKindRole).toString()
+          == QStringLiteral("applicationLauncher"));
+    CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::PlacementSlotRole).toString()
+          == QStringLiteral("end"));
+    REQUIRE(model.setBuiltInWidgetIcon(id, QStringLiteral("start-here-kde")));
+    CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::IconNameRole).toString()
+          == QStringLiteral("start-here-kde"));
+    REQUIRE(model.setBuiltInWidgetSlot(id, QStringLiteral("start")));
+    CHECK(model.setBuiltInWidgetVisible(id, false));
+
+    const auto decoded = kdockw::DockEntriesCodec::decode(kdockw::DockEntriesCodec::encode(model.entries()));
+    REQUIRE(decoded.validDocument);
+    REQUIRE(decoded.entries.size() == 1);
+    CHECK(decoded.entries.first().id == id);
+    CHECK(decoded.entries.first().widgetKind == QStringLiteral("applicationLauncher"));
+    CHECK(decoded.entries.first().iconName == QStringLiteral("start-here-kde"));
+    CHECK(decoded.entries.first().slot == kdockw::DockWidgetSlot::Start);
+    CHECK_FALSE(decoded.entries.first().widgetVisible);
+}
+
 TEST_CASE("Dock widget management adds edits moves hides and removes persisted entries", "[dock-entries][dock-widgets]")
 {
     kdockw::DockEntriesModel model;
