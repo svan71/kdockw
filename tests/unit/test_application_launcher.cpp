@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <QCoreApplication>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -130,6 +131,27 @@ TEST_CASE("Application catalog filters Hidden NoDisplay OnlyShowIn and missing T
 
     if (hadDesktop) qputenv("XDG_CURRENT_DESKTOP", previousDesktop);
     else qunsetenv("XDG_CURRENT_DESKTOP");
+}
+
+TEST_CASE("Refreshing the application catalog replaces data without growing its QObject graph", "[application-launcher][catalog][lifecycle]")
+{
+    QObject owner;
+    kdockw::ApplicationCatalog catalog(&owner);
+    catalog.ensureLoaded();
+    REQUIRE(catalog.ready());
+
+    const QVariantList initialApplications = catalog.applications();
+    const QVariantList initialMenuTree = catalog.menuTree();
+    REQUIRE_FALSE(initialApplications.isEmpty());
+    REQUIRE(owner.children().size() == 1);
+
+    for (int refresh = 0; refresh < 20; ++refresh) {
+        catalog.refresh();
+        CHECK(catalog.ready());
+        CHECK(catalog.applications() == initialApplications);
+        CHECK(catalog.menuTree() == initialMenuTree);
+        CHECK(owner.children().size() == 1);
+    }
 }
 
 TEST_CASE("Application launcher style and Windows Start pin order persist", "[application-launcher][state]")

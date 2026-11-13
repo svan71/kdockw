@@ -61,6 +61,26 @@ Item {
             popup.close()
         }
 
+        function test_repeated_style_switch_and_open_close_cycles() {
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            const styles = ["launchpad", "start", "hierarchical"]
+            const objectNames = ["applicationLauncherLaunchpad", "applicationLauncherStart", "applicationLauncherHierarchical"]
+            popup.openFor(anchor)
+            tryVerify(() => popup.visible && loader.item !== null)
+
+            for (let i = 0; i < 30; ++i) {
+                const index = i % styles.length
+                DockModel.applicationLauncherState.style = styles[index]
+                tryCompare(loader.item, "objectName", objectNames[index])
+                popup.close()
+                tryVerify(() => !popup.visible)
+                popup.openFor(anchor)
+                tryVerify(() => popup.visible && loader.item !== null)
+            }
+            popup.close()
+            tryVerify(() => !popup.visible)
+        }
+
         function test_dock_hiding_dismisses_popup() {
             popup.openFor(anchor)
             tryVerify(() => popup.visible)

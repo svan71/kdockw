@@ -72,6 +72,11 @@ extension/plugin API.
 - Keep the current `KService` objects and catalog records in memory only.
   Search uses `KApplicationTrader::query()` and matches localized service
   metadata; KSycoca database changes coalesce into a catalog refresh.
+- `ApplicationCatalog` is owned by the dock model and replaces its in-memory
+  application and menu records on refresh. Launcher QML views are owned by the
+  popup `Loader`; switching styles or closing the popup releases the loaded
+  view. Integration tests tear down the test application's QObject owners
+  before destroying `QApplication`.
 - Launch applications and desktop actions through
   `KIO::ApplicationLauncherJob`; `Exec` is never parsed or passed to a shell.
 - `ApplicationLauncherState` persists the selected style and ordered Start
@@ -91,8 +96,12 @@ extension/plugin API.
 ## Verification status
 
 Automated model, catalog-filtering, metadata, persistence, three-style QML,
-settings, and four-edge popup-bound checks are being run for the current
-v0.6.0-dev implementation. Real Plasma/Wayland visual acceptance, including
+settings, and four-edge popup-bound checks pass in the current v0.6.0-dev
+builds. A prior full Production CTest run aborted after all integration
+assertions passed because its process-lifetime fixture outlived `QApplication`;
+the fixture now destroys its QObject graph before application teardown. Two
+full Production CTest runs and one full Diagnostic CTest run passed after this
+change. Real Plasma/Wayland visual acceptance, including
 popup placement at fractional scaling, keyboard and pointer interaction,
 catalog refresh after install/removal, and DnD/Spring behavior around widgets,
 remains in `review`; this work is not marked accepted.

@@ -90,10 +90,17 @@ struct App {
     std::unique_ptr<MultiDockManager> manager;
 };
 
+App *&appInstance()
+{
+    static App *instance = nullptr;
+    return instance;
+}
+
 App &app()
 {
-    static App *instance = [] {
+    if (!appInstance()) {
         auto *a = new App;
+        appInstance() = a;
         a->settings = std::make_unique<KDockWSettings>();
         a->settings->load();
         // Auto-hide with a short delay: a dock whose settings-dialog interaction
@@ -141,9 +148,38 @@ App &app()
         // SettingsWindow creates its separate QQmlEngine. Mirror that setup
         // here so the real PreviewPage and PreviewThumbnail can be loaded.
         registerDockQmlTypes();
-        return a;
-    }();
-    return *instance;
+    }
+    return *appInstance();
+}
+
+// Destroy the test application's QObject graph while QApplication and its
+// platform integration are still alive. Leaving the intentionally lazy App
+// singleton allocated until process teardown can make Qt/KDE destructors
+// observe objects whose application has already gone away.
+void cleanupApp()
+{
+    App *a = appInstance();
+    if (!a) {
+        return;
+    }
+
+    const QPointer<QObject> manager(a->manager.get());
+    const QPointer<QObject> updateChecker(a->updateChecker.get());
+    const QPointer<QObject> launcherEntries(a->launcherEntries.get());
+    const QPointer<QObject> tracker(a->tracker.get());
+    const QPointer<QObject> model(a->model.get());
+    const QPointer<QObject> settings(a->settings.get());
+
+    a->manager.reset();
+    a->updateChecker.reset();
+    a->launcherEntries.reset();
+    a->tracker.reset();
+    a->model.reset();
+    a->settings.reset();
+
+    if (manager || updateChecker || launcherEntries || tracker || model || settings) {
+        qFatal("Integration fixture retained a QObject past explicit application cleanup");
+    }
 }
 
 // Creates the dock shells the way Application::run() does, if not running.
@@ -1119,5 +1155,8 @@ int main(int argc, char *argv[])
     qputenv("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell");
     g_previousHandler = qInstallMessageHandler(messageHandler);
 
-    return Catch::Session().run(argc, argv);
+    const int result = Catch::Session().run(argc, argv);
+    qInstallMessageHandler(g_previousHandler);
+    cleanupApp();
+    return result;
 }

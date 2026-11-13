@@ -16,6 +16,10 @@ carried forward from the Krema-based development period.
 - Added three switchable launcher views: a searchable Launchpad grid with folders, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
 - Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
 
+### Fixed
+
+- Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.
+
 ## [0.5.1] - 2026-11-13
 
 ### Added
