@@ -12,7 +12,9 @@ carried forward from the Krema-based development period.
 
 - Added built-in dock separators and fixed-size spacers with saved identity, order, start/center/end placement, visibility, resizing, and a dock widget manager.
 - Added four-edge spacer geometry that participates in Spring Magnification layout without becoming a TaskManager row or drag-and-drop target.
-- Defined the internal KService/XDG Menu data contract for the next Application Launcher widget without adding a public plugin API or implementing launcher styles.
+- Added an Application Launcher widget backed by the live KDE service catalog, XDG menu hierarchy, KDE metadata search, and asynchronous KIO application/action launch.
+- Added three switchable launcher views: a searchable Launchpad grid with folders, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
+- Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
 
 ## [0.5.1] - 2026-11-13
 

@@ -303,19 +303,21 @@ The signed tag and all five release assets were verified on the
 
 ## v0.6.0 — Built-in Dock Widgets & Application Launcher (in progress)
 
-- [ ] **Built-in Dock Widget Model** (`35353e13722e4769`, in progress): the
+- [ ] **Built-in Dock Widget Model** (`35353e13722e4769`, review): the
   existing `DockEntriesModel` now supports persistent separators and fixed-size
   spacers, start/center/end placement, visibility, size editing, ordering, and
   a QML manager. Per-row extents are included in Spring Magnification; widgets
   remain outside TaskManager and app/folder DnD. Stretching spacers are deferred
   because the current content-wrapping `Flow` has no safe free-space allocator.
-  Automated checks are in progress; real Plasma/Wayland acceptance remains.
-  The internal Application Launcher backend contract is documented; public
-  plugin API remains out of scope.
-- [ ] **Application Launcher Widget** (`5c079ef1a7384398`): provide three
-  switchable menu styles: compact macOS Launchpad app/folder grid; Windows
-  Start with pinned apps, search and full list; and KDE hierarchical Launchpad
-  preserving the KService/XDG Menu hierarchy.
+  Unit and QML regressions pass; real Plasma/Wayland acceptance remains in
+  review. The internal model has no public plugin API.
+- [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): implemented
+  the shared KService/KServiceGroup catalog, KApplicationTrader search, KIO
+  launch path, saved launcher widget and style/pin state, plus three switchable
+  views: compact macOS Launchpad app/folder grid; Windows Start with ordered
+  pins, search and full list; and KDE hierarchical browsing of the original
+  XDG Menu tree. Automated catalog, QML, settings and popup-bound regressions
+  pass; manual Plasma/Wayland review remains open.
 
 The owner confirmed that Plasma's built-in KWin Scale/Genie effects already
 minimize windows to the correct KDockW icons. KDockW will not reimplement those

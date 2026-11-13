@@ -1753,3 +1753,124 @@ msgstr "Переместить ниже"
 #: src/qml/main.qml
 msgid "Remove"
 msgstr "Удалить"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Application Launcher"
+msgstr "Меню приложений"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Choose how applications are browsed from the dock"
+msgstr "Выберите способ просмотра приложений из дока"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "macOS Launchpad"
+msgstr "Launchpad в стиле macOS"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Windows Start"
+msgstr "Меню «Пуск» в стиле Windows"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "KDE Hierarchical"
+msgstr "Иерархическое меню KDE"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Menu style"
+msgstr "Стиль меню"
+
+#: src/qml/settings/ApplicationLauncherPage.qml src/qml/main.qml
+msgid "Application Launcher style"
+msgstr "Стиль меню приложений"
+
+#: src/qml/main.qml
+msgid "Choose icon…"
+msgstr "Выбрать значок…"
+
+#: src/qml/DockItem.qml
+msgid "Open application launcher"
+msgstr "Открыть меню приложений"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "The selected style is applied immediately to every Application Launcher widget."
+msgstr "Выбранный стиль сразу применяется ко всем виджетам меню приложений."
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Windows Start pinned applications"
+msgstr "Закреплённые приложения меню «Пуск»"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Manage pinned applications"
+msgstr "Управление закреплёнными приложениями"
+
+#: src/qml/settings/ApplicationLauncherPage.qml
+msgid "Open an Application Launcher widget and use Pin, Unpin, and the order arrows in Windows Start."
+msgstr "Откройте виджет меню приложений и используйте команды «Закрепить», «Открепить» и стрелки порядка в меню «Пуск»."
+
+#: src/qml/ApplicationLauncherPopup.qml
+#: src/qml/main.qml
+msgid "Add Application Launcher"
+msgstr "Добавить меню приложений"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Search applications"
+msgstr "Поиск приложений"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Back"
+msgstr "Назад"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Close"
+msgstr "Закрыть"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Applications"
+msgstr "Приложения"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Search results"
+msgstr "Результаты поиска"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "No applications found"
+msgstr "Приложения не найдены"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "No applications are available"
+msgstr "Нет доступных приложений"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "Category"
+msgstr "Категория"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "This category is empty"
+msgstr "Эта категория пуста"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "All applications"
+msgstr "Все приложения"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Move pinned application up"
+msgstr "Переместить закреплённое приложение выше"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Move pinned application down"
+msgstr "Переместить закреплённое приложение ниже"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Unpin"
+msgstr "Открепить"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Pin"
+msgstr "Закрепить"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Unpin %1"
+msgstr "Открепить %1"
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "Pin %1"
+msgstr "Закрепить %1"

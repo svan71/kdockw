@@ -55,9 +55,9 @@ separately tested layout allocation contract.
 
 ## Application Launcher backend contract
 
-The Application Launcher must reuse the widget descriptor and presentation
-path. It must not copy the system menu into a second persistent database or
-introduce an extension/plugin API.
+The Application Launcher reuses the widget descriptor and presentation path.
+It does not copy the system menu into a persistent database or introduce an
+extension/plugin API.
 
 - Build the hierarchy from `KServiceGroup::root()` and recursively consume
   `entries(false, true, true)` in XDG Menu order. Groups become categories or
@@ -67,19 +67,32 @@ introduce an extension/plugin API.
   localized name, generic name, keywords, categories, icon, menu ID, and storage
   ID. Cache service objects in memory; persist stable service references and
   user-owned pins/folder choices only.
-- Filter hidden/no-display and non-current-desktop services using KDE service
-  metadata. Preserve hierarchy for the KDE style and derive the compact grid
-  and pinned/search/full-list views from the same catalog.
-- Launch through KIO's asynchronous application launch job or existing
-  TaskManager integration. Never parse a desktop entry's `Exec` field directly.
-
-The three user-facing styles remain for the next task: macOS Launchpad,
-Windows Start, and KDE hierarchical Launchpad. No style has been implemented
-in this model task.
+- Filter `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn`, and unavailable
+  `TryExec` entries. Desktop entry identity de-duplicates alternate paths.
+- Keep the current `KService` objects and catalog records in memory only.
+  Search uses `KApplicationTrader::query()` and matches localized service
+  metadata; KSycoca database changes coalesce into a catalog refresh.
+- Launch applications and desktop actions through
+  `KIO::ApplicationLauncherJob`; `Exec` is never parsed or passed to a shell.
+- `ApplicationLauncherState` persists the selected style and ordered Start
+  pins. Pins are stable service IDs and survive temporary removal from the
+  current catalog.
+- A single native popup loads one of three QML views: Launchpad presents the
+  menu tree as a searchable app/folder grid; Start shows ordered pins, search,
+  and the alphabetized catalog; KDE Hierarchical navigates the original nested
+  XDG menu tree and searches across the same catalog. All views use the same
+  catalog and KIO launch path.
+- The popup chooses the available screen space along either axis for all four
+  dock edges, closes on outside click, Escape, dock hide, output change, and
+  after a successful launch, and reloads its view when the style changes.
+  Actual Wayland popup placement, fractional scaling, and lock/unlock remain
+  visual review items.
 
 ## Verification status
 
-Automated model, persistence, four-edge layout, and QML checks are being run for
-the current v0.6.0-dev implementation. Real Plasma/Wayland visual acceptance,
-including DnD around widgets and Spring magnification with a spacer, remains
-required before this task can be marked done.
+Automated model, catalog-filtering, metadata, persistence, three-style QML,
+settings, and four-edge popup-bound checks are being run for the current
+v0.6.0-dev implementation. Real Plasma/Wayland visual acceptance, including
+popup placement at fractional scaling, keyboard and pointer interaction,
+catalog refresh after install/removal, and DnD/Spring behavior around widgets,
+remains in `review`; this work is not marked accepted.
