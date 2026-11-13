@@ -30,6 +30,7 @@ Verified API documentation from actual KDE headers (`/usr/include/`).
 | Document | Description |
 |----------|-------------|
 | [desktop-actions.md](desktop-actions.md) | KService::actions / KServiceAction, KIO::ApplicationLauncherJob, KNotificationJobUiDelegate — .desktop file actions in the dock item menu |
+| [application-launcher.md](application-launcher.md) | KServiceGroup XDG menu traversal, KApplicationTrader search, KSycoca refresh, and safe asynchronous app launch |
 
 ### M5: Theming & i18n
 
