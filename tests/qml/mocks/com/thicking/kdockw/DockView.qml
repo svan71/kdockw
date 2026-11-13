@@ -28,6 +28,12 @@ QtObject {
                                            maxZoomFactor, style, active, cursor,
                                            minEdge, maxEdge)
     }
+    function zoomLayoutForItems(specs, restStart, spacing, boundary, boundaryGap,
+                                restBackgroundStart, restBackgroundEnd, maxZoomFactor, style,
+                                active, cursor, minEdge, maxEdge) {
+        return ZoomLayoutEngine.zoomLayoutForItems(specs, restStart, spacing, boundary, boundaryGap,
+            restBackgroundStart, restBackgroundEnd, maxZoomFactor, style, active, cursor, minEdge, maxEdge)
+    }
 
     // Restores every property listed in _resettable to its declared value.
     readonly property var _resettable: ["edge", "backgroundStyleType", "backgroundColor", "floatingPadding", "iconCacheVersion", "tooltipReserve", "screenGeometry", "pointerInside"]

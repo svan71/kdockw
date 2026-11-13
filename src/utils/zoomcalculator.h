@@ -106,6 +106,75 @@ struct DockZoomLayout {
 /// @param cursor Cursor position in the rest frame
 /// @param minEdge Lowest allowed leading edge of the grown background
 /// @param maxEdge Highest allowed trailing edge of the grown background
+[[nodiscard]] inline DockZoomLayout computeDockZoomItems(const std::vector<double> &extents,
+                                                    const std::vector<bool> &canMagnify,
+                                                    double restStart,
+                                                    double spacing,
+                                                    int boundary,
+                                                    double boundaryGap,
+                                                    double restBackgroundStart,
+                                                    double restBackgroundEnd,
+                                                    double maxZoomFactor,
+                                                    ZoomStyle style,
+                                                    bool active,
+                                                    double cursor,
+                                                    double minEdge,
+                                                    double maxEdge)
+{
+    DockZoomLayout layout;
+    const std::size_t n = extents.size();
+    if (n == 0) return layout;
+    layout.scales.assign(n, 1.0);
+    layout.offsets.assign(n, 0.0);
+    const bool hasBoundary = boundary >= 0 && static_cast<std::size_t>(boundary) < n && boundaryGap > 0.0;
+    std::vector<double> centres(n);
+    double edge = restStart;
+    double rowEnd = restStart;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (hasBoundary && static_cast<int>(i) == boundary) edge += boundaryGap;
+        centres[i] = edge + extents[i] * 0.5;
+        edge += extents[i] + spacing;
+        rowEnd = edge;
+    }
+    if (!active || maxZoomFactor <= 1.0) return layout;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (i < canMagnify.size() && canMagnify[i])
+            layout.scales[i] = parabolicZoomFactor(centres[i] - cursor, extents[i], maxZoomFactor);
+    }
+    if (style == ZoomStyle::InPlace) return layout;
+
+    double growth = 0.0;
+    double referenceSize = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (i < canMagnify.size() && canMagnify[i]) {
+            growth += extents[i] * (layout.scales[i] - 1.0);
+            referenceSize = std::max(referenceSize, extents[i]);
+        }
+    }
+    if (growth <= 0.0) return layout;
+    const double sigma = std::max(1.0, referenceSize * kDefaultZoomSigmaFactor);
+    const double rowStart = restStart - spacing * 0.5;
+    rowEnd -= spacing * 0.5;
+    const double before = std::erf(std::max(0.0, cursor - rowStart) / sigma);
+    const double after = std::erf(std::max(0.0, rowEnd - cursor) / sigma);
+    const double leadingShare = before + after > 0.0 ? before / (before + after) : 0.5;
+    const double roomL = std::max(0.0, restBackgroundStart - minEdge);
+    const double roomR = std::max(0.0, maxEdge - restBackgroundEnd);
+    const double fitted = std::min(growth, roomL + roomR);
+    const double leading = std::clamp(fitted * leadingShare, fitted - roomR, roomL);
+    const double positionalShare = fitted / growth;
+    edge = restStart - leading;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (hasBoundary && static_cast<int>(i) == boundary) edge += boundaryGap;
+        const double width = extents[i] + extents[i] * (layout.scales[i] - 1.0) * positionalShare;
+        layout.offsets[i] = edge + width * 0.5 - centres[i];
+        edge += width + spacing;
+    }
+    layout.leadingGrowth = leading;
+    layout.trailingGrowth = fitted - leading;
+    return layout;
+}
+
 [[nodiscard]] inline DockZoomLayout computeDockZoom(int count,
                                                     double restStart,
                                                     double iconSize,
@@ -121,64 +190,11 @@ struct DockZoomLayout {
                                                     double minEdge,
                                                     double maxEdge)
 {
-    DockZoomLayout layout;
-    if (count <= 0) {
-        return layout;
-    }
-
+    if (count <= 0 || iconSize <= 0.0) return {};
     const auto n = static_cast<std::size_t>(count);
-    layout.scales.assign(n, 1.0);
-    layout.offsets.assign(n, 0.0);
-
-    const double pitch = iconSize + spacing;
-    if (!active || maxZoomFactor <= 1.0 || pitch <= 0.0) {
-        return layout;
-    }
-
-    const bool hasBoundary = boundary >= 0 && boundary < count && boundaryGap > 0.0;
-    const auto restCentre = [restStart, pitch, iconSize, boundary, boundaryGap, hasBoundary](std::size_t i) {
-        const double extra = hasBoundary && static_cast<int>(i) >= boundary ? boundaryGap : 0.0;
-        return restStart + static_cast<double>(i) * pitch + extra + iconSize * 0.5;
-    };
-
-    for (std::size_t i = 0; i < n; ++i) {
-        layout.scales[i] = parabolicZoomFactor(restCentre(i) - cursor, iconSize, maxZoomFactor);
-    }
-    if (style == ZoomStyle::InPlace) {
-        return layout;
-    }
-
-    double growth = 0.0;
-    for (double scale : layout.scales) {
-        growth += iconSize * (scale - 1.0);
-    }
-
-    const double sigma = iconSize * kDefaultZoomSigmaFactor;
-    const double rowStart = restStart - spacing * 0.5;
-    const double rowEnd = rowStart + static_cast<double>(n) * pitch + (hasBoundary ? boundaryGap : 0.0);
-    const double before = std::erf(std::max(0.0, cursor - rowStart) / sigma);
-    const double after = std::erf(std::max(0.0, rowEnd - cursor) / sigma);
-    const double leadingShare = before + after > 0.0 ? before / (before + after) : 0.5;
-
-    // Slack between the background's rest edges and the surface bounds.
-    const double roomL = std::max(0.0, restBackgroundStart - minEdge);
-    const double roomR = std::max(0.0, maxEdge - restBackgroundEnd);
-    const double fitted = std::min(growth, roomL + roomR);
-    const double leading = std::clamp(fitted * leadingShare, fitted - roomR, roomL);
-    const double positionalShare = growth > 0.0 ? fitted / growth : 0.0;
-
-    double edge = restStart - leading;
-    for (std::size_t i = 0; i < n; ++i) {
-        if (hasBoundary && static_cast<int>(i) == boundary) {
-            edge += boundaryGap;
-        }
-        const double width = iconSize + iconSize * (layout.scales[i] - 1.0) * positionalShare;
-        layout.offsets[i] = edge + width * 0.5 - restCentre(i);
-        edge += width + spacing;
-    }
-    layout.leadingGrowth = leading;
-    layout.trailingGrowth = fitted - leading;
-    return layout;
+    return computeDockZoomItems(std::vector<double>(n, iconSize), std::vector<bool>(n, true), restStart, spacing,
+                                boundary, boundaryGap, restBackgroundStart, restBackgroundEnd, maxZoomFactor,
+                                style, active, cursor, minEdge, maxEdge);
 }
 
 } // namespace kdockw

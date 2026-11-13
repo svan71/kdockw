@@ -126,6 +126,19 @@ public:
                                        qreal cursor,
                                        qreal minEdge,
                                        qreal maxEdge) const;
+    Q_INVOKABLE QVariantMap zoomLayoutForItems(const QVariantList &specs,
+                                               qreal restStart,
+                                               qreal spacing,
+                                               int boundary,
+                                               qreal boundaryGap,
+                                               qreal restBackgroundStart,
+                                               qreal restBackgroundEnd,
+                                               qreal maxZoomFactor,
+                                               int style,
+                                               bool active,
+                                               qreal cursor,
+                                               qreal minEdge,
+                                               qreal maxEdge) const;
 
     /// See the pointerInside property.
     [[nodiscard]] bool isPointerInside() const;

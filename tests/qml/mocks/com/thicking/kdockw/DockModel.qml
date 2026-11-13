@@ -13,6 +13,46 @@ QtObject {
     readonly property var dockPresentationModel: tasksModel
     readonly property var dockEntriesModel: ListModel {
         id: entries
+        property int _nextWidgetId: 0
+        function entryIdAt(row) { return row >= 0 && row < count ? get(row).entryId : "" }
+        function entryTypeAt(row) { return row >= 0 && row < count ? get(row).entryType : "" }
+        function appendSeparator(slot) {
+            const id = "widget:separator:mock-" + (++_nextWidgetId)
+            append({ entryId: id, entryType: "builtInWidget", widgetKind: "separator",
+                     placementSlot: slot || "center", widgetSize: 0, widgetVisible: true })
+            return id
+        }
+        function appendSpacer(size, slot) {
+            const id = "widget:spacer:mock-" + (++_nextWidgetId)
+            append({ entryId: id, entryType: "builtInWidget", widgetKind: "spacer",
+                     placementSlot: slot || "center", widgetSize: size, widgetVisible: true })
+            return id
+        }
+        function removeBuiltInWidget(entryId) {
+            for (let row = 0; row < count; ++row) {
+                if (get(row).entryId === entryId && get(row).entryType === "builtInWidget") {
+                    remove(row)
+                    return true
+                }
+            }
+            return false
+        }
+        function setBuiltInWidgetSize(entryId, size) {
+            for (let row = 0; row < count; ++row)
+                if (get(row).entryId === entryId) { setProperty(row, "widgetSize", size); return true }
+            return false
+        }
+        function setBuiltInWidgetVisible(entryId, visible) {
+            for (let row = 0; row < count; ++row)
+                if (get(row).entryId === entryId) { setProperty(row, "widgetVisible", visible); return true }
+            return false
+        }
+        function setBuiltInWidgetSlot(entryId, slot) {
+            for (let row = 0; row < count; ++row)
+                if (get(row).entryId === entryId) { setProperty(row, "placementSlot", slot); return true }
+            return false
+        }
+        function moveEntry(from, to) { if (from < 0 || to < 0 || from >= count || to >= count) return false; move(from, to, 1); return true }
         function removeFolderStack(entryId) {
             for (let row = 0; row < count; ++row) {
                 if (get(row).entryId === entryId) {

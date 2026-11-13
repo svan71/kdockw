@@ -74,8 +74,16 @@ QVariant DockPresentationModel::data(const QModelIndex &index, int role) const
         return row.iconName;
     case IconUrlRole:
         return row.iconUrl;
+    case WidgetKindRole:
+        return row.widgetKind;
+    case PlacementSlotRole:
+        return row.placementSlot;
     case IsPinnedRole:
         return row.pinned;
+    case WidgetSizeRole:
+        return row.widgetSize;
+    case WidgetVisibleRole:
+        return row.widgetVisible;
     default:
         break;
     }
@@ -106,7 +114,11 @@ QHash<int, QByteArray> DockPresentationModel::roleNames() const
     names.insert(EntryUrlRole, "entryUrl");
     names.insert(IconNameRole, "iconName");
     names.insert(IconUrlRole, "iconUrl");
+    names.insert(WidgetKindRole, "widgetKind");
+    names.insert(PlacementSlotRole, "placementSlot");
     names.insert(IsPinnedRole, "isPinned");
+    names.insert(WidgetSizeRole, "widgetSize");
+    names.insert(WidgetVisibleRole, "widgetVisible");
     return names;
 }
 
@@ -166,26 +178,71 @@ bool DockPresentationModel::isPinnedDockIndex(int dockIndex) const
     return dockIndex >= 0 && dockIndex < m_rows.size() && m_rows.at(dockIndex).pinned;
 }
 
+QVariantList DockPresentationModel::zoomLayoutSpecs(int iconSize) const
+{
+    QVariantList specs;
+    specs.reserve(m_rows.size());
+    for (const Row &row : m_rows) {
+        const bool widget = row.entryType == QLatin1String("builtInWidget");
+        const double size = widget && row.widgetSize > 0
+            ? std::max(4, row.widgetSize) : std::max(1, iconSize);
+        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget}});
+    }
+    return specs;
+}
+
 QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
 {
     QList<Row> rows;
+    const auto appendBuiltIn = [&rows](const DockEntry &entry) {
+        if (!entry.widgetVisible) return;
+        Row row;
+        row.entryId = entry.id;
+        row.entryType = QStringLiteral("builtInWidget");
+        row.widgetKind = entry.widgetKind;
+        row.widgetSize = entry.widgetSize;
+        row.widgetVisible = entry.widgetVisible;
+        row.placementSlot = entry.slot == DockWidgetSlot::Start ? QStringLiteral("start")
+            : entry.slot == DockWidgetSlot::End ? QStringLiteral("end") : QStringLiteral("center");
+        row.key = QStringLiteral("entry:%1").arg(entry.id);
+        row.pinned = true;
+        rows.append(row);
+    };
+    const auto sortSlots = [&rows]() {
+        const auto rank = [](const Row &row) {
+            if (row.placementSlot == QLatin1String("start")) return 0;
+            if (row.placementSlot == QLatin1String("end")) return 2;
+            return 1;
+        };
+        std::stable_sort(rows.begin(), rows.end(), [&rank](const Row &left, const Row &right) {
+            return rank(left) < rank(right);
+        });
+        return rows;
+    };
     QVector<bool> usedTaskRows(m_tasksModel->rowCount(), false);
     const int launcherRole = TaskManager::AbstractTasksModel::LauncherUrlWithoutIcon;
 
     if (!m_separateLaunchers) {
         const QList<DockEntry> entries = m_entriesModel->entries();
-        QHash<QString, QList<DockEntry>> foldersBeforeTask;
-        QList<DockEntry> pendingFolders;
+        QHash<QString, QList<DockEntry>> entriesBeforeTask;
+        QList<DockEntry> pendingEntries;
+        QSet<QString> emittedEntryIds;
         for (const DockEntry &entry : entries) {
-            if (entry.type == DockEntryType::FolderStack) {
-                pendingFolders.append(entry);
+            if (entry.type == DockEntryType::BuiltInWidget) {
+                if (entry.slot == DockWidgetSlot::Center) {
+                    pendingEntries.append(entry);
+                } else {
+                    appendBuiltIn(entry);
+                    emittedEntryIds.insert(entry.id);
+                }
+            } else if (entry.type == DockEntryType::FolderStack) {
+                pendingEntries.append(entry);
             } else {
-                foldersBeforeTask.insert(entry.id, pendingFolders);
-                pendingFolders.clear();
+                entriesBeforeTask.insert(entry.id, pendingEntries);
+                pendingEntries.clear();
             }
         }
 
-        QSet<QString> emittedEntryIds;
         const auto appendEntry = [&rows, &emittedEntryIds](const DockEntry &entry, int taskIndex) {
             Row row;
             row.entryId = entry.id;
@@ -193,7 +250,9 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
             row.iconName = entry.iconName;
             row.iconUrl = entry.iconUrl;
             row.pinned = true;
-            row.entryType = entry.type == DockEntryType::FolderStack ? QStringLiteral("folderStack") : QStringLiteral("task");
+            row.entryType = entry.type == DockEntryType::FolderStack
+                ? QStringLiteral("folderStack")
+                : QStringLiteral("task");
             row.key = QStringLiteral("entry:%1").arg(entry.id);
             row.taskIndex = taskIndex;
             rows.append(row);
@@ -202,14 +261,20 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
 
         for (int taskIndex = 0; taskIndex < m_tasksModel->rowCount(); ++taskIndex) {
             const QUrl launcherUrl = m_tasksModel->data(m_tasksModel->index(taskIndex, 0), launcherRole).toUrl();
-            const auto pinnedEntry = std::find_if(entries.cbegin(), entries.cend(), [&launcherUrl, &emittedEntryIds](const DockEntry &entry) {
-                return entry.type == DockEntryType::Task && !emittedEntryIds.contains(entry.id)
-                    && TaskManager::launcherUrlsMatch(entry.url, launcherUrl, TaskManager::IgnoreQueryItems);
-            });
+            const auto pinnedEntry = std::find_if(
+                entries.cbegin(), entries.cend(), [&launcherUrl, &emittedEntryIds](const DockEntry &entry) {
+                    return entry.type == DockEntryType::Task && !emittedEntryIds.contains(entry.id)
+                        && TaskManager::launcherUrlsMatch(entry.url, launcherUrl, TaskManager::IgnoreQueryItems);
+                });
             if (pinnedEntry != entries.cend()) {
-                for (const DockEntry &folder : foldersBeforeTask.value(pinnedEntry->id)) {
-                    if (!emittedEntryIds.contains(folder.id)) {
-                        appendEntry(folder, -1);
+                for (const DockEntry &before : entriesBeforeTask.value(pinnedEntry->id)) {
+                    if (!emittedEntryIds.contains(before.id)) {
+                        if (before.type == DockEntryType::BuiltInWidget) {
+                            appendBuiltIn(before);
+                            emittedEntryIds.insert(before.id);
+                        } else {
+                            appendEntry(before, -1);
+                        }
                     }
                 }
                 appendEntry(*pinnedEntry, taskIndex);
@@ -230,21 +295,33 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         // not currently represented by TaskManager visible, in their saved
         // relative order after all live rows.
         for (const DockEntry &entry : entries) {
-            if (entry.type == DockEntryType::FolderStack && !emittedEntryIds.contains(entry.id)) {
+            if (entry.type == DockEntryType::BuiltInWidget && !emittedEntryIds.contains(entry.id)) {
+                appendBuiltIn(entry);
+                emittedEntryIds.insert(entry.id);
+            } else if (entry.type == DockEntryType::FolderStack && !emittedEntryIds.contains(entry.id)) {
                 appendEntry(entry, -1);
             } else if (entry.type == DockEntryType::Task && !emittedEntryIds.contains(entry.id)) {
-                for (const DockEntry &folder : foldersBeforeTask.value(entry.id)) {
-                    if (!emittedEntryIds.contains(folder.id)) {
-                        appendEntry(folder, -1);
+                for (const DockEntry &before : entriesBeforeTask.value(entry.id)) {
+                    if (!emittedEntryIds.contains(before.id)) {
+                        if (before.type == DockEntryType::BuiltInWidget) {
+                            appendBuiltIn(before);
+                            emittedEntryIds.insert(before.id);
+                        } else {
+                            appendEntry(before, -1);
+                        }
                     }
                 }
                 appendEntry(entry, -1);
             }
         }
-        return rows;
+        return sortSlots();
     }
 
     for (const DockEntry &entry : m_entriesModel->entries()) {
+        if (entry.type == DockEntryType::BuiltInWidget) {
+            appendBuiltIn(entry);
+            continue;
+        }
         Row row;
         row.entryId = entry.id;
         row.entryUrl = entry.url;
@@ -291,7 +368,7 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         row.pinned = false;
         rows.append(row);
     }
-    return rows;
+    return sortSlots();
 }
 
 QString DockPresentationModel::taskKey(int taskIndex, const QString &entryId) const

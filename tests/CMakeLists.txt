@@ -39,6 +39,12 @@ if(KDOCKW_DIAGNOSTIC_BUILD)
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v051_launcher_active_guard.sh
     )
     set_tests_properties(kdockw_v051_launcher_active_guard PROPERTIES LABELS "diagnostic;launcher" TIMEOUT 30)
+    if(KDOCKW_DIAGNOSTIC_VERSION STREQUAL "0.6.0")
+        add_test(NAME kdockw_v060_launcher_active_guard
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v060_launcher_active_guard.sh
+        )
+        set_tests_properties(kdockw_v060_launcher_active_guard PROPERTIES LABELS "diagnostic;launcher" TIMEOUT 30)
+    endif()
 endif()
 
 add_test(NAME kdockw_version_metadata
@@ -85,7 +91,7 @@ set_tests_properties(kdockw_cli_version kdockw_cli_help kdockw_cli_author kdockw
         TIMEOUT 60
 )
 set_tests_properties(kdockw_cli_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "^kdockw ${KDOCKW_VERSION}"
+    PASS_REGULAR_EXPRESSION "^kdockw ${KDOCKW_DISPLAY_VERSION}"
 )
 set_tests_properties(kdockw_cli_help PROPERTIES
     PASS_REGULAR_EXPRESSION "KDE Dock for Wayland"

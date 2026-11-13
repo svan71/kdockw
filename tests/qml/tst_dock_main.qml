@@ -507,6 +507,107 @@ Item {
             return dockEdges()
         }
 
+        function test_builtinSeparatorUsesDockOrientation_data() {
+            return dockEdges()
+        }
+
+        function test_builtinSeparatorUsesDockOrientation(data) {
+            DockView.edge = data.edge
+            DockModel.tasksModel.addTask({
+                display: "Separator",
+                entryType: "builtInWidget",
+                widgetKind: "separator",
+                widgetSize: 32,
+                placementSlot: "center",
+                entryId: "widget:separator:test",
+                taskIndex: -1,
+            })
+            const dock = makeDock(1)
+            const item = items(dock)[0]
+            const rule = T.findFirst(item, o => o.objectName === "builtInSeparator")
+            verify(rule && rule.visible, "the persisted built-in separator must render in the dock slot")
+            fuzzyCompare(DockView.isVertical ? item.height : item.width, 32, 0.01)
+            compare(rule.width > rule.height, DockView.isVertical,
+                    "the separator's short axis must follow the dock orientation")
+            compare(item.taskIndex, -1, "a built-in widget must not resolve to a TaskManager row")
+            compare(DockModel.delegateGeometryRequests.length, 0,
+                    "a built-in widget must not publish TaskManager window geometry")
+            const point = item.mapToItem(stage, item.width / 2, item.height / 2)
+            mousePress(stage, point.x, point.y, Qt.LeftButton)
+            wait(350)
+            verify(!dock._dragPending, "a built-in widget must not start an application reorder drag")
+            mouseRelease(stage, point.x, point.y, Qt.LeftButton)
+        }
+
+        function test_builtinSpacerHasConfiguredPrimarySizeOnAllEdges_data() {
+            return dockEdges()
+        }
+
+        function test_builtinSpacerHasConfiguredPrimarySizeOnAllEdges(data) {
+            DockView.edge = data.edge
+            DockModel.tasksModel.addTask({
+                display: "Spacer",
+                entryType: "builtInWidget",
+                widgetKind: "spacer",
+                widgetSize: 72,
+                widgetVisible: true,
+                placementSlot: "center",
+                entryId: "widget:spacer:test-" + data.edge,
+                taskIndex: -1,
+            })
+            const dock = makeDock(1)
+            const item = items(dock)[0]
+            const spacer = T.findFirst(item, o => o.objectName === "builtInSpacer")
+            verify(spacer && spacer.visible, "the spacer row should render without an icon")
+            fuzzyCompare(DockView.isVertical ? item.height : item.width, 72, 0.01)
+            compare(item.taskIndex, -1)
+            compare(DockModel.delegateGeometryRequests.length, 0)
+            compare(dock.computeExternalDropIndex(dock._primaryRestSlotStart(item) + 10), -1,
+                    "external DnD must not target a built-in widget")
+        }
+
+        function test_widgetManagerMutatesPersistedModelAndDockDragIgnoresWidgets() {
+            const id = DockModel.dockEntriesModel.appendSpacer(56, "center")
+            verify(id.length > 0)
+            const dock = makeDock(0)
+            const manager = dock.builtInWidgetManager
+            verify(manager, "the built-in widget management dialog must be part of the dock UI")
+            manager.open()
+            tryVerify(() => manager.opened)
+            verify(DockModel.dockEntriesModel.setBuiltInWidgetSize(id, 88))
+            verify(DockModel.dockEntriesModel.setBuiltInWidgetVisible(id, false))
+            compare(DockModel.dockEntriesModel.get(0).widgetSize, 88)
+            compare(DockModel.dockEntriesModel.get(0).widgetVisible, false)
+            verify(DockModel.dockEntriesModel.setBuiltInWidgetSlot(id, "end"))
+            compare(DockModel.dockEntriesModel.get(0).placementSlot, "end")
+            verify(DockModel.dockEntriesModel.removeBuiltInWidget(id))
+            manager.close()
+        }
+
+        function test_internalApplicationReorderSkipsBuiltInWidgetTargets() {
+            DockModel.tasksModel.addTask({
+                display: "App",
+                entryType: "task",
+                entryId: "task:dnd-app",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Spacer",
+                entryType: "builtInWidget",
+                widgetKind: "spacer",
+                widgetSize: 64,
+                widgetVisible: true,
+                entryId: "widget:spacer:dnd",
+                taskIndex: -1,
+            })
+            const dock = makeDock(2)
+            const spacer = items(dock)[1]
+            dock._dragSourceIndex = 0
+            compare(dock.computeDropIndex(dock._primaryRestSlotStart(spacer) + 8), 0,
+                    "the application reorder target should remain the app row, never the spacer")
+        }
+
         function test_folderStackPopupFitsAllDockEdges(data) {
             DockView.edge = data.edge
             DockModel.tasksModel.addTask({

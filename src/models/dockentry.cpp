@@ -17,7 +17,7 @@ namespace kdockw
 namespace
 {
 
-constexpr int kSchemaVersion = 2;
+constexpr int kSchemaVersion = 4;
 
 QString taskId(const QUrl &url)
 {
@@ -39,6 +39,8 @@ QString typeName(DockEntryType type)
         return QStringLiteral("task");
     case DockEntryType::FolderStack:
         return QStringLiteral("folderStack");
+    case DockEntryType::BuiltInWidget:
+        return QStringLiteral("builtInWidget");
     }
     return {};
 }
@@ -51,6 +53,10 @@ bool parseType(const QString &value, DockEntryType *type)
     }
     if (value == QLatin1String("folderStack")) {
         *type = DockEntryType::FolderStack;
+        return true;
+    }
+    if (value == QLatin1String("builtInWidget")) {
+        *type = DockEntryType::BuiltInWidget;
         return true;
     }
     return false;
@@ -68,9 +74,28 @@ DockEntry DockEntry::folderStack(const QUrl &url)
     return {QStringLiteral("folder:%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)), DockEntryType::FolderStack, url, {}, {}};
 }
 
+DockEntry DockEntry::separator(DockWidgetSlot slot)
+{
+    const QString id = QStringLiteral("widget:separator:%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    DockEntry entry{id, DockEntryType::BuiltInWidget};
+    entry.widgetKind = QStringLiteral("separator");
+    entry.slot = slot;
+    return entry;
+}
+
+DockEntry DockEntry::spacer(DockWidgetSlot slot, int size)
+{
+    const QString id = QStringLiteral("widget:spacer:%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    DockEntry entry{id, DockEntryType::BuiltInWidget};
+    entry.widgetKind = QStringLiteral("spacer");
+    entry.slot = slot;
+    entry.widgetSize = size;
+    return entry;
+}
+
 bool DockEntry::isValid() const
 {
-    if (id.isEmpty() || !url.isValid() || url.isEmpty()) {
+    if (id.isEmpty()) {
         return false;
     }
 
@@ -81,6 +106,12 @@ bool DockEntry::isValid() const
         return isLocalDirectoryUrl(url) && id.startsWith(QLatin1String("folder:"))
             && !QUuid(id.mid(QStringLiteral("folder:").size())).isNull()
             && (iconUrl.isEmpty() || (iconUrl.isValid() && iconUrl.isLocalFile()));
+    case DockEntryType::BuiltInWidget:
+        return !url.isValid() && url.isEmpty() && iconName.isEmpty() && iconUrl.isEmpty()
+            && ((widgetKind == QLatin1String("separator") && id.startsWith(QLatin1String("widget:separator:"))
+                && widgetSize >= 0 && widgetSize <= 512)
+                || (widgetKind == QLatin1String("spacer") && id.startsWith(QLatin1String("widget:spacer:"))
+                    && widgetSize >= 4 && widgetSize <= 512));
     }
     return false;
 }
@@ -105,6 +136,13 @@ QString DockEntriesCodec::encode(const QList<DockEntry> &entries)
         if (!entry.iconUrl.isEmpty()) {
             item.insert(QStringLiteral("iconUrl"), entry.iconUrl.toString(QUrl::FullyEncoded));
         }
+        if (entry.type == DockEntryType::BuiltInWidget) {
+            item.insert(QStringLiteral("widgetKind"), entry.widgetKind);
+            item.insert(QStringLiteral("slot"), entry.slot == DockWidgetSlot::Start ? QStringLiteral("start")
+                : entry.slot == DockWidgetSlot::End ? QStringLiteral("end") : QStringLiteral("center"));
+            item.insert(QStringLiteral("size"), entry.widgetSize);
+            item.insert(QStringLiteral("visible"), entry.widgetVisible);
+        }
         serializedEntries.append(item);
     }
 
@@ -125,7 +163,7 @@ DockEntriesCodec::DecodeResult DockEntriesCodec::decode(const QString &serialize
 
     const QJsonObject object = document.object();
     const int version = object.value(QStringLiteral("version")).toInt(-1);
-    if ((version != 1 && version != kSchemaVersion) || !object.value(QStringLiteral("entries")).isArray()) {
+    if ((version < 1 || version > kSchemaVersion) || !object.value(QStringLiteral("entries")).isArray()) {
         return {};
     }
 
@@ -142,12 +180,23 @@ DockEntriesCodec::DecodeResult DockEntriesCodec::decode(const QString &serialize
         if (!parseType(item.value(QStringLiteral("type")).toString(), &type)) {
             continue;
         }
-        const QUrl url = QUrl::fromEncoded(item.value(QStringLiteral("url")).toString().toUtf8(), QUrl::StrictMode);
+        const QUrl url = item.contains(QStringLiteral("url"))
+            ? QUrl::fromEncoded(item.value(QStringLiteral("url")).toString().toUtf8(), QUrl::StrictMode) : QUrl{};
         DockEntry entry{item.value(QStringLiteral("id")).toString(), type, url};
         if (version >= 2) {
             entry.iconName = item.value(QStringLiteral("iconName")).toString();
             if (item.contains(QStringLiteral("iconUrl"))) {
                 entry.iconUrl = QUrl::fromEncoded(item.value(QStringLiteral("iconUrl")).toString().toUtf8(), QUrl::StrictMode);
+            }
+        }
+        if (version >= 3 && type == DockEntryType::BuiltInWidget) {
+            entry.widgetKind = item.value(QStringLiteral("widgetKind")).toString();
+            const QString slot = item.value(QStringLiteral("slot")).toString();
+            entry.slot = slot == QLatin1String("start") ? DockWidgetSlot::Start
+                : slot == QLatin1String("end") ? DockWidgetSlot::End : DockWidgetSlot::Center;
+            if (version >= 4) {
+                entry.widgetSize = item.value(QStringLiteral("size")).toInt();
+                entry.widgetVisible = item.value(QStringLiteral("visible")).toBool(true);
             }
         }
         if (!entry.isValid() || ids.contains(entry.id)) {

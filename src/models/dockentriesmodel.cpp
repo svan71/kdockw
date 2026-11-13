@@ -39,13 +39,27 @@ QVariant DockEntriesModel::data(const QModelIndex &index, int role) const
     case EntryIdRole:
         return entry.id;
     case EntryTypeRole:
-        return entry.type == DockEntryType::FolderStack ? QStringLiteral("folderStack") : QStringLiteral("task");
+        return entry.type == DockEntryType::FolderStack ? QStringLiteral("folderStack")
+            : entry.type == DockEntryType::BuiltInWidget ? QStringLiteral("builtInWidget") : QStringLiteral("task");
     case EntryUrlRole:
         return entry.url;
     case IconNameRole:
         return entry.iconName;
     case IconUrlRole:
         return entry.iconUrl;
+    case WidgetKindRole:
+        return entry.widgetKind;
+    case PlacementSlotRole:
+        switch (entry.slot) {
+        case DockWidgetSlot::Start: return QStringLiteral("start");
+        case DockWidgetSlot::End: return QStringLiteral("end");
+        case DockWidgetSlot::Center: return QStringLiteral("center");
+        }
+        return QStringLiteral("center");
+    case WidgetSizeRole:
+        return entry.widgetSize;
+    case WidgetVisibleRole:
+        return entry.widgetVisible;
     default:
         return {};
     }
@@ -60,6 +74,10 @@ QHash<int, QByteArray> DockEntriesModel::roleNames() const
         {EntryUrlRole, "entryUrl"},
         {IconNameRole, "iconName"},
         {IconUrlRole, "iconUrl"},
+        {WidgetKindRole, "widgetKind"},
+        {PlacementSlotRole, "placementSlot"},
+        {WidgetSizeRole, "widgetSize"},
+        {WidgetVisibleRole, "widgetVisible"},
     };
 }
 
@@ -114,7 +132,7 @@ void DockEntriesModel::syncTaskOrder(const QStringList &launcherUrls)
     qsizetype taskIndex = 0;
 
     for (const DockEntry &entry : std::as_const(m_entries)) {
-        if (entry.type == DockEntryType::FolderStack) {
+        if (entry.type != DockEntryType::Task) {
             ordered.append(entry);
         } else if (taskIndex < newTasks.size()) {
             ordered.append(newTasks.at(taskIndex++));
@@ -124,6 +142,108 @@ void DockEntriesModel::syncTaskOrder(const QStringList &launcherUrls)
         ordered.append(newTasks.at(taskIndex++));
     }
     setEntries(ordered);
+}
+
+QString DockEntriesModel::appendSeparator(const QString &slotName)
+{
+    DockWidgetSlot slot = DockWidgetSlot::Center;
+    if (slotName == QLatin1String("start")) {
+        slot = DockWidgetSlot::Start;
+    } else if (slotName == QLatin1String("end")) {
+        slot = DockWidgetSlot::End;
+    } else if (slotName != QLatin1String("center")) {
+        return {};
+    }
+    const DockEntry entry = DockEntry::separator(slot);
+    const int row = m_entries.size();
+    beginInsertRows({}, row, row);
+    m_entries.append(entry);
+    endInsertRows();
+    Q_EMIT countChanged();
+    Q_EMIT entriesChanged();
+    return entry.id;
+}
+
+QString DockEntriesModel::appendSpacer(int size, const QString &slotName)
+{
+    if (size < 4 || size > 512) return {};
+    DockWidgetSlot slot = DockWidgetSlot::Center;
+    if (slotName == QLatin1String("start")) slot = DockWidgetSlot::Start;
+    else if (slotName == QLatin1String("end")) slot = DockWidgetSlot::End;
+    else if (slotName != QLatin1String("center")) return {};
+    const DockEntry entry = DockEntry::spacer(slot, size);
+    const int row = m_entries.size();
+    beginInsertRows({}, row, row);
+    m_entries.append(entry);
+    endInsertRows();
+    Q_EMIT countChanged();
+    Q_EMIT entriesChanged();
+    return entry.id;
+}
+
+bool DockEntriesModel::setBuiltInWidgetSize(const QString &entryId, int size)
+{
+    if (size < 4 || size > 512) return false;
+    for (qsizetype row = 0; row < m_entries.size(); ++row) {
+        DockEntry &entry = m_entries[row];
+        if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId) continue;
+        if (entry.widgetSize == size) return true;
+        entry.widgetSize = size;
+        Q_EMIT dataChanged(index(row, 0), index(row, 0), {WidgetSizeRole});
+        Q_EMIT entriesChanged();
+        return true;
+    }
+    return false;
+}
+
+bool DockEntriesModel::setBuiltInWidgetVisible(const QString &entryId, bool visible)
+{
+    for (qsizetype row = 0; row < m_entries.size(); ++row) {
+        DockEntry &entry = m_entries[row];
+        if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId) continue;
+        if (entry.widgetVisible == visible) return true;
+        entry.widgetVisible = visible;
+        Q_EMIT dataChanged(index(row, 0), index(row, 0), {WidgetVisibleRole});
+        Q_EMIT entriesChanged();
+        return true;
+    }
+    return false;
+}
+
+bool DockEntriesModel::setBuiltInWidgetSlot(const QString &entryId, const QString &slotName)
+{
+    DockWidgetSlot slot;
+    if (slotName == QLatin1String("start")) slot = DockWidgetSlot::Start;
+    else if (slotName == QLatin1String("center")) slot = DockWidgetSlot::Center;
+    else if (slotName == QLatin1String("end")) slot = DockWidgetSlot::End;
+    else return false;
+    for (qsizetype row = 0; row < m_entries.size(); ++row) {
+        DockEntry &entry = m_entries[row];
+        if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId) continue;
+        if (entry.slot == slot) return true;
+        entry.slot = slot;
+        Q_EMIT dataChanged(index(row, 0), index(row, 0), {PlacementSlotRole});
+        Q_EMIT entriesChanged();
+        return true;
+    }
+    return false;
+}
+
+bool DockEntriesModel::removeBuiltInWidget(const QString &entryId)
+{
+    for (qsizetype row = 0; row < m_entries.size(); ++row) {
+        const DockEntry &entry = m_entries.at(row);
+        if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId) {
+            continue;
+        }
+        beginRemoveRows({}, row, row);
+        m_entries.removeAt(row);
+        endRemoveRows();
+        Q_EMIT countChanged();
+        Q_EMIT entriesChanged();
+        return true;
+    }
+    return false;
 }
 
 bool DockEntriesModel::appendFolderStack(const QUrl &url)
@@ -186,7 +306,6 @@ bool DockEntriesModel::moveEntry(int fromIndex, int toIndex)
     if (fromIndex < 0 || fromIndex >= m_entries.size() || toIndex < 0 || toIndex >= m_entries.size() || fromIndex == toIndex) {
         return false;
     }
-
     const int destinationChild = toIndex > fromIndex ? toIndex + 1 : toIndex;
     if (!beginMoveRows({}, fromIndex, fromIndex, {}, destinationChild)) {
         return false;
@@ -211,6 +330,19 @@ bool DockEntriesModel::moveEntryById(const QString &entryId, const QString &targ
         return -1;
     };
     return moveEntry(findEntry(entryId), findEntry(targetEntryId));
+}
+
+QString DockEntriesModel::entryIdAt(int row) const
+{
+    return row >= 0 && row < m_entries.size() ? m_entries.at(row).id : QString{};
+}
+
+QString DockEntriesModel::entryTypeAt(int row) const
+{
+    if (row < 0 || row >= m_entries.size()) return {};
+    const DockEntry &entry = m_entries.at(row);
+    return entry.type == DockEntryType::BuiltInWidget ? QStringLiteral("builtInWidget")
+        : entry.type == DockEntryType::FolderStack ? QStringLiteral("folderStack") : QStringLiteral("task");
 }
 
 } // namespace kdockw

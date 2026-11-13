@@ -26,11 +26,14 @@ Item {
     required property string display
 
     // Display name for tooltip (readable by parent)
-    readonly property string displayName: display || ""
+    readonly property string displayName: isBuiltInWidget
+        ? (model.widgetKind === "spacer" ? i18n("Dock spacer") : i18n("Separator")) : display || ""
     readonly property bool isFolderStack: model.entryType === "folderStack"
+    readonly property bool isBuiltInWidget: model.entryType === "builtInWidget"
     readonly property int taskIndex: model.taskIndex !== undefined ? model.taskIndex : index
     readonly property string dockEntryId: model.entryId || ""
-    readonly property string iconName: isFolderStack ? (model.iconName || "folder") : DockModel.iconName(taskIndex)
+    readonly property string iconName: isFolderStack ? (model.iconName || "folder")
+        : isBuiltInWidget ? "" : DockModel.iconName(taskIndex)
     property Item dockRoot: null
 
     function openFolderStack() {
@@ -45,6 +48,7 @@ Item {
     readonly property string accessibleDescription: {
         let parts = []
         if (isFolderStack) return i18n("Folder stack")
+        if (isBuiltInWidget) return model.widgetKind === "spacer" ? i18n("Dock spacer") : i18n("Dock separator")
         if (DockModel.isPinned(taskIndex)) parts.push(i18n("Pinned"))
         if (model.IsActive) parts.push(i18n("Active"))
         if (model.IsMinimized) parts.push(i18n("Minimized"))
@@ -60,12 +64,15 @@ Item {
     // Keyboard focus state (set by main.qml during keyboard navigation)
     property bool isKeyboardFocused: false
 
-    Accessible.role: Accessible.Button
+    Accessible.role: isBuiltInWidget ? Accessible.Separator : Accessible.Button
     Accessible.name: displayName
     Accessible.description: accessibleDescription
-    Accessible.focusable: true
+    Accessible.focusable: !isBuiltInWidget
     Accessible.focused: isKeyboardFocused
-    Accessible.onPressAction: isFolderStack ? openFolderStack() : DockActions.activate(taskIndex)
+    Accessible.onPressAction: {
+        if (isFolderStack) openFolderStack()
+        else if (!isBuiltInWidget) DockActions.activate(taskIndex)
+    }
 
     // Launcher URL of this item's app, the key for LauncherEntryTracker (Unity API)
     readonly property url _launcherUrl: model.LauncherUrlWithoutIcon ?? ""
@@ -95,7 +102,7 @@ Item {
     // Desktop entry name for notification lookup (e.g. "org.kde.dolphin", "slack")
     readonly property string _appId: {
         let _dep = model.display  // reactive dependency on model data
-        return isFolderStack ? "" : DockModel.appId(taskIndex)
+        return isFolderStack || isBuiltInWidget ? "" : DockModel.appId(taskIndex)
     }
 
     // === Inbox (persistent badge) ===
@@ -342,7 +349,7 @@ Item {
     // keep replaying it.
 
     readonly property bool _isWindow: model.IsWindow ?? false
-    readonly property bool _canPublishDelegateGeometry: !isFolderStack && (model.IsWindow || model.IsGroupParent || false)
+    readonly property bool _canPublishDelegateGeometry: !isFolderStack && !isBuiltInWidget && (model.IsWindow || model.IsGroupParent || false)
     readonly property bool _isStartup: model.IsStartup ?? false
     readonly property bool _isActive: model.IsActive ?? false
     readonly property int _childCount: model.ChildCount || 0
@@ -350,7 +357,7 @@ Item {
     // DockModel.currentDesktop is a reactive dependency — triggers re-evaluation on desktop switch
     readonly property bool _isOnCurrentDesktop: {
         let _dep = DockModel.currentDesktop
-        return isFolderStack || DockModel.isOnCurrentDesktop(taskIndex)
+        return isFolderStack || isBuiltInWidget || DockModel.isOnCurrentDesktop(taskIndex)
 
     }
     opacity: (DockModel.virtualDesktopMode === 1 && !_isOnCurrentDesktop) ? DockSettings.otherDesktopOpacity : 1.0
@@ -789,12 +796,10 @@ Item {
     }
 
     // Size: base icon size + fixed indicator space (toward screen edge)
-    width: DockView.isVertical
-        ? (iconSize + _indicatorSpace)
-        : iconSize
-    height: DockView.isVertical
-        ? iconSize
-        : (iconSize + _indicatorSpace)
+    readonly property int _primaryExtent: isBuiltInWidget && model.widgetSize > 0
+        ? Math.max(4, model.widgetSize) : iconSize
+    width: DockView.isVertical ? (iconSize + _indicatorSpace) : _primaryExtent
+    height: DockView.isVertical ? _primaryExtent : (iconSize + _indicatorSpace)
 
     // Scaled transform: grow away from the dock edge, then shift along the
     // primary axis to the zoomed centre. Transforms apply in list order, so the
@@ -844,9 +849,9 @@ Item {
         // Anchors set via states below (iconAnchorStates)
         width: iconSize
         height: iconSize
-        visible: !dockItem.isFolderStack
+        visible: !dockItem.isFolderStack && !dockItem.isBuiltInWidget
         source: {
-            if (dockItem.isFolderStack) return ""
+            if (dockItem.isFolderStack || dockItem.isBuiltInWidget) return ""
             // IMPORTANT: Read model.display to create a reactive dependency on
             // model data. After model reordering (move), the Repeater may update
             // delegate model data without changing index (position unchanged).
@@ -1000,6 +1005,24 @@ Item {
         verticalDock: DockView.isVertical
         dockEdge: DockView.edge
         maxZoomFactor: dockItem.maxZoomFactor
+        Accessible.ignored: true
+    }
+
+    Rectangle {
+        objectName: "builtInSeparator"
+        visible: dockItem.isBuiltInWidget && model.widgetKind === "separator"
+        color: Kirigami.Theme.textColor
+        opacity: 0.45
+        radius: width / 2
+        width: DockView.isVertical ? dockItem.iconSize * 0.42 : 1
+        height: DockView.isVertical ? 1 : dockItem.iconSize * 0.42
+        anchors.centerIn: parent
+        Accessible.ignored: true
+    }
+
+    Item {
+        objectName: "builtInSpacer"
+        visible: dockItem.isBuiltInWidget && model.widgetKind === "spacer"
         Accessible.ignored: true
     }
 

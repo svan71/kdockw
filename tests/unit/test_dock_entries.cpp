@@ -68,6 +68,43 @@ TEST_CASE("Typed dock entries round-trip in order with explicit types", "[dock-e
     CHECK(decoded.entries.at(1).id != decoded.entries.at(2).id);
 }
 
+TEST_CASE("Built-in separator descriptors persist stable identity and placement slot", "[dock-entries][dock-widgets]")
+{
+    const auto start = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Start);
+    const auto center = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Center);
+    const auto end = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::End);
+    const auto decoded = kdockw::DockEntriesCodec::decode(kdockw::DockEntriesCodec::encode({start, center, end}));
+
+    REQUIRE(decoded.validDocument);
+    REQUIRE(decoded.entries.size() == 3);
+    CHECK(decoded.entries.at(0).id == start.id);
+    CHECK(decoded.entries.at(0).type == kdockw::DockEntryType::BuiltInWidget);
+    CHECK(decoded.entries.at(0).widgetKind == QStringLiteral("separator"));
+    CHECK(decoded.entries.at(0).slot == kdockw::DockWidgetSlot::Start);
+    CHECK(decoded.entries.at(1).slot == kdockw::DockWidgetSlot::Center);
+    CHECK(decoded.entries.at(2).slot == kdockw::DockWidgetSlot::End);
+}
+
+TEST_CASE("Built-in spacer size and visibility survive schema v4 and v3 migrates", "[dock-entries][dock-widgets][migration]")
+{
+    auto spacer = kdockw::DockEntry::spacer(kdockw::DockWidgetSlot::End, 96);
+    spacer.widgetVisible = false;
+    const auto decoded = kdockw::DockEntriesCodec::decode(kdockw::DockEntriesCodec::encode({spacer}));
+    REQUIRE(decoded.validDocument);
+    REQUIRE(decoded.entries.size() == 1);
+    CHECK(decoded.entries.first().widgetKind == QStringLiteral("spacer"));
+    CHECK(decoded.entries.first().widgetSize == 96);
+    CHECK_FALSE(decoded.entries.first().widgetVisible);
+    CHECK(decoded.entries.first().slot == kdockw::DockWidgetSlot::End);
+
+    const auto legacy = kdockw::DockEntriesCodec::decode(QStringLiteral(
+        R"({"version":3,"entries":[{"id":"widget:separator:legacy","type":"builtInWidget","url":"","widgetKind":"separator","slot":"start"}]})"));
+    REQUIRE(legacy.validDocument);
+    REQUIRE(legacy.entries.size() == 1);
+    CHECK(legacy.entries.first().widgetSize == 0);
+    CHECK(legacy.entries.first().widgetVisible);
+}
+
 TEST_CASE("Typed dock entry decoding rejects unsupported documents and malformed entries", "[dock-entries]")
 {
     CHECK_FALSE(kdockw::DockEntriesCodec::decode(QStringLiteral("not-json")).validDocument);

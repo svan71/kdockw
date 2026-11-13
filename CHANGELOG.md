@@ -8,6 +8,12 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+### Added
+
+- Added built-in dock separators and fixed-size spacers with saved identity, order, start/center/end placement, visibility, resizing, and a dock widget manager.
+- Added four-edge spacer geometry that participates in Spring Magnification layout without becoming a TaskManager row or drag-and-drop target.
+- Defined the internal KService/XDG Menu data contract for the next Application Launcher widget without adding a public plugin API or implementing launcher styles.
+
 ## [0.5.1] - 2026-11-13
 
 ### Added

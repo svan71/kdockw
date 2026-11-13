@@ -318,6 +318,24 @@ QVariantMap DockView::zoomLayout(int count,
                              maxEdge);
 }
 
+QVariantMap DockView::zoomLayoutForItems(const QVariantList &specs,
+                                         qreal restStart,
+                                         qreal spacing,
+                                         int boundary,
+                                         qreal boundaryGap,
+                                         qreal restBackgroundStart,
+                                         qreal restBackgroundEnd,
+                                         qreal maxZoomFactor,
+                                         int style,
+                                         bool active,
+                                         qreal cursor,
+                                         qreal minEdge,
+                                         qreal maxEdge) const
+{
+    return zoomLayoutItemsVariant(specs, restStart, spacing, boundary, boundaryGap, restBackgroundStart,
+                                  restBackgroundEnd, maxZoomFactor, style, active, cursor, minEdge, maxEdge);
+}
+
 void DockView::updateSize()
 {
     const int iconSize = m_screenSettings ? m_screenSettings->iconSize() : m_settings->iconSize();

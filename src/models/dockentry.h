@@ -13,6 +13,13 @@ namespace kdockw
 enum class DockEntryType {
     Task,
     FolderStack,
+    BuiltInWidget,
+};
+
+enum class DockWidgetSlot {
+    Start,
+    Center,
+    End,
 };
 
 /** A persistable item in the dock's pinned order. */
@@ -22,9 +29,15 @@ struct DockEntry {
     QUrl url;
     QString iconName;
     QUrl iconUrl;
+    QString widgetKind;
+    DockWidgetSlot slot = DockWidgetSlot::Center;
+    int widgetSize = 0;
+    bool widgetVisible = true;
 
     [[nodiscard]] static DockEntry task(const QUrl &url);
     [[nodiscard]] static DockEntry folderStack(const QUrl &url);
+    [[nodiscard]] static DockEntry separator(DockWidgetSlot slot);
+    [[nodiscard]] static DockEntry spacer(DockWidgetSlot slot, int size);
     [[nodiscard]] bool isValid() const;
     bool operator==(const DockEntry &) const = default;
 };

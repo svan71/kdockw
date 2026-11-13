@@ -301,25 +301,25 @@ the final exact-SHA matrix passed in [workflow run 43433604968](https://github.c
 The signed tag and all five release assets were verified on the
 [v0.5.1 GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.5.1).
 
-## v0.6.0 — Visual Effects & KWin Integration (planned)
+## v0.6.0 — Built-in Dock Widgets & Application Launcher (in progress)
 
-- [ ] Research supported KWin/Wayland interfaces for window animations and
-  evaluate Scale/Genie and dock-icon association. Document Plasma compatibility
-  and public/private API boundaries; build no prototype without a separate
-  decision.
-- [ ] Improve glass materials, highlights, lighting, and shadows for light and
-  dark wallpapers; measure GPU/frame cost on Intel, AMD, and NVIDIA hardware and
-  provide controls for effects.
+- [ ] **Built-in Dock Widget Model** (`35353e13722e4769`, in progress): the
+  existing `DockEntriesModel` now supports persistent separators and fixed-size
+  spacers, start/center/end placement, visibility, size editing, ordering, and
+  a QML manager. Per-row extents are included in Spring Magnification; widgets
+  remain outside TaskManager and app/folder DnD. Stretching spacers are deferred
+  because the current content-wrapping `Flow` has no safe free-space allocator.
+  Automated checks are in progress; real Plasma/Wayland acceptance remains.
+  The internal Application Launcher backend contract is documented; public
+  plugin API remains out of scope.
+- [ ] **Application Launcher Widget** (`5c079ef1a7384398`): provide three
+  switchable menu styles: compact macOS Launchpad app/folder grid; Windows
+  Start with pinned apps, search and full list; and KDE hierarchical Launchpad
+  preserving the KService/XDG Menu hierarchy.
 
-## v0.7.0 — Built-in Dock Widgets & Application Launcher (planned)
-
-- [ ] **Built-in Dock Widget Model:** define the internal architecture for
-  built-in widgets, including dock slots, separators, and spacers; a public
-  plugin API is out of scope.
-- [ ] **Application Launcher Widget:** provide three switchable menu styles:
-  compact macOS Launchpad app/folder grid; Windows Start with pinned apps,
-  search, and full list; and KDE hierarchical Launchpad preserving the
-  KService/XDG Menu hierarchy.
+The owner confirmed that Plasma's built-in KWin Scale/Genie effects already
+minimize windows to the correct KDockW icons. KDockW will not reimplement those
+effects.
 
 ## Technical debt — Classic Zoom Performance Profile
 
@@ -342,7 +342,7 @@ The signed tag and all five release assets were verified on the
   indeterminate or neutral state when no progress is available.
 
 Media Player Controls and Downloads Stack remain unversioned backlog items.
-The v0.7.0 widget model is a prerequisite for both. This planning assigns no
+The v0.6.0 widget model is a prerequisite for both. This planning assigns no
 release date.
 
 - **Badge Appearance (implemented and owner accepted):** default badge colors
@@ -392,3 +392,12 @@ The project is developed independently from [Krema](https://github.com/isac322/k
 originally created by Byeonghoon Yoo. Historical Krema releases and planning
 documents are retained under [`docs/history/`](docs/history/); they are not
 KDockW release records or commitments.
+
+## Visual Polish & Performance — deferred, unversioned
+
+- [ ] Revisit glass materials, highlights, lighting, and shadows for light and
+  dark wallpapers after functional milestones and backlog work.
+- [ ] Profile the new visual effects on Intel, AMD, and NVIDIA hardware before
+  adding controls or enabling costly effects by default.
+- The existing Visual Effects & KWin Integration task (ID maintained in
+  PM Compass) retains its history; KWin Scale/Genie research is complete.

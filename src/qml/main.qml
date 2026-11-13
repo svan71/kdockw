@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Effects
+import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.taskmanager as TaskManager
 import com.thicking.kdockw 1.0
@@ -19,6 +20,7 @@ import "BadgeTextColor.js" as BadgeTextColor
 Item {
     id: root
     anchors.fill: parent
+    property alias builtInWidgetManager: widgetManager
 
     Accessible.role: Accessible.ToolBar
     Accessible.name: i18n("KDockW Dock")
@@ -30,10 +32,15 @@ Item {
     // A separator is a real primary-axis slot, not an overlay in the normal
     // inter-icon gap. The boundary remains a model-free index so task and
     // keyboard indices are unchanged.
-    readonly property int taskZoneBoundary: DockSettings.separateLaunchers
-        && DockModel.pinnedDockEntryCount > 0
-        && DockModel.pinnedDockEntryCount < dockRepeater.count
-        ? DockModel.pinnedDockEntryCount : -1
+    readonly property int taskZoneBoundary: {
+        if (!DockSettings.separateLaunchers || DockModel.pinnedDockEntryCount === 0)
+            return -1
+        for (let i = 0; i < dockRepeater.count; ++i) {
+            if (!DockModel.dockPresentationModel.isPinnedDockIndex(i))
+                return i > 0 ? i : -1
+        }
+        return -1
+    }
     readonly property real taskZoneSeparatorThickness: 1
     readonly property real taskZoneGap: taskZoneBoundary >= 0
         ? DockSettings.iconSpacing + taskZoneSeparatorThickness : 0
@@ -581,6 +588,7 @@ Item {
             for (let i = 0; i < dockRepeater.count; i++) {
                 let item = dockRepeater.itemAt(i)
                 if (!item) continue
+                if (item.isBuiltInWidget) continue
                 if (separate && isPinnedDockIndex(i) !== sourcePinned) continue
                 items.push({ idx: i, cx: _primaryRestSlotStart(item) + item.height / 2 })
             }
@@ -598,6 +606,7 @@ Item {
             for (let i = 0; i < dockRepeater.count; i++) {
                 let item = dockRepeater.itemAt(i)
                 if (!item) continue
+                if (item.isBuiltInWidget) continue
                 if (separate && isPinnedDockIndex(i) !== sourcePinned) continue
                 items.push({ idx: i, cx: _primaryRestSlotStart(item) + item.width / 2 })
             }
@@ -617,6 +626,7 @@ Item {
         for (let i = 0; i < dockRepeater.count; i++) {
             let item = dockRepeater.itemAt(i)
             if (!item) continue
+            if (item.isBuiltInWidget) continue
             let itemLeft = _primaryRestSlotStart(item)
             let itemRight = itemLeft + item.width
             if (primaryPosition >= itemLeft && primaryPosition <= itemRight) return i
@@ -1111,10 +1121,13 @@ Item {
             else if (!root.keyboardNavigating)
                 root.trackPointer(mouse.x, mouse.y)
             if (mouse.button === Qt.LeftButton && root.hoveredIndex >= 0) {
-                root._dragStartX = mouse.x
-                root._dragStartY = mouse.y
-                root._dragStartEntryId = root.dockEntryIdAt(root.hoveredIndex)
-                dragHoldTimer.restart()
+                const item = dockRepeater.itemAt(root.hoveredIndex)
+                if (item && !item.isBuiltInWidget) {
+                    root._dragStartX = mouse.x
+                    root._dragStartY = mouse.y
+                    root._dragStartEntryId = root.dockEntryIdAt(root.hoveredIndex)
+                    dragHoldTimer.restart()
+                }
             }
         }
 
@@ -1154,6 +1167,13 @@ Item {
         onClicked: function(mouse) {
             // Suppress clicks for the entire held-button cycle after a drag.
             if (root._dragWasActive) return
+            if (mouse.button === Qt.RightButton) {
+                const item = root.hoveredIndex >= 0 ? dockRepeater.itemAt(root.hoveredIndex) : null
+                if (!item || item.isBuiltInWidget) {
+                    widgetManager.open()
+                    return
+                }
+            }
             if (root.hoveredIndex < 0) return
             if (mouse.button === Qt.LeftButton) {
                 let item = dockRepeater.itemAt(root.hoveredIndex)
@@ -1593,9 +1613,9 @@ Item {
         readonly property real _maxZoomEdge: DockView.isVertical
             ? root.height - y
             : root.width - x
-        readonly property var zoomLayout: DockView.zoomLayout(
-            dockRepeater.count, _restStart,
-            DockSettings.iconSize, DockSettings.iconSpacing,
+        readonly property var zoomLayout: DockView.zoomLayoutForItems(
+            DockModel.dockPresentationModel.zoomLayoutSpecs(DockSettings.iconSize), _restStart,
+            DockSettings.iconSpacing,
             root.taskZoneBoundary, root.taskZoneGap,
             0, DockView.isVertical ? height : width,
             1.0 + (DockSettings.maxZoomFactor - 1.0) * _layoutZoomAmount,
@@ -1815,7 +1835,7 @@ Item {
                         ? taskZoneGap : 0
                     restOffsetAnimationEnabled: dockPanel.animationsReady
                         && !dockPanel.mouseInside
-                    zoomScale: dockPanel.zoomLayout.scales?.[index] ?? 1.0
+                    zoomScale: isBuiltInWidget ? 1.0 : (dockPanel.zoomLayout.scales?.[index] ?? 1.0)
                     zoomOffset: dockPanel.zoomLayout.offsets?.[index] ?? 0.0
                     itemCenterX: DockView.isVertical
                         ? root._primaryRestSlotStart(taskDelegate) + height / 2
@@ -2497,6 +2517,102 @@ Item {
                 target: sourceItem
                 function onBadgeOverlayScaleChanged() {
                     badgeOverlayLabel.logOverlayMetrics("zoom-frame")
+                }
+            }
+        }
+    }
+
+    QQC2.Dialog {
+        id: widgetManager
+        objectName: "builtInWidgetManager"
+        title: i18n("Dock widgets")
+        modal: false
+        popupType: QQC2.Popup.Window
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
+        standardButtons: QQC2.Dialog.Close
+        width: Math.min(560, root.width - Kirigami.Units.largeSpacing * 2)
+
+        ColumnLayout {
+            width: parent.width
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Button {
+                    text: i18n("Add separator")
+                    onClicked: DockModel.dockEntriesModel.appendSeparator("center")
+                }
+                QQC2.Button {
+                    text: i18n("Add spacer")
+                    onClicked: DockModel.dockEntriesModel.appendSpacer(24, "center")
+                }
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: i18n("Widgets are ordered with the dock entries. Drag and drop remains reserved for applications and folders.")
+            }
+
+            ListView {
+                id: widgetEntries
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(contentHeight, Kirigami.Units.gridUnit * 17)
+                clip: true
+                model: DockModel.dockEntriesModel
+                delegate: RowLayout {
+                    required property int index
+                    required property string entryType
+                    required property string entryId
+                    required property string widgetKind
+                    required property int widgetSize
+                    required property bool widgetVisible
+                    required property string placementSlot
+                    width: ListView.view.width
+                    height: entryType === "builtInWidget" ? implicitHeight : 0
+                    visible: entryType === "builtInWidget"
+                    spacing: Kirigami.Units.smallSpacing
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        text: widgetKind === "spacer" ? i18n("Spacer") : i18n("Separator")
+                    }
+                    QQC2.ComboBox {
+                        model: [i18n("Start"), i18n("Center"), i18n("End")]
+                        currentIndex: placementSlot === "start" ? 0 : placementSlot === "end" ? 2 : 1
+                        onActivated: DockModel.dockEntriesModel.setBuiltInWidgetSlot(
+                            entryId, ["start", "center", "end"][currentIndex])
+                        Accessible.name: i18n("Dock position")
+                    }
+                    QQC2.SpinBox {
+                        from: 4
+                        to: 512
+                        value: Math.max(4, widgetSize || DockSettings.iconSize)
+                        onValueModified: DockModel.dockEntriesModel.setBuiltInWidgetSize(entryId, value)
+                        Accessible.name: i18n("Widget size")
+                    }
+                    QQC2.CheckBox {
+                        text: i18n("Visible")
+                        checked: widgetVisible
+                        onToggled: DockModel.dockEntriesModel.setBuiltInWidgetVisible(entryId, checked)
+                    }
+                    QQC2.Button {
+                        text: "↑"
+                        enabled: index > 0 && DockModel.dockEntriesModel.entryTypeAt(index - 1) === "builtInWidget"
+                        onClicked: DockModel.dockEntriesModel.moveEntry(index, index - 1)
+                        Accessible.name: i18n("Move up")
+                    }
+                    QQC2.Button {
+                        text: "↓"
+                        enabled: index + 1 < DockModel.dockEntriesModel.count
+                            && DockModel.dockEntriesModel.entryTypeAt(index + 1) === "builtInWidget"
+                        onClicked: DockModel.dockEntriesModel.moveEntry(index, index + 1)
+                        Accessible.name: i18n("Move down")
+                    }
+                    QQC2.Button {
+                        text: i18n("Remove")
+                        onClicked: DockModel.dockEntriesModel.removeBuiltInWidget(entryId)
+                    }
                 }
             }
         }

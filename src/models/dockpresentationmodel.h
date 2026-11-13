@@ -6,6 +6,7 @@
 #include "dockentriesmodel.h"
 
 #include <QAbstractListModel>
+#include <QVariantList>
 
 namespace kdockw
 {
@@ -32,7 +33,11 @@ public:
         EntryUrlRole,
         IconNameRole,
         IconUrlRole,
+        WidgetKindRole,
+        PlacementSlotRole,
         IsPinnedRole,
+        WidgetSizeRole,
+        WidgetVisibleRole,
     };
     Q_ENUM(Role)
 
@@ -50,6 +55,7 @@ public:
     Q_INVOKABLE int dockIndexForEntryId(const QString &entryId) const;
     Q_INVOKABLE QString entryIdForDockIndex(int dockIndex) const;
     Q_INVOKABLE bool isPinnedDockIndex(int dockIndex) const;
+    Q_INVOKABLE QVariantList zoomLayoutSpecs(int iconSize) const;
 
 Q_SIGNALS:
     void pinnedEntryCountChanged();
@@ -62,6 +68,10 @@ private:
         QUrl entryUrl;
         QString iconName;
         QUrl iconUrl;
+        QString widgetKind;
+        QString placementSlot = QStringLiteral("center");
+        int widgetSize = 0;
+        bool widgetVisible = true;
         int taskIndex = -1;
         bool pinned = false;
 

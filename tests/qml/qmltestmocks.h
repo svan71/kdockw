@@ -151,6 +151,10 @@ public:
         EntryId,
         EntryType,
         EntryUrl,
+        WidgetKind,
+        PlacementSlot,
+        WidgetSize,
+        WidgetVisible,
         IsPinned,
     };
     Q_ENUM(AdditionalRoles)
@@ -191,6 +195,7 @@ public:
     Q_INVOKABLE int dockIndexForEntryId(const QString &entryId) const;
     Q_INVOKABLE QString entryIdForDockIndex(int dockIndex) const;
     Q_INVOKABLE bool isPinnedDockIndex(int dockIndex) const;
+    Q_INVOKABLE QVariantList zoomLayoutSpecs(int iconSize) const;
     Q_INVOKABLE bool moveByEntryId(const QString &entryId, const QString &targetEntryId);
     // Role lookup by name, used by the QML DockModel mock.
     Q_INVOKABLE QVariant get(int row, const QString &roleName) const;
@@ -354,6 +359,19 @@ public:
                                        qreal cursor,
                                        qreal minEdge,
                                        qreal maxEdge) const;
+    Q_INVOKABLE QVariantMap zoomLayoutForItems(const QVariantList &specs,
+                                               qreal restStart,
+                                               qreal spacing,
+                                               int boundary,
+                                               qreal boundaryGap,
+                                               qreal restBackgroundStart,
+                                               qreal restBackgroundEnd,
+                                               qreal maxZoomFactor,
+                                               int style,
+                                               bool active,
+                                               qreal cursor,
+                                               qreal minEdge,
+                                               qreal maxEdge) const;
 };
 
 void registerMockTypes();

@@ -8,6 +8,8 @@
 #include <QMetaEnum>
 #include <QQmlEngine>
 
+#include <algorithm>
+
 namespace KDockWQmlTest
 {
 
@@ -52,6 +54,10 @@ MockTasksModel::MockTasksModel(QObject *parent)
     m_roleNames.insert(MockAbstractTasksModel::EntryId, QByteArrayLiteral("entryId"));
     m_roleNames.insert(MockAbstractTasksModel::EntryType, QByteArrayLiteral("entryType"));
     m_roleNames.insert(MockAbstractTasksModel::EntryUrl, QByteArrayLiteral("entryUrl"));
+    m_roleNames.insert(MockAbstractTasksModel::WidgetKind, QByteArrayLiteral("widgetKind"));
+    m_roleNames.insert(MockAbstractTasksModel::PlacementSlot, QByteArrayLiteral("placementSlot"));
+    m_roleNames.insert(MockAbstractTasksModel::WidgetSize, QByteArrayLiteral("widgetSize"));
+    m_roleNames.insert(MockAbstractTasksModel::WidgetVisible, QByteArrayLiteral("widgetVisible"));
     m_roleNames.insert(MockAbstractTasksModel::IsPinned, QByteArrayLiteral("isPinned"));
     connect(this, &QAbstractItemModel::rowsInserted, this, &MockTasksModel::countChanged);
     connect(this, &QAbstractItemModel::rowsRemoved, this, &MockTasksModel::countChanged);
@@ -234,6 +240,20 @@ bool MockTasksModel::isPinnedDockIndex(int dockIndex) const
     return explicitPinned.isValid() ? explicitPinned.toBool() : idx.data(MockAbstractTasksModel::IsLauncher).toBool();
 }
 
+QVariantList MockTasksModel::zoomLayoutSpecs(int iconSize) const
+{
+    QVariantList specs;
+    for (int row = 0; row < rowCount(); ++row) {
+        const QString type = get(row, QStringLiteral("entryType")).toString();
+        const QString kind = get(row, QStringLiteral("widgetKind")).toString();
+        const bool widget = type == QLatin1String("builtInWidget");
+        const int widgetSize = get(row, QStringLiteral("widgetSize")).toInt();
+        const int size = widget && widgetSize > 0 ? std::max(4, widgetSize) : std::max(1, iconSize);
+        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget}});
+    }
+    return specs;
+}
+
 bool MockTasksModel::moveByEntryId(const QString &entryId, const QString &targetEntryId)
 {
     int from = -1;
@@ -326,6 +346,25 @@ QVariantMap ZoomLayoutEngine::zoomLayout(int count,
                                     cursor,
                                     minEdge,
                                     maxEdge);
+}
+
+QVariantMap ZoomLayoutEngine::zoomLayoutForItems(const QVariantList &specs,
+                                                  qreal restStart,
+                                                  qreal spacing,
+                                                  int boundary,
+                                                  qreal boundaryGap,
+                                                  qreal restBackgroundStart,
+                                                  qreal restBackgroundEnd,
+                                                  qreal maxZoomFactor,
+                                                  int style,
+                                                  bool active,
+                                                  qreal cursor,
+                                                  qreal minEdge,
+                                                  qreal maxEdge) const
+{
+    return kdockw::zoomLayoutItemsVariant(specs, restStart, spacing, boundary, boundaryGap,
+                                          restBackgroundStart, restBackgroundEnd, maxZoomFactor,
+                                          style, active, cursor, minEdge, maxEdge);
 }
 
 void registerMockTypes()

@@ -115,6 +115,34 @@ TEST_CASE("Dock presentation model merges pinned entries in stable order and lea
     CHECK(model.data(model.index(4, 0), Qt::DisplayRole).toString() == QStringLiteral("Running D"));
 }
 
+TEST_CASE("Dock presentation model places built-in widgets in slots without task identity", "[dock-presentation][dock-widgets]")
+{
+    const QUrl appA(QStringLiteral("applications:org.example.A"));
+    const QUrl appB(QStringLiteral("applications:org.example.B"));
+    QStandardItemModel tasks;
+    appendTask(tasks, QStringLiteral("Pinned A"), appA);
+    appendTask(tasks, QStringLiteral("Running B"), appB);
+
+    kdockw::DockEntriesModel entries;
+    const auto start = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Start);
+    const auto center = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Center);
+    const auto end = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::End);
+    entries.setEntries({kdockw::DockEntry::task(appA), center, start, end});
+
+    kdockw::DockPresentationModel model(&tasks, &entries);
+    QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 5, 2000);
+    CHECK(model.entryIdForDockIndex(0) == start.id);
+    CHECK(model.data(model.index(0, 0), kdockw::DockPresentationModel::WidgetKindRole).toString()
+          == QStringLiteral("separator"));
+    CHECK(model.entryIdForDockIndex(2) == center.id);
+    CHECK(model.entryIdForDockIndex(4) == end.id);
+    CHECK(model.taskIndexForDockIndex(0) == -1);
+    CHECK(model.taskIndexForDockIndex(4) == -1);
+    CHECK(model.isPinnedDockIndex(0));
+    CHECK_FALSE(model.isPinnedDockIndex(3));
+    CHECK(entries.moveEntryById(start.id, center.id));
+}
+
 TEST_CASE("Dock presentation follows TaskManager order when pinned and running zones are combined", "[dock-presentation][taskmanager-regression]")
 {
     const QUrl appA(QStringLiteral("applications:org.example.A"));

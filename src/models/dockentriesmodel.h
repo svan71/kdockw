@@ -23,6 +23,10 @@ public:
         EntryUrlRole,
         IconNameRole,
         IconUrlRole,
+        WidgetKindRole,
+        PlacementSlotRole,
+        WidgetSizeRole,
+        WidgetVisibleRole,
     };
     Q_ENUM(Role)
 
@@ -39,10 +43,18 @@ public:
     void syncTaskOrder(const QStringList &launcherUrls);
 
     Q_INVOKABLE bool appendFolderStack(const QUrl &url);
+    Q_INVOKABLE QString appendSeparator(const QString &slot = QStringLiteral("center"));
+    Q_INVOKABLE QString appendSpacer(int size = 24, const QString &slot = QStringLiteral("center"));
+    Q_INVOKABLE bool removeBuiltInWidget(const QString &entryId);
+    Q_INVOKABLE bool setBuiltInWidgetSize(const QString &entryId, int size);
+    Q_INVOKABLE bool setBuiltInWidgetVisible(const QString &entryId, bool visible);
+    Q_INVOKABLE bool setBuiltInWidgetSlot(const QString &entryId, const QString &slot);
     Q_INVOKABLE bool removeFolderStack(const QString &entryId);
     Q_INVOKABLE bool setFolderStackIcon(const QString &entryId, const QString &iconName, const QUrl &iconUrl = {});
     Q_INVOKABLE bool moveEntry(int fromIndex, int toIndex);
     Q_INVOKABLE bool moveEntryById(const QString &entryId, const QString &targetEntryId);
+    Q_INVOKABLE QString entryIdAt(int row) const;
+    Q_INVOKABLE QString entryTypeAt(int row) const;
 
 Q_SIGNALS:
     void countChanged();

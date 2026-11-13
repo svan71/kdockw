@@ -546,3 +546,24 @@ TEST_CASE("In-place dock zoom scales without moving anything", "[zoom][layout]")
         }
     }
 }
+
+TEST_CASE("Variable widget extents preserve spacer geometry during Spring Magnification", "[zoom][layout][dock-widgets]")
+{
+    const std::vector<double> extents{48.0, 72.0, 48.0};
+    const std::vector<bool> canMagnify{true, false, true};
+    const auto layout = kdockw::computeDockZoomItems(extents, canMagnify, 10.0, 4.0, -1, 0.0,
+                                                      0.0, 240.0, 1.6, kdockw::ZoomStyle::Parabolic,
+                                                      true, 84.0, 0.0, 300.0);
+    REQUIRE(layout.scales.size() == 3);
+    REQUIRE(layout.scales[1] == 1.0);
+    REQUIRE(layout.offsets[1] != 0.0);
+    CHECK(layout.offsets.front() < layout.offsets.back());
+
+    const auto uniformLegacy = kdockw::computeDockZoom(4, 12.0, 48.0, 4.0, 2, 12.0, 0.0, 240.0,
+                                                        1.6, kdockw::ZoomStyle::Parabolic, true, 96.0, 0.0, 300.0);
+    const auto uniformItems = kdockw::computeDockZoomItems(std::vector<double>(4, 48.0), std::vector<bool>(4, true),
+                                                            12.0, 4.0, 2, 12.0, 0.0, 240.0, 1.6,
+                                                            kdockw::ZoomStyle::Parabolic, true, 96.0, 0.0, 300.0);
+    REQUIRE(uniformItems.scales == uniformLegacy.scales);
+    REQUIRE(uniformItems.offsets == uniformLegacy.offsets);
+}

@@ -1697,3 +1697,59 @@ msgstr "Папка"
 #: src/qml/FolderStackItem.qml
 msgid "File"
 msgstr "Файл"
+
+#: src/qml/DockItem.qml
+msgid "Dock separator"
+msgstr "Разделитель дока"
+
+#: src/qml/DockItem.qml
+msgid "Separator"
+msgstr "Разделитель"
+
+#: src/qml/DockItem.qml
+msgid "Dock spacer"
+msgstr "Промежуток дока"
+
+#: src/qml/main.qml
+msgid "Dock widgets"
+msgstr "Виджеты дока"
+
+#: src/qml/main.qml
+msgid "Add separator"
+msgstr "Добавить разделитель"
+
+#: src/qml/main.qml
+msgid "Add spacer"
+msgstr "Добавить промежуток"
+
+#: src/qml/main.qml
+msgid "Widgets are ordered with the dock entries. Drag and drop remains reserved for applications and folders."
+msgstr "Порядок виджетов сохраняется вместе с элементами дока. Перетаскивание используется для приложений и папок."
+
+#: src/qml/main.qml
+msgid "Spacer"
+msgstr "Промежуток"
+
+#: src/qml/main.qml
+msgid "Dock position"
+msgstr "Положение в доке"
+
+#: src/qml/main.qml
+msgid "Widget size"
+msgstr "Размер виджета"
+
+#: src/qml/main.qml
+msgid "Visible"
+msgstr "Видимый"
+
+#: src/qml/main.qml
+msgid "Move up"
+msgstr "Переместить выше"
+
+#: src/qml/main.qml
+msgid "Move down"
+msgstr "Переместить ниже"
+
+#: src/qml/main.qml
+msgid "Remove"
+msgstr "Удалить"

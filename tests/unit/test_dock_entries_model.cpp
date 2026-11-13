@@ -75,3 +75,60 @@ TEST_CASE("Dock entries model appends, moves, and removes only folder stacks", "
     CHECK(model.rowCount() == 2);
     CHECK(model.entries().at(1).type == kdockw::DockEntryType::FolderStack);
 }
+
+TEST_CASE("Dock entries model preserves widget slots while syncing TaskManager launchers", "[dock-entries][dock-widgets]")
+{
+    kdockw::DockEntriesModel model;
+    CHECK(model.appendSeparator(QStringLiteral("invalid")).isEmpty());
+    const QString startId = model.appendSeparator(QStringLiteral("start"));
+    const QString endId = model.appendSeparator(QStringLiteral("end"));
+    REQUIRE_FALSE(startId.isEmpty());
+    REQUIRE_FALSE(endId.isEmpty());
+    const auto start = model.entries().at(0);
+    const auto end = model.entries().at(1);
+    const auto folder = kdockw::DockEntry::folderStack(QUrl::fromLocalFile(QStringLiteral("/tmp/Downloads")));
+    model.setEntries({kdockw::DockEntry::task(QUrl(QStringLiteral("applications:org.example.Old"))),
+                      start, folder, end});
+    model.syncTaskOrder({QStringLiteral("applications:org.example.New")});
+
+    const auto entries = model.entries();
+    REQUIRE(entries.size() == 4);
+    CHECK(entries.at(0).type == kdockw::DockEntryType::Task);
+    CHECK(entries.at(1).type == kdockw::DockEntryType::BuiltInWidget);
+    CHECK(entries.at(1).id == start.id);
+    CHECK(entries.at(1).slot == kdockw::DockWidgetSlot::Start);
+    CHECK(entries.at(2).type == kdockw::DockEntryType::FolderStack);
+    CHECK(entries.at(3).type == kdockw::DockEntryType::BuiltInWidget);
+    CHECK(entries.at(3).id == end.id);
+    CHECK(entries.at(3).slot == kdockw::DockWidgetSlot::End);
+    CHECK(model.data(model.index(1, 0), kdockw::DockEntriesModel::PlacementSlotRole).toString()
+          == QStringLiteral("start"));
+    CHECK(model.data(model.index(3, 0), kdockw::DockEntriesModel::PlacementSlotRole).toString()
+          == QStringLiteral("end"));
+    CHECK(model.removeBuiltInWidget(start.id));
+    CHECK_FALSE(model.removeBuiltInWidget(start.id));
+}
+
+TEST_CASE("Dock widget management adds edits moves hides and removes persisted entries", "[dock-entries][dock-widgets]")
+{
+    kdockw::DockEntriesModel model;
+    const QString separatorId = model.appendSeparator(QStringLiteral("start"));
+    const QString spacerId = model.appendSpacer(80, QStringLiteral("center"));
+    REQUIRE_FALSE(separatorId.isEmpty());
+    CHECK(model.setBuiltInWidgetSize(separatorId, 36));
+    CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::WidgetSizeRole).toInt() == 36);
+    REQUIRE_FALSE(spacerId.isEmpty());
+    CHECK(model.appendSpacer(3).isEmpty());
+    CHECK(model.setBuiltInWidgetSize(spacerId, 128));
+    CHECK(model.setBuiltInWidgetVisible(spacerId, false));
+    CHECK(model.setBuiltInWidgetSlot(spacerId, QStringLiteral("end")));
+    CHECK(model.data(model.index(1, 0), kdockw::DockEntriesModel::WidgetSizeRole).toInt() == 128);
+    CHECK_FALSE(model.data(model.index(1, 0), kdockw::DockEntriesModel::WidgetVisibleRole).toBool());
+    CHECK(model.data(model.index(1, 0), kdockw::DockEntriesModel::PlacementSlotRole).toString() == QStringLiteral("end"));
+    CHECK(model.moveEntryById(spacerId, separatorId));
+    CHECK(model.entries().first().id == spacerId);
+    CHECK(model.entryIdAt(0) == spacerId);
+    CHECK(model.entryTypeAt(0) == QStringLiteral("builtInWidget"));
+    CHECK(model.removeBuiltInWidget(spacerId));
+    CHECK_FALSE(model.removeBuiltInWidget(spacerId));
+}
