@@ -3,6 +3,8 @@
 
 #include "dockmodel.h"
 
+#include "applicationcatalog.h"
+#include "applicationlauncherstate.h"
 #include "config/applicationconfig.h"
 #include "shell/outputordermonitor.h"
 #include "taskiconprovider.h"
@@ -93,9 +95,11 @@ QString rawIconKey(const QModelIndex &index, const QString &appId, const QIcon &
 }
 } // namespace
 
-DockModel::DockModel(QObject *parent)
+DockModel::DockModel(QObject *parent, KDockWSettings *settings)
     : QObject(parent)
     , m_dockEntriesModel(std::make_unique<DockEntriesModel>(this))
+    , m_applicationCatalog(std::make_unique<ApplicationCatalog>(this))
+    , m_applicationLauncherState(std::make_unique<ApplicationLauncherState>(settings, this))
     , m_tasksModel(std::make_unique<TaskManager::TasksModel>(this))
     , m_virtualDesktopInfo(std::make_shared<TaskManager::VirtualDesktopInfo>(this))
     , m_activityInfo(std::make_shared<TaskManager::ActivityInfo>(this))
@@ -317,6 +321,16 @@ DockEntriesModel *DockModel::dockEntriesModel() const
 DockPresentationModel *DockModel::dockPresentationModel() const
 {
     return m_dockPresentationModel.get();
+}
+
+ApplicationCatalog *DockModel::applicationCatalog() const
+{
+    return m_applicationCatalog.get();
+}
+
+ApplicationLauncherState *DockModel::applicationLauncherState() const
+{
+    return m_applicationLauncherState.get();
 }
 
 int DockModel::pinnedDockEntryCount() const
@@ -676,6 +690,22 @@ bool DockModel::chooseFolderStackThemeIcon(const QString &entryId, QObject *tran
         return false;
     }
     return m_dockEntriesModel->setFolderStackIcon(entryId, selected);
+}
+
+bool DockModel::chooseBuiltInWidgetIcon(const QString &entryId, QObject *transientParent)
+{
+    KIconDialog dialog(QApplication::activeWindow());
+    dialog.setup(KIconLoader::Panel, KIconLoader::Place, false, KIconLoader::SizeLarge);
+    dialog.setWindowTitle(i18nc("@title:window", "Choose Application Launcher icon"));
+    dialog.setWindowModality(Qt::ApplicationModal);
+    if (auto *hostWindow = qobject_cast<QWindow *>(transientParent)) {
+        dialog.winId();
+        if (QWindow *dialogWindow = dialog.windowHandle()) {
+            dialogWindow->setTransientParent(hostWindow);
+        }
+    }
+    const QString selected = dialog.openDialog();
+    return !selected.isEmpty() && m_dockEntriesModel->setBuiltInWidgetIcon(entryId, selected);
 }
 
 bool DockModel::chooseFolderStackImage(const QString &entryId)

@@ -200,6 +200,8 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         row.entryId = entry.id;
         row.entryType = QStringLiteral("builtInWidget");
         row.widgetKind = entry.widgetKind;
+        row.iconName = entry.iconName;
+        row.iconUrl = entry.iconUrl;
         row.widgetSize = entry.widgetSize;
         row.widgetVisible = entry.widgetVisible;
         row.placementSlot = entry.slot == DockWidgetSlot::Start ? QStringLiteral("start")

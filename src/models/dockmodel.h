@@ -15,8 +15,13 @@
 
 #include <memory>
 
+class KDockWSettings;
+
 namespace kdockw
 {
+
+class ApplicationCatalog;
+class ApplicationLauncherState;
 
 /**
  * Central model for the dock's task manager section.
@@ -32,6 +37,8 @@ class DockModel : public QObject
     Q_PROPERTY(TaskManager::TasksModel *tasksModel READ tasksModel CONSTANT)
     Q_PROPERTY(DockEntriesModel *dockEntriesModel READ dockEntriesModel CONSTANT)
     Q_PROPERTY(DockPresentationModel *dockPresentationModel READ dockPresentationModel CONSTANT)
+    Q_PROPERTY(ApplicationCatalog *applicationCatalog READ applicationCatalog CONSTANT)
+    Q_PROPERTY(ApplicationLauncherState *applicationLauncherState READ applicationLauncherState CONSTANT)
     Q_PROPERTY(int pinnedDockEntryCount READ pinnedDockEntryCount NOTIFY pinnedDockEntryCountChanged)
     Q_PROPERTY(bool taskDiagnosticsEnabled READ taskDiagnosticsEnabled CONSTANT)
     Q_PROPERTY(QString dockEntries READ dockEntries NOTIFY dockEntriesChanged)
@@ -41,12 +48,14 @@ class DockModel : public QObject
     Q_PROPERTY(QVariant currentDesktop READ currentDesktop NOTIFY currentDesktopChanged)
 
 public:
-    explicit DockModel(QObject *parent = nullptr);
+    explicit DockModel(QObject *parent = nullptr, KDockWSettings *settings = nullptr);
     ~DockModel() override;
 
     [[nodiscard]] TaskManager::TasksModel *tasksModel() const;
     [[nodiscard]] DockEntriesModel *dockEntriesModel() const;
     [[nodiscard]] DockPresentationModel *dockPresentationModel() const;
+    [[nodiscard]] ApplicationCatalog *applicationCatalog() const;
+    [[nodiscard]] ApplicationLauncherState *applicationLauncherState() const;
     [[nodiscard]] int pinnedDockEntryCount() const;
     [[nodiscard]] bool taskDiagnosticsEnabled() const;
     [[nodiscard]] QString dockEntries() const;
@@ -82,6 +91,7 @@ public:
 
     /// Show KDE's installed icon chooser and store the result on this stack ID.
     Q_INVOKABLE bool chooseFolderStackThemeIcon(const QString &entryId, QObject *transientParent = nullptr);
+    Q_INVOKABLE bool chooseBuiltInWidgetIcon(const QString &entryId, QObject *transientParent = nullptr);
     /// Show the platform file chooser and store a local image on this stack ID.
     Q_INVOKABLE bool chooseFolderStackImage(const QString &entryId);
     Q_INVOKABLE bool resetFolderStackIcon(const QString &entryId);
@@ -154,6 +164,8 @@ private:
     int m_virtualDesktopMode = 0;
     QList<SettledRow> m_settledRows;
     std::unique_ptr<DockEntriesModel> m_dockEntriesModel;
+    std::unique_ptr<ApplicationCatalog> m_applicationCatalog;
+    std::unique_ptr<ApplicationLauncherState> m_applicationLauncherState;
     std::unique_ptr<TaskManager::TasksModel> m_tasksModel;
     std::unique_ptr<DockPresentationModel> m_dockPresentationModel;
     std::shared_ptr<TaskManager::VirtualDesktopInfo> m_virtualDesktopInfo;

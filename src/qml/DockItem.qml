@@ -27,12 +27,16 @@ Item {
 
     // Display name for tooltip (readable by parent)
     readonly property string displayName: isBuiltInWidget
-        ? (model.widgetKind === "spacer" ? i18n("Dock spacer") : i18n("Separator")) : display || ""
+        ? (model.widgetKind === "spacer" ? i18n("Dock spacer")
+            : model.widgetKind === "applicationLauncher" ? i18n("Application Launcher")
+            : i18n("Separator")) : display || ""
     readonly property bool isFolderStack: model.entryType === "folderStack"
     readonly property bool isBuiltInWidget: model.entryType === "builtInWidget"
+    readonly property bool isApplicationLauncher: isBuiltInWidget && model.widgetKind === "applicationLauncher"
     readonly property int taskIndex: model.taskIndex !== undefined ? model.taskIndex : index
     readonly property string dockEntryId: model.entryId || ""
     readonly property string iconName: isFolderStack ? (model.iconName || "folder")
+        : isApplicationLauncher ? (model.iconName || "start-here-kde")
         : isBuiltInWidget ? "" : DockModel.iconName(taskIndex)
     property Item dockRoot: null
 
@@ -48,6 +52,7 @@ Item {
     readonly property string accessibleDescription: {
         let parts = []
         if (isFolderStack) return i18n("Folder stack")
+        if (isApplicationLauncher) return i18n("Open application launcher")
         if (isBuiltInWidget) return model.widgetKind === "spacer" ? i18n("Dock spacer") : i18n("Dock separator")
         if (DockModel.isPinned(taskIndex)) parts.push(i18n("Pinned"))
         if (model.IsActive) parts.push(i18n("Active"))
@@ -64,15 +69,17 @@ Item {
     // Keyboard focus state (set by main.qml during keyboard navigation)
     property bool isKeyboardFocused: false
 
-    Accessible.role: isBuiltInWidget ? Accessible.Separator : Accessible.Button
+    Accessible.role: isBuiltInWidget && !isApplicationLauncher ? Accessible.Separator : Accessible.Button
     Accessible.name: displayName
     Accessible.description: accessibleDescription
-    Accessible.focusable: !isBuiltInWidget
+    Accessible.focusable: !isBuiltInWidget || isApplicationLauncher
     Accessible.focused: isKeyboardFocused
     Accessible.onPressAction: {
         if (isFolderStack) openFolderStack()
+        else if (isApplicationLauncher) applicationLauncherRequested()
         else if (!isBuiltInWidget) DockActions.activate(taskIndex)
     }
+    signal applicationLauncherRequested()
 
     // Launcher URL of this item's app, the key for LauncherEntryTracker (Unity API)
     readonly property url _launcherUrl: model.LauncherUrlWithoutIcon ?? ""
@@ -849,9 +856,13 @@ Item {
         // Anchors set via states below (iconAnchorStates)
         width: iconSize
         height: iconSize
-        visible: !dockItem.isFolderStack && !dockItem.isBuiltInWidget
+        visible: !dockItem.isFolderStack && (!dockItem.isBuiltInWidget || dockItem.isApplicationLauncher)
         source: {
-            if (dockItem.isFolderStack || dockItem.isBuiltInWidget) return ""
+            if (dockItem.isFolderStack) return ""
+            if (dockItem.isApplicationLauncher)
+                return "image://icon/" + encodeURIComponent(dockItem.iconName || "start-here-kde")
+                    + "?v=" + DockView.iconCacheVersion
+            if (dockItem.isBuiltInWidget) return ""
             // IMPORTANT: Read model.display to create a reactive dependency on
             // model data. After model reordering (move), the Repeater may update
             // delegate model data without changing index (position unchanged).

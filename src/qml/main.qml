@@ -425,7 +425,9 @@ Item {
         case Qt.Key_Space:
             if (hoveredIndex >= 0) {
                 const item = dockRepeater.itemAt(hoveredIndex)
-                if (item && item.isFolderStack)
+                if (item && item.isApplicationLauncher)
+                    appLauncherPopup.openFor(item)
+                else if (item && item.isFolderStack)
                     item.openFolderStack()
                 else if (item)
                     DockActions.activate(taskIndexAtDockIndex(hoveredIndex))
@@ -1177,6 +1179,10 @@ Item {
             if (root.hoveredIndex < 0) return
             if (mouse.button === Qt.LeftButton) {
                 let item = dockRepeater.itemAt(root.hoveredIndex)
+                if (item && item.isApplicationLauncher) {
+                    appLauncherPopup.openFor(item)
+                    return
+                }
                 if (item && item.isFolderStack) {
                     item.openFolderStack()
                     return
@@ -1846,6 +1852,7 @@ Item {
                     }
                     onPreviewAnchorGeometryChanged: root.refreshPreviewAnchorForItem(index, taskDelegate)
                     onDelegateGeometryChanged: root.scheduleDelegateGeometryRefresh()
+                    onApplicationLauncherRequested: appLauncherPopup.openFor(taskDelegate)
 
 
                     // Drag and drop visual feedback
@@ -2522,6 +2529,11 @@ Item {
         }
     }
 
+    ApplicationLauncherPopup {
+        id: appLauncherPopup
+        dockRoot: root
+    }
+
     QQC2.Dialog {
         id: widgetManager
         objectName: "builtInWidgetManager"
@@ -2546,6 +2558,21 @@ Item {
                     text: i18n("Add spacer")
                     onClicked: DockModel.dockEntriesModel.appendSpacer(24, "center")
                 }
+                QQC2.Button {
+                    text: i18n("Add Application Launcher")
+                    onClicked: DockModel.dockEntriesModel.appendApplicationLauncher("center")
+                }
+            }
+
+            QQC2.ComboBox {
+                objectName: "widgetManagerLauncherStyle"
+                Layout.fillWidth: true
+                model: [i18n("macOS Launchpad"), i18n("Windows Start"), i18n("KDE Hierarchical")]
+                currentIndex: DockModel.applicationLauncherState.style === "start" ? 1
+                    : DockModel.applicationLauncherState.style === "hierarchical" ? 2 : 0
+                onActivated: index => DockModel.applicationLauncherState.style =
+                    ["launchpad", "start", "hierarchical"][index]
+                Accessible.name: i18n("Application Launcher style")
             }
 
             QQC2.Label {
@@ -2575,7 +2602,14 @@ Item {
 
                     QQC2.Label {
                         Layout.fillWidth: true
-                        text: widgetKind === "spacer" ? i18n("Spacer") : i18n("Separator")
+                        text: widgetKind === "spacer" ? i18n("Spacer")
+                            : widgetKind === "applicationLauncher" ? i18n("Application Launcher")
+                            : i18n("Separator")
+                    }
+                    QQC2.Button {
+                        visible: widgetKind === "applicationLauncher"
+                        text: i18n("Choose icon…")
+                        onClicked: DockModel.chooseBuiltInWidgetIcon(entryId, Window.window)
                     }
                     QQC2.ComboBox {
                         model: [i18n("Start"), i18n("Center"), i18n("End")]
@@ -2585,6 +2619,7 @@ Item {
                         Accessible.name: i18n("Dock position")
                     }
                     QQC2.SpinBox {
+                        visible: widgetKind !== "applicationLauncher"
                         from: 4
                         to: 512
                         value: Math.max(4, widgetSize || DockSettings.iconSize)
@@ -2598,14 +2633,13 @@ Item {
                     }
                     QQC2.Button {
                         text: "↑"
-                        enabled: index > 0 && DockModel.dockEntriesModel.entryTypeAt(index - 1) === "builtInWidget"
+                        enabled: index > 0
                         onClicked: DockModel.dockEntriesModel.moveEntry(index, index - 1)
                         Accessible.name: i18n("Move up")
                     }
                     QQC2.Button {
                         text: "↓"
                         enabled: index + 1 < DockModel.dockEntriesModel.count
-                            && DockModel.dockEntriesModel.entryTypeAt(index + 1) === "builtInWidget"
                         onClicked: DockModel.dockEntriesModel.moveEntry(index, index + 1)
                         Accessible.name: i18n("Move down")
                     }

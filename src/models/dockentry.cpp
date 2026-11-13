@@ -93,6 +93,16 @@ DockEntry DockEntry::spacer(DockWidgetSlot slot, int size)
     return entry;
 }
 
+DockEntry DockEntry::applicationLauncher(DockWidgetSlot slot)
+{
+    const QString id = QStringLiteral("widget:application-launcher:%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    DockEntry entry{id, DockEntryType::BuiltInWidget};
+    entry.widgetKind = QStringLiteral("applicationLauncher");
+    entry.iconName = QStringLiteral("start-here-kde");
+    entry.slot = slot;
+    return entry;
+}
+
 bool DockEntry::isValid() const
 {
     if (id.isEmpty()) {
@@ -107,11 +117,14 @@ bool DockEntry::isValid() const
             && !QUuid(id.mid(QStringLiteral("folder:").size())).isNull()
             && (iconUrl.isEmpty() || (iconUrl.isValid() && iconUrl.isLocalFile()));
     case DockEntryType::BuiltInWidget:
-        return !url.isValid() && url.isEmpty() && iconName.isEmpty() && iconUrl.isEmpty()
+        return !url.isValid() && url.isEmpty() && iconUrl.isEmpty()
             && ((widgetKind == QLatin1String("separator") && id.startsWith(QLatin1String("widget:separator:"))
-                && widgetSize >= 0 && widgetSize <= 512)
+                && iconName.isEmpty() && widgetSize >= 0 && widgetSize <= 512)
                 || (widgetKind == QLatin1String("spacer") && id.startsWith(QLatin1String("widget:spacer:"))
-                    && widgetSize >= 4 && widgetSize <= 512));
+                    && iconName.isEmpty() && widgetSize >= 4 && widgetSize <= 512)
+                || (widgetKind == QLatin1String("applicationLauncher")
+                    && id.startsWith(QLatin1String("widget:application-launcher:")) && !iconName.isEmpty()
+                    && widgetSize == 0));
     }
     return false;
 }

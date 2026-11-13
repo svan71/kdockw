@@ -38,6 +38,7 @@ struct DockEntry {
     [[nodiscard]] static DockEntry folderStack(const QUrl &url);
     [[nodiscard]] static DockEntry separator(DockWidgetSlot slot);
     [[nodiscard]] static DockEntry spacer(DockWidgetSlot slot, int size);
+    [[nodiscard]] static DockEntry applicationLauncher(DockWidgetSlot slot);
     [[nodiscard]] bool isValid() const;
     bool operator==(const DockEntry &) const = default;
 };

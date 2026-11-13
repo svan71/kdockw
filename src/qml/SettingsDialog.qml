@@ -120,6 +120,14 @@ Kirigami.AbstractApplicationWindow {
                 i18n("Hide delay (ms)")]
         },
         {
+            moduleId: "applicationlauncher",
+            text: i18n("Application Launcher"),
+            iconName: "start-here-kde",
+            group: "",
+            keywords: [i18n("macOS Launchpad"), i18n("Windows Start"), i18n("KDE Hierarchical"),
+                i18n("Pinned applications"), i18n("Launcher style")]
+        },
+        {
             moduleId: "about",
             text: i18n("About KDockW"),
             iconName: "help-about",
@@ -144,7 +152,8 @@ Kirigami.AbstractApplicationWindow {
         "animations": "settings/AnimationsPage.qml",
         "behavior": "settings/BehaviorPage.qml",
         "monitors": "settings/MonitorsPage.qml",
-        "preview": "settings/PreviewPage.qml"
+        "preview": "settings/PreviewPage.qml",
+        "applicationlauncher": "settings/ApplicationLauncherPage.qml"
     })
 
     // Page components created on first use, keyed by module id.

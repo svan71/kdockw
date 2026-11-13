@@ -4,6 +4,10 @@
         <file>main.qml</file>
         <file>DockItem.qml</file>
         <file>FolderStackItem.qml</file>
+        <file>ApplicationLauncherPopup.qml</file>
+        <file>ApplicationLauncherLaunchpad.qml</file>
+        <file>ApplicationLauncherStart.qml</file>
+        <file>ApplicationLauncherHierarchical.qml</file>
         <file>BadgeTextColor.js</file>
         <file>ZoomAnimationProfile.qml</file>
         <file>SettingsDialog.qml</file>
@@ -29,6 +33,7 @@
         <file>settings/BehaviorPage.qml</file>
         <file>settings/MonitorsPage.qml</file>
         <file>settings/PreviewPage.qml</file>
+        <file>settings/ApplicationLauncherPage.qml</file>
         <file>settings/PreviewSizePresets.js</file>
     </qresource>
 </RCC>

@@ -213,6 +213,8 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::DodgeActiveOnlyChanged, context, saveSettings);
     connect(settings, &KDockWSettings::ReserveScreenSpaceChanged, context, saveSettings);
     connect(settings, &KDockWSettings::SeparateLaunchersChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::ApplicationLauncherStyleChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::StartPinnedApplicationsChanged, context, saveSettings);
     connect(settings, &KDockWSettings::LanguageChanged, context, [settings, saveSettings]() {
         Application::applyLanguagePreference(settings->language());
         saveSettings();
@@ -337,7 +339,7 @@ int Application::run(const KAboutData &aboutData)
     });
 
     // Create data model
-    m_dockModel = std::make_unique<DockModel>();
+    m_dockModel = std::make_unique<DockModel>(nullptr, m_settings.get());
     m_dockModel->setPinnedLaunchers(m_settings->pinnedLaunchers());
     m_dockModel->loadDockEntries(m_settings->dockEntries());
     m_dockModel->setSeparateLaunchers(m_settings->separateLaunchers());

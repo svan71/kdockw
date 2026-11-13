@@ -181,6 +181,22 @@ QString DockEntriesModel::appendSpacer(int size, const QString &slotName)
     return entry.id;
 }
 
+QString DockEntriesModel::appendApplicationLauncher(const QString &slotName)
+{
+    DockWidgetSlot slot = DockWidgetSlot::Center;
+    if (slotName == QLatin1String("start")) slot = DockWidgetSlot::Start;
+    else if (slotName == QLatin1String("end")) slot = DockWidgetSlot::End;
+    else if (slotName != QLatin1String("center")) return {};
+    const DockEntry entry = DockEntry::applicationLauncher(slot);
+    const int row = m_entries.size();
+    beginInsertRows({}, row, row);
+    m_entries.append(entry);
+    endInsertRows();
+    Q_EMIT countChanged();
+    Q_EMIT entriesChanged();
+    return entry.id;
+}
+
 bool DockEntriesModel::setBuiltInWidgetSize(const QString &entryId, int size)
 {
     if (size < 4 || size > 512) return false;
@@ -190,6 +206,22 @@ bool DockEntriesModel::setBuiltInWidgetSize(const QString &entryId, int size)
         if (entry.widgetSize == size) return true;
         entry.widgetSize = size;
         Q_EMIT dataChanged(index(row, 0), index(row, 0), {WidgetSizeRole});
+        Q_EMIT entriesChanged();
+        return true;
+    }
+    return false;
+}
+
+bool DockEntriesModel::setBuiltInWidgetIcon(const QString &entryId, const QString &iconName)
+{
+    if (iconName.isEmpty()) return false;
+    for (qsizetype row = 0; row < m_entries.size(); ++row) {
+        DockEntry &entry = m_entries[row];
+        if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId
+            || entry.widgetKind != QLatin1String("applicationLauncher")) continue;
+        if (entry.iconName == iconName) return true;
+        entry.iconName = iconName;
+        Q_EMIT dataChanged(index(row, 0), index(row, 0), {IconNameRole});
         Q_EMIT entriesChanged();
         return true;
     }
