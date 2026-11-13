@@ -620,4 +620,14 @@
       <default>true</default>
     </entry>
   </group>
+  <group name="ApplicationLauncher">
+    <entry name="ApplicationLauncherStyle" type="String">
+      <label>Application Launcher style</label>
+      <default>launchpad</default>
+    </entry>
+    <entry name="StartPinnedApplications" type="StringList">
+      <label>Windows Start pinned application IDs</label>
+      <default></default>
+    </entry>
+  </group>
 </kcfg>

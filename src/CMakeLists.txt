@@ -59,6 +59,10 @@ add_library(kdockw_lib STATIC
     models/dockmodel.cpp
     models/dockentry.h
     models/dockentry.cpp
+    models/applicationcatalog.h
+    models/applicationcatalog.cpp
+    models/applicationlauncherstate.h
+    models/applicationlauncherstate.cpp
     models/dockentriesmodel.h
     models/dockentriesmodel.cpp
     models/dockpresentationmodel.h
