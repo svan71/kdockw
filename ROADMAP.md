@@ -316,8 +316,46 @@ The signed tag and all five release assets were verified on the
   launch path, saved launcher widget and style/pin state, plus three switchable
   views: compact macOS Launchpad app/folder grid; Windows Start with ordered
   pins, search and full list; and KDE hierarchical browsing of the original
-  XDG Menu tree. Automated catalog, QML, settings and popup-bound regressions
-  pass; manual Plasma/Wayland review remains open.
+  XDG Menu tree. The views now have separate layouts, the popup uses an opaque
+  KDE-themed surface and the shared icon provider, and the Launcher dock icon
+  participates in Spring Magnification. Initial catalog loading is incremental;
+  search filters cached service records. Only one new Launcher can be added
+  because style/pins are global; existing duplicates are preserved. Production
+  and Diagnostic Release CTest pass; manual Plasma/Wayland and frame-pacing
+  review remains open.
+
+  Follow-up: “Manage Widgets…” is now in the KDockW submenu for application
+  icons and the blank dock-area menu; the manager names its add-launcher action
+  and explains its disabled state. A new isolated profile inherits only the
+  selected KDE icon theme. Bounded samples confirmed 55–69% one-core CPU use by
+  the idle candidate versus 0% in one stable sample; disabling task traces,
+  previews, Spring, or using automatic capture did not remove it. KWin and
+  PipeWire samples were generally low and NVIDIA utilization was 0–2%. A fresh
+  thread sample attributes most candidate CPU to its leader thread (38.3% mean,
+  62.6% peak), but the hot function or loop and QML frame-time source remain
+  unknown. On 2026-11-15 the owner accepted the current candidate in real
+  Plasma/Wayland (8/8 checks), reporting smooth desktop/browser interaction,
+  Spring Magnification, previews, new task appearance, preserved pins, the
+  user's icon theme, and no slowdown after several minutes. This closes the
+  blocking responsiveness P0 for the accepted candidate; it does not identify
+  the cause of the historical anonymous-PSS growth, which remains unknown. The
+  owner reported performance subjectively comparable to v0.5.1. The widget
+  model and all three Launcher interfaces remain in review pending separate
+  functional and visual acceptance. See
+  [the investigation and bounded sampling procedure](docs/qa/v060-dev-performance-icon-theme-2026-11-14.md).
+
+  Controlled GOOD/BAD endpoint runs on 2026-11-14 did not reproduce the earlier
+  high-load BAD state: the exact dirty BAD candidate measured 0.18–0.27% CPU
+  across three settled samples, while the isolated GOOD stage measured 0.3% in
+  its prior capture; both had no sustained event-loop delay. The comparison is
+  non-discriminating, so no last-GOOD/first-BAD SHA or culprit diff is known and
+  no code change is justified. Repeat the same captured high-load condition
+  before bisecting. A follow-up used a disposable BAD profile with exactly 26 typed task rows in
+  the same order as GOOD's legacy launcher list (the extra Folder Stack was
+  excluded from this copy only). BAD still measured 0.16–0.26% CPU across three
+  settled samples, with no event-loop delays. Matching row composition did not
+  restore the earlier load; the runtime condition that triggers it remains
+  unknown. Full captures are in `diagnostics/v060-dev/logs/bisect-20261114/`.
 
 The owner confirmed that Plasma's built-in KWin Scale/Genie effects already
 minimize windows to the correct KDockW icons. KDockW will not reimplement those

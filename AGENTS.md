@@ -57,6 +57,26 @@ Rules that apply to every agent working on this repository, regardless of harnes
 - In the final report, list the tests run and their results, tests not run with
   the reason, and any remaining release or manual-acceptance checks.
 
+### Performance Diagnostics and Acceptance
+
+- Before measuring TaskManager performance, run the diagnostic functional
+  preflight against the live KWin session. Verify existing windows and live
+  appearance, metadata/icon updates, grouping, and removal. A static pinned list
+  is not evidence that TaskManager is active; if preflight is invalid, discard
+  the run from performance comparisons.
+- Record the absolute executable path, application version, and ELF GNU Build
+  ID for every compared run. Also record the profile/config hash, relevant
+  environment, renderer, and workload schedule. Version strings alone do not
+  establish that two measurements used the same binary.
+- Before autonomous diagnostics or candidate runs, make and verify a
+  permission-preserving backup of the production KDockW configuration. Keep
+  diagnostic configuration isolated; do not overwrite production settings
+  with a different profile if an exact backup is unavailable.
+- Visual and performance regressions require owner acceptance in a real Plasma
+  Wayland session before their related feature or release gate is marked
+  accepted/done. Automated tests and synthetic measurements do not replace
+  this acceptance.
+
 ## Podman / Buildah Resource Management
 
 - Preserve Debian, Ubuntu, and Fedora base images, and the prepared CI builder/runtime images needed by the current release. Keep the current release's test environment and diagnostic artifacts until release acceptance is complete.

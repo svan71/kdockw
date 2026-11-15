@@ -15,10 +15,23 @@ carried forward from the Krema-based development period.
 - Added an Application Launcher widget backed by the live KDE service catalog, XDG menu hierarchy, KDE metadata search, and asynchronous KIO application/action launch.
 - Added three switchable launcher views: a searchable Launchpad grid with folders, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
 - Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
+- Added Spring Magnification support for the Application Launcher dock icon while keeping spacers and separators at their configured size.
 
 ### Fixed
 
+- Avoided reloading every dock icon when TaskManager updates one task's icon, reducing repeated icon work and preserving responsive dock updates.
 - Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.
+- Kept the Application Launcher catalog visible in its native popup by sizing the content item before the first Wayland surface commit and bounding its placement to the selected screen.
+- Made the dock widget manager available from the dock-area context menu even when no built-in widgets remain, and prevented left-clicks on empty dock space from opening it.
+- Reflowed widget settings into labeled, adaptive cards so controls remain reachable in narrow and scaled windows.
+- Gave the three launcher styles distinct layouts, made the popup surface opaque and theme-aware, and resolved app/category icons through the existing KDE icon provider with its fallback.
+- Loaded the KDE application catalog incrementally on first use and filtered searches from its in-memory records instead of re-querying desktop metadata on each keystroke.
+- Added the widget manager to the KDockW submenu of application and blank-dock context menus, and clarified the add-menu button state when a launcher already exists.
+- Seeded only the selected KDE icon theme into a new isolated diagnostic profile so app and category icons use the user's Plasma theme without sharing the production configuration.
+
+### Changed
+
+- Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
 
 ## [0.5.1] - 2026-11-13
 

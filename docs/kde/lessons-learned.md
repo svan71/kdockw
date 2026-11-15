@@ -643,3 +643,43 @@ screen geometry, and lock/unlock recovery. The wrapper getter is not proof that
 KWin has applied the new exclusive zone. A root cause for maximized-window
 overlap after unlock must remain unclaimed until a real Plasma/Wayland trace
 correlates the surface commit with compositor available geometry.
+
+## 32. Give a Wayland launcher popup explicit content geometry before opening (2026-11)
+
+**Symptom:** The three Application Launcher views opened as a narrow strip that
+showed the heading and search controls but no application catalog.
+
+**Cause:** `ApplicationLauncherPopup.qml` used a `Popup.Window` whose content was
+a bare `Loader`. Its initial implicit size came from the page header; the page's
+fill-sized `GridView`/`ListView` had no useful minimum or preferred extent. The
+first native Wayland surface commit could therefore have no catalog area even
+though the later requested popup rectangle was larger.
+
+**Fix:** Give the popup content item the requested dimensions before opening,
+anchor the Loader to that item, and give the catalog views explicit minimum and
+preferred sizes. Map all four transformed dock corners into dock-root
+coordinates and clamp the popup against the selected screen rectangle.
+
+**Evidence and limits:** QML tests verify nonzero catalog extent, populated
+catalog data, and on-screen placement for all three views at all four dock
+edges. They also create the native popup window. Automated QtWayland input
+cannot verify the live pointer-grab interaction; real Plasma/Wayland acceptance
+is still required before closing the Launcher task.
+
+## 33. Keep launcher views structurally distinct and use the dock icon provider (2026-11)
+
+**Symptom:** Launchpad and KDE Hierarchical both used a visually similar icon
+grid, the popup inherited dock translucency, and some KService icon names did
+not resolve to artwork in the active KDE theme.
+
+**Fix:** Keep Launchpad as the app/folder grid, Windows Start as a pinned and
+full-app list, and KDE Hierarchical as navigable category rows with
+breadcrumbs. Give the popup its own opaque Kirigami Window-theme surface, and
+route app/category icons through the existing `image://icon/` provider so its
+KDE theme/file lookup and generic fallback remain shared with the dock.
+
+**Performance and limits:** Initial catalog traversal is dispatched in small
+event-loop batches, and search filters the in-memory KService records. The
+host-side test measured catalog readiness and warm search time, but does not
+represent GPU rendering or live frame pacing. Those still require visual review
+in the target Plasma/Wayland session.

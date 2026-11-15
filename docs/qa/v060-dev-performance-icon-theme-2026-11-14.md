@@ -266,3 +266,65 @@ P0 remains **open**. The next run must first establish why this exact staged can
 - `tools/kdockw-v060-dev-start --preflight-only --profile launcher-review`: passed; staged candidate version/build ID and Russian catalog were validated.
 - Shell/Python syntax, launcher active-profile guard, `msgfmt --check --check-format`, catalog source/stage hash comparison, and `git diff --check`: passed.
 - Candidate and fixture windows were stopped. Stable `/usr/bin/kdockw` v0.5.1 was restored as the active dock; production `kdockwrc` and `kdeglobals` hashes match their pre-run values. No release or tag was created.
+
+## KWin TaskManager authorization and valid active rerun — 2026-11-15
+
+### Authorization failure and launcher correction
+
+The earlier active A/B candidate was invalid because its own TaskManager did not receive `PlasmaWindowManagement`. KWin 6.6.6 determines permitted Wayland interfaces by querying KService metadata for the connecting client's executable identity: it uses the security-context app ID when present, otherwise the executable path, matches the canonical first word of a service's `Exec`, then reads `X-KDE-Wayland-Interfaces`. An isolated Desktop Entry/Sycoca generated only inside the launcher's private `dbus-run-session` was not visible to the running KWin session, so that lookup could not associate the staged executable with its allowed interface list. This matches the candidate's protocol activation timeout and zero TaskManager updates; it was not a TaskManager performance sample. See the [KWin 6.6.6 service lookup](https://github.com/KDE/kwin/blob/v6.6.6/src/utils/serviceutils.h) and [Wayland authorization path](https://github.com/KDE/kwin/blob/v6.6.6/src/wayland_server.cpp).
+
+The diagnostic launcher now registers a uniquely named `kdockw-v060-dev-diagnostic.desktop` in the XDG data home visible to KWin, with the exact absolute staged `Exec` and the required Plasma window management, activation feedback, and KWin ScreenCast interfaces. It rebuilds user Sycoca once on the Plasma session D-Bus before launch; candidate config/data/cache remain isolated. Restore removes the Desktop Entry only when its contents still match the launcher's owned copy, refreshes Sycoca once, then restores stable. No KWin security checks were disabled and the production Desktop Entry was not reused. The diagnostic metadata checker and launcher active-process regression were updated.
+
+The new functional preflight returned **PASS** for all six live checks: KWin protocol plus existing windows, test-window appearance, title update, DecorationRole change, same-application grouping, and removal after close. Evidence: `diagnostics/v060-dev/logs/taskmanager-auth-20261115/functional-v060-4/functional-preflight.json`; the exact candidate was `/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`, PID 357462 during preflight, GNU Build ID `4fd467f63973abae5c690f2a4f6b5dda8a1e34b0`.
+
+### Active workload comparison
+
+Stable v0.5.1 and candidate v0.6.0-dev were run sequentially, never concurrently, with the same fixture manifest (`863b380ad1b4f74670516c8eae39705a0cf94fc23c2f990d5cd36cd7d8068e7f`), isolated profile config hash (`d4b2a9fb674933a2d06fecc3965fc31512793b9003c9a5fd4c04002246447441`), workload schedule and PRIME/capture settings. Each run issued 40 opens, 40 closes, 60 title changes and 43 icon changes over 45 seconds, followed by 30 seconds of observation. Stable and candidate `XDG_DATA_DIRS` were not byte-identical (the stable fixture included its private test-data directory while the candidate used the user's local data directory); instrumentation also differed, so these measurements exercise the TaskManager path but are not a fully controlled performance comparison.
+
+| Measurement | Stable v0.5.1 (`7c410e5c4355c330092377e082705df97e1baef6`) | Candidate v0.6.0-dev (`4fd467f63973abae5c690f2a4f6b5dda8a1e34b0`) |
+|---|---:|---:|
+| Main-thread CPU mean during sampled run (startup sample excluded) | 5.34% | 4.72% |
+| Main-thread CPU p95 / peak | 17.91% / 71.22% | 17.88% / 28.76% |
+| RSS mean / peak / final sample | 275,231 / 281,296 / 274,332 KiB | 307,576 / 310,028 / 309,956 KiB |
+| PSS peak / final sample | 139,564 / 136,671 KiB | 167,069 / 166,997 KiB |
+| Anonymous PSS peak / final sample | 115,760 / 110,696 KiB | 136,440 / 135,636 KiB |
+
+Stable KDockW recorded 1,748 `Task row changed` messages across the model (729 for the controlled fixture row set). Candidate five-second aggregates recorded 80 structural notifications and 1,763 changed rows/ranges; TaskIconProvider recorded 65 pixmap requests with 95 unique URL identities over the observed lifetime. These counts are not one-to-one with fixture operations. Candidate event-loop telemetry had 25 windows, 52 samples above 66 ms, 20 above 100 ms and 3 above 150 ms, with 360 ms maximum lateness. Frame timing is not a usable comparison: the dock was mostly idle between updates, with no sustained frame swaps (one startup interval was invalid). The actual user's severe slideshow was not reproduced by this fixture. Candidate RSS rose by about 5 MiB from its first sample to peak and anonymous PSS by about 3.5 MiB; it remained near that level through only the 30-second post-load window. This neither proves a memory leak nor establishes long-term stability and does not explain the historical 36→1009 MiB / 61→522 MiB growth.
+
+### Verification, remaining issue, and restoration
+
+- The final full Production Release CTest passed **210/210**. An earlier run against a stale test binary was **203/204**; its icon-binding case reproduced in isolation, the build was refreshed, that case then passed, and the subsequent full run passed.
+- The full Diagnostic Release CTest passed **217/217**, including the new functional-preflight regression. The direct preflight unit test passed 5/5. Shell syntax, Python compilation, `git diff --check`, and `tools/kdockw-v060-dev-start --preflight-only --profile launcher-review` passed. Source and stage both report `0.6.0-dev` and GNU Build ID `4fd467f63973abae5c690f2a4f6b5dda8a1e34b0`; the staged Russian catalog is present and preflight validated it.
+- The KWin authorization mismatch is corrected for the diagnostic launcher. The P0 performance regression remains **open**: the active fixture did not recreate the user's slideshow, and no hot stack or memory-allocation owner has been identified. Do not claim a performance fix based on this A/B or CTest.
+- The candidate and fixture windows were stopped; `kdockw-v060-dev-diagnostic.service` is inactive, `kdockw-v051-restored.service` is active, and only `/usr/bin/kdockw` v0.5.1 is running (PID 381753 at final check). The temporary KWin authorization Desktop Entry and restore-state file are absent. No release or tag was created.
+- **Configuration caveat:** the production config hash before the earlier restore was `24da1c1493c7f6a3196218549fa71a0649daf76533185a277dfffa072eaf4962`; after stable was started to restore the dock it became `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621` (mtime 2026-11-15 13:25:55 +05:00). The exact prior bytes were not available in a backup, so the current config was not overwritten or reconstructed from another profile. It has not changed since that observation. This startup write was unintended; production config cannot be reported as unchanged for this run.
+- The worktree began with extensive uncommitted changes. Launcher and harness files already contained unrelated edits, so no safe commit boundary was available without bundling pre-existing WIP; changes remain uncommitted and no history was rewritten.
+
+The next useful measurement is a bounded capture during the owner's exact reproduction with the now-authorized candidate and observer active from process start. Keep performance conclusions gated on actual TaskManager events plus main-thread stack, frame and memory evidence. Keep the v0.6.0 model/Launcher cards in `review` pending owner acceptance.
+
+## Owner acceptance of candidate responsiveness — 2026-11-15
+
+The owner reports that the current v0.6.0-dev candidate passed real Plasma/Wayland manual acceptance, **8/8**:
+
+1. No immediate system slowdown after launch.
+2. Desktop and browser interactions remain smooth.
+3. Spring Magnification remains smooth.
+4. Window previews work.
+5. Newly launched applications appear in the dock.
+6. Pinned applications remain present.
+7. The user's icon theme is used.
+8. No slowdown appears after several minutes of use.
+
+The owner reported no additional issues and judged responsiveness subjectively comparable to stable v0.5.1. On this user acceptance, the blocking P0 responsiveness regression is **closed for the accepted candidate**. This is owner-reported runtime evidence; the manual acceptance did not provide a separately captured binary path or GNU Build ID, so it is not independently tied to a particular ELF here.
+
+This acceptance does **not** establish the exact cause of the earlier anonymous-PSS increase (61→522 MiB) or historical RSS peak (1009 MiB). Those measurements and the limits of the previous profiling remain preserved above; memory ownership and the original trigger are still **UNKNOWN**. The controlled TaskManager fixture also did not reproduce the historical growth. No new runtime optimization or behavior change was made in response to this acceptance.
+
+The Built-in Dock Widgets, Built-in Dock Widget Model, and Application Launcher cards remain `review` until separate feature-level functional and visual acceptance, especially of the three Launcher interfaces. The next work is owner testing and refinement of the Launchpad, Windows Start, and KDE Hierarchical views. No release or tag was created.
+
+## Owner-reported Plasma/Wayland acceptance — 2026-11-15
+
+The owner accepted the current candidate with **8/8** results: no immediate slowdown after launch; smooth desktop and browser use; smooth Spring Magnification; working window previews; new applications appear in the dock; pinned applications remain; the user's icon theme is used; and no slowdown appears after several minutes. The owner reported no further notes and judged performance subjectively comparable to stable v0.5.1.
+
+This closes the blocking P0 responsiveness regression **for the accepted candidate based on owner runtime acceptance**. It does not identify the exact cause of the previously observed anonymous-PSS growth (61→522 MiB) or RSS peak (1009 MiB); those historical measurements and diagnostic limitations remain unchanged and memory ownership is still UNKNOWN. The user acceptance report did not include an independently captured executable path or GNU Build ID, so no particular ELF is inferred from the report. No new optimization or runtime behavior change was made for this acceptance.
+
+Built-in Dock Widgets, Built-in Dock Widget Model, and Application Launcher remain `review` until their individual functional and visual acceptance is complete. The next stage is user testing and refinement of the three Launcher interfaces. The diagnostic P0 is accepted; the v0.6.0 feature milestone is not marked done, and no release, tag, or push was made.
