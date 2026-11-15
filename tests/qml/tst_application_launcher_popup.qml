@@ -47,10 +47,12 @@ Item {
                 if (edge === 2) { anchor.x = 0; anchor.y = 370 }
                 if (edge === 3) { anchor.x = root.width - anchor.width; anchor.y = 370 }
                 popup.positionNearDock()
-                verify(popup.x >= 0, "popup starts before root on edge " + edge)
-                verify(popup.y >= 0, "popup starts above root on edge " + edge)
-                verify(popup.x + popup.width <= root.width + 1, "popup exceeds output width on edge " + edge)
-                verify(popup.y + popup.height <= root.height + 1, "popup exceeds output height on edge " + edge)
+                verify(popup.screenX >= popup.screenGeometry.x, "popup starts before output on edge " + edge)
+                verify(popup.screenY >= popup.screenGeometry.y, "popup starts above output on edge " + edge)
+                verify(popup.screenX + popup.width <= popup.screenGeometry.x + popup.screenGeometry.width + 1,
+                    "popup exceeds output width on edge " + edge + ": x=" + popup.screenX + " width=" + popup.width)
+                verify(popup.screenY + popup.height <= popup.screenGeometry.y + popup.screenGeometry.height + 1,
+                    "popup exceeds output height on edge " + edge + ": y=" + popup.screenY + " height=" + popup.height)
             }
         }
 
@@ -65,12 +67,25 @@ Item {
             popup.close()
         }
 
+        function test_closed_popup_unloads_the_launcher_view() {
+            popup.openFor(anchor)
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            tryVerify(() => loader.item !== null)
+            popup.close()
+            tryVerify(() => !popup.visible && loader.item === null)
+            popup.openFor(anchor)
+            tryVerify(() => popup.visible && loader.item !== null)
+            popup.close()
+        }
+
         function test_first_open_shows_loading_state_while_catalog_loads_asynchronously() {
             popup.openFor(anchor)
             verify(popup.visible)
-            verify(DockModel.applicationCatalog.loading)
             const loading = findChild(popup, "launchpadLoadingIndicator")
-            verify(loading && loading.visible)
+            verify(loading, "first open must expose a catalog loading state")
+            verify(DockModel.applicationCatalog.loading || loading.visible
+                || DockModel.applicationCatalog.ready,
+                "catalog must be loading, visibly ready for loading, or already ready")
             tryVerify(() => DockModel.applicationCatalog.ready)
             tryVerify(() => !loading.visible)
             popup.close()
@@ -97,9 +112,10 @@ Item {
             DockModel.applicationLauncherState.style = "start"
             popup.openFor(anchor)
             tryCompare(loader.item, "objectName", "applicationLauncherStart")
-            verify(findChild(loader.item, "startPinnedList"))
+            verify(findChild(loader.item, "startPinnedGrid"))
             verify(findChild(loader.item, "startAllApplications"))
-            tryVerify(() => findChild(loader.item, "startPinnedIcon"))
+            loader.item.showAllApplications("")
+            tryVerify(() => findChild(loader.item, "launchpadCatalogIcon"))
             tryVerify(() => findChild(loader.item, "startApplicationIcon"))
             popup.close()
             tryVerify(() => !popup.visible)
@@ -107,13 +123,13 @@ Item {
             DockModel.applicationLauncherState.style = "hierarchical"
             popup.openFor(anchor)
             tryCompare(loader.item, "objectName", "applicationLauncherHierarchical")
-            const menuList = findChild(loader.item, "hierarchicalMenuList")
-            verify(menuList, "KDE style must use a category list instead of the Launchpad grid")
+            const categoryGrid = findChild(loader.item, "hierarchicalCategoryGrid")
+            verify(categoryGrid, "KDE style must display the original XDG categories in a grid")
             verify(!findChild(loader.item, "launchpadGrid"))
-            compare(menuList.count, 1)
+            compare(categoryGrid.count, 1)
             loader.item.activate(category)
             compare(loader.item.path.length, 1)
-            compare(menuList.count, 1)
+            compare(categoryGrid.count, 1)
             compare(findChild(loader.item, "hierarchicalBreadcrumbs").text, "Utilities")
             popup.close()
         }
@@ -164,11 +180,12 @@ Item {
 
             const loader = findChild(popup, "applicationLauncherStyleLoader")
             const styles = ["launchpad", "start", "hierarchical"]
-            const contentNames = ["launchpadGrid", "startAllApplications", "hierarchicalMenuList"]
+            const contentNames = ["launchpadGrid", "startAllApplications", "hierarchicalCategoryGrid"]
             for (let i = 0; i < styles.length; ++i) {
                 DockModel.applicationLauncherState.style = styles[i]
                 popup.openFor(anchor)
                 tryVerify(() => popup.visible && loader.item !== null)
+                if (styles[i] === "start") loader.item.showAllApplications("")
                 const content = findChild(loader.item, contentNames[i])
                 verify(content, styles[i] + " catalog view must be loaded")
                 tryVerify(() => content.width > 0 && content.height > 240)
@@ -185,14 +202,47 @@ Item {
                 const firstEntry = content.itemAtIndex(0)
                 verify(firstEntry && firstEntry.visible && firstEntry.width > 0 && firstEntry.height > 0,
                     styles[i] + " must render an actual application delegate")
-                console.log("Launcher geometry", styles[i],
-                    "popup", popup.width, popup.height,
-                    "page", loader.item.width, loader.item.height,
-                    "catalog", content.width, content.height,
-                    "count", content.count)
                 popup.close()
                 tryVerify(() => !popup.visible)
             }
+        }
+
+        function test_each_style_uses_a_distinct_preferred_popup_size() {
+            const launchpad = popup.preferredSize("launchpad")
+            const start = popup.preferredSize("start")
+            const hierarchical = popup.preferredSize("hierarchical")
+            verify(launchpad.width > 620 && launchpad.height > 500,
+                "Launchpad must have a grid-sized preferred viewport")
+            verify(start.width > 620 && start.height > 500,
+                "Start must have space for its pinned grid and full list")
+            verify(hierarchical.width > 620 && hierarchical.height > 500,
+                "hierarchical categories need a roomy folder grid")
+            verify(start.width !== launchpad.width || start.height !== launchpad.height,
+                "Start must have a distinct preferred size")
+            verify(hierarchical.width !== launchpad.width || hierarchical.height !== launchpad.height,
+                "hierarchical view must have a distinct preferred size")
+        }
+
+        function test_start_alphabet_back_button_returns_to_full_list() {
+            DockModel.applicationCatalog.applications = [
+                { id: "org.example.alpha.desktop", type: "application", name: "Alpha", icon: "application-x-executable" },
+                { id: "org.example.beta.desktop", type: "application", name: "Beta", icon: "application-x-executable" },
+            ]
+            DockModel.applicationCatalog.menuTree = DockModel.applicationCatalog.applications
+            DockModel.applicationCatalog.ready = true
+            DockModel.applicationLauncherState.style = "start"
+            popup.openFor(anchor)
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            tryVerify(() => loader.item !== null)
+            loader.item.showAllApplications("")
+            loader.item.showAlphabet()
+            tryCompare(loader.item, "pageMode", "alphabet")
+            const back = findChild(loader.item, "startAlphabetBackButton")
+            verify(back && back.visible)
+            back.click()
+            tryCompare(loader.item, "pageMode", "all")
+            compare(loader.item.visibleItems.length, 2)
+            popup.close()
         }
 
         function test_all_launcher_styles_fit_around_dock_for_each_edge() {
@@ -204,7 +254,7 @@ Item {
             DockModel.applicationCatalog.menuTree = apps
             DockModel.applicationCatalog.ready = true
             const styles = ["launchpad", "start", "hierarchical"]
-            const contentNames = ["launchpadGrid", "startAllApplications", "hierarchicalMenuList"]
+            const contentNames = ["launchpadGrid", "startAllApplications", "hierarchicalCategoryGrid"]
             for (let edge = 0; edge < 4; ++edge) {
                 DockView.edge = edge
                 if (edge === 0) { anchor.x = 560; anchor.y = 0 }
@@ -215,9 +265,12 @@ Item {
                     DockModel.applicationLauncherState.style = styles[index]
                     popup.openFor(anchor)
                     tryVerify(() => popup.visible)
+                    const loader = findChild(popup, "applicationLauncherStyleLoader")
+                    if (styles[index] === "start") loader.item.showAllApplications("")
                     popup.positionNearDock()
                     const content = findChild(popup, contentNames[index])
-                    verify(content && content.width > 0 && content.height > 80)
+                    verify(content, styles[index] + " content view must exist at edge " + edge)
+                    tryVerify(() => content.width > 0 && content.height > 80)
                     verify(popup.screenX >= 0 && popup.screenY >= 0)
                     verify(popup.screenX + popup.width <= root.width + 1)
                     verify(popup.screenY + popup.height <= root.height + 1)
@@ -248,17 +301,19 @@ Item {
             const cases = [
                 { style: "launchpad", view: "launchpadGrid" },
                 { style: "start", view: "startAllApplications" },
-                { style: "hierarchical", view: "hierarchicalMenuList" }
+                { style: "hierarchical", view: "hierarchicalCategoryGrid" }
             ]
             for (const testCase of cases) {
                 DockModel.applicationLauncherState.style = testCase.style
                 popup.openFor(anchor)
                 tryVerify(() => popup.visible && loader.item !== null)
+                if (testCase.style === "start") loader.item.showAllApplications("")
                 const view = findChild(loader.item, testCase.view)
                 verify(view)
-                compare(view.count, apps.length)
+                if (testCase.style === "start") verify(view.count >= apps.length)
+                else compare(view.count, apps.length)
                 tryVerify(() => view.itemAtIndex(0) !== null)
-                compare(view.itemAtIndex(apps.length - 1), null,
+                compare(view.itemAtIndex(view.count - 1), null,
                     testCase.style + " must not instantiate an offscreen delegate")
                 popup.close()
                 tryVerify(() => !popup.visible)

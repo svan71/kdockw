@@ -79,8 +79,11 @@ Item {
 
         function test_launchpad_grid_search_folders_and_launch() {
             const page = makePage(launchpad)
-            compare(page.visibleItems.length, 2)
-            page.activate(page.visibleItems[0])
+            compare(page.visibleItems.length, 3, "all applications remain visible beside navigable system folders")
+            compare(page.catalog.applications.length, 2)
+            const folder = page.visibleItems.find(item => item.type === "folder")
+            verify(folder, "Launchpad must keep folder navigation without replacing the app grid")
+            page.activate(folder)
             compare(page.currentFolder.name, "Development")
             compare(page.visibleItems.length, 1)
             page.activate(page.visibleItems[0])
@@ -92,7 +95,21 @@ Item {
             const page = makePage(start)
             compare(page.pinnedItems.length, 1)
             compare(page.pinnedItems[0].name, "Browser")
-            compare(page.visibleItems.length, 2)
+            compare(page.pageMode, "home")
+            compare(page.allRows.length, 4, "all-apps page groups names into clickable letter headings")
+            page.showAllApplications("")
+            compare(page.pageMode, "all")
+            compare(page.allRows.filter(row => row.kind === "application").length, 2)
+            verify(page.sectionStartIndex("E") >= 0)
+            const fullListCount = page.allRows.length
+            page.showAlphabet()
+            verify(page.alphabetEntries.some(entry => entry.letter === "A" && !entry.active),
+                "alphabet view must include unavailable letters as disabled buttons")
+            page.chooseLetter("E")
+            compare(page.pageMode, "all")
+            compare(page.allRows.length, fullListCount,
+                "letter navigation must return to the unfiltered full application list")
+            compare(page.query, "")
             launcherStateStub.togglePinned("org.example.editor.desktop")
             compare(launcherStateStub.pinnedApplicationIds,
                 ["org.example.browser.desktop", "org.example.editor.desktop"])
@@ -107,6 +124,8 @@ Item {
         function test_kde_hierarchy_navigation_search_and_launch() {
             const page = makePage(hierarchical)
             compare(page.currentItems.length, 2)
+            verify(page.currentItems.some(item => item.type === "folder"),
+                "hierarchical root preserves the original categories")
             page.activate(page.currentItems[0])
             compare(page.path.length, 1)
             compare(page.currentItems[0].name, "Editor")
@@ -118,6 +137,27 @@ Item {
             page.activate(page.visibleItems[0])
             compare(catalogStub.launchedIds, ["org.example.browser.desktop"])
             compare(popupStub.closeCount, 1)
+        }
+
+        function test_windows_start_sections_handle_russian_yo_latin_and_non_letters() {
+            const originalApps = catalogStub.applications
+            catalogStub.applications = [
+                { id: "yo", type: "application", name: "Ёлка", icon: "folder" },
+                { id: "latin", type: "application", name: "Alpha", icon: "folder" },
+                { id: "cyrillic", type: "application", name: "Яндекс", icon: "folder" },
+                { id: "digit", type: "application", name: "7zip", icon: "folder" },
+            ]
+            const page = makePage(start)
+            const letters = page.allRows.filter(row => row.kind === "section").map(row => row.letter)
+            verify(letters.includes("Ё"))
+            verify(letters.includes("Я"))
+            verify(letters.includes("A"))
+            verify(letters.includes("#"))
+            page.query = ""
+            page.showAlphabet()
+            verify(page.alphabetEntries.some(entry => entry.letter === "Ё" && entry.active))
+            verify(page.alphabetEntries.some(entry => entry.letter === "Z" && !entry.active))
+            catalogStub.applications = originalApps
         }
     }
 }

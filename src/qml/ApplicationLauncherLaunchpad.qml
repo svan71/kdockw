@@ -17,25 +17,22 @@ ColumnLayout {
     property var launcherPopup
     property var currentFolder: null
     property string query: ""
-    property var visibleItems: query.length ? catalog.search(query)
-        : currentFolder ? currentFolder.children : catalog.menuTree
+    readonly property var folderItems: catalog.menuTree.filter(item => item.type === "folder")
+    readonly property var visibleItems: query.length ? catalog.search(query)
+        : currentFolder ? currentFolder.children : catalog.applications.concat(folderItems)
 
     function focusSearch() { searchField.forceActiveFocus() }
-    function iconSource(item) {
-        const name = item.icon || (item.type === "folder" ? "folder" : "application-x-executable")
-        return "image://icon/" + encodeURIComponent(name) + "?v=" + DockView.iconCacheVersion
-    }
     function activate(item) {
         if (item.type === "folder") {
             currentFolder = item
             searchField.text = ""
             query = ""
             grid.currentIndex = 0
-        } else {
-            if (launcherPopup.catalog.launch(item.id))
-                launcherPopup.close()
+        } else if (catalog.launch(item.id)) {
+            launcherPopup.close()
         }
     }
+    function goBack() { currentFolder = null }
 
     spacing: Kirigami.Units.smallSpacing
 
@@ -46,7 +43,7 @@ ColumnLayout {
             text: i18n("Back")
             icon.name: "go-previous"
             visible: page.currentFolder !== null && page.query.length === 0
-            onClicked: page.currentFolder = null
+            onClicked: page.goBack()
         }
         QQC2.TextField {
             id: searchField
@@ -70,19 +67,24 @@ ColumnLayout {
         onTriggered: page.query = searchField.text.trim()
     }
 
+    RowLayout {
+        Layout.fillWidth: true
+        QQC2.Label {
+            objectName: "launchpadHeading"
+            Layout.fillWidth: true
+            text: page.query.length ? i18n("Search results")
+                : page.currentFolder ? page.currentFolder.name : i18n("Applications")
+            font.bold: true
+            elide: Text.ElideRight
+        }
+    }
+
     QQC2.Label {
         objectName: "launchpadLoadingIndicator"
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
         visible: !page.catalog.ready
         text: i18n("Loading applications…")
-    }
-
-    QQC2.Label {
-        Layout.fillWidth: true
-        text: page.query.length ? i18n("Search results")
-            : page.currentFolder ? page.currentFolder.name : i18n("Applications")
-        font.bold: true
     }
 
     QQC2.Label {
@@ -99,10 +101,10 @@ ColumnLayout {
         Layout.fillHeight: true
         Layout.minimumWidth: 1
         Layout.minimumHeight: 80
-        Layout.preferredHeight: 480
+        Layout.preferredHeight: 520
         clip: true
-        cellWidth: Math.max(96, Math.floor(width / Math.max(1, Math.floor(width / 116))))
-        cellHeight: 116
+        cellWidth: width / Math.max(1, Math.floor(width / 148))
+        cellHeight: 142
         model: page.visibleItems
         keyNavigationEnabled: true
         focus: true
@@ -117,41 +119,18 @@ ColumnLayout {
             event.accepted = true
         }
         Keys.onEscapePressed: launcherPopup.close()
-        Keys.onBackPressed: if (page.currentFolder) page.currentFolder = null
+        Keys.onBackPressed: if (page.currentFolder) page.goBack()
         QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
-        delegate: QQC2.ItemDelegate {
-            required property var modelData
+        delegate: Item {
+            property var entry: page.visibleItems[index] || ({})
             width: grid.cellWidth
             height: grid.cellHeight
-            Accessible.role: Accessible.Button
-            Accessible.name: modelData.name
-            Accessible.description: modelData.type === "folder" ? i18n("Folder") : modelData.genericName
-            onClicked: page.activate(modelData)
-            contentItem: ColumnLayout {
-                spacing: Kirigami.Units.smallSpacing
-                Image {
-                    objectName: "launchpadCatalogIcon"
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
-                                        Math.ceil(height * Screen.devicePixelRatio))
-                    source: page.iconSource(modelData)
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    Accessible.ignored: true
-                }
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    text: modelData.name
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                }
+            ApplicationLauncherGridTile {
+                anchors.fill: parent
+                entry: parent.entry
+                iconExtent: 62
+                onActivated: page.activate(entry)
             }
-            Keys.onReturnPressed: page.activate(modelData)
-            Keys.onEnterPressed: page.activate(modelData)
         }
     }
 }

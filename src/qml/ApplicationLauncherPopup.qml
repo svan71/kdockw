@@ -16,8 +16,8 @@ QQC2.Popup {
     property real screenY: 0
     property rect anchorScreenRect: Qt.rect(0, 0, 0, 0)
     property rect screenGeometry: Qt.rect(0, 0, 1, 1)
-    property real maxPopupWidth: 620
-    property real maxPopupHeight: 680
+    property real maxPopupWidth: 1040
+    property real maxPopupHeight: 720
     property real requestedWidth: maxPopupWidth
     property real requestedHeight: maxPopupHeight
     readonly property var catalog: DockModel.applicationCatalog
@@ -43,11 +43,18 @@ QQC2.Popup {
         if (!item || visible)
             return
         anchorItem = item
-        requestedWidth = maxPopupWidth
-        requestedHeight = maxPopupHeight
+        const preferred = preferredSize(launcherState.style)
+        requestedWidth = preferred.width
+        requestedHeight = preferred.height
         catalog.ensureLoaded()
         positionNearDock()
         open()
+    }
+
+    function preferredSize(style) {
+        if (style === "start") return Qt.size(920, 700)
+        if (style === "hierarchical") return Qt.size(1040, 680)
+        return Qt.size(960, 680)
     }
 
     function positionNearDock() {
@@ -83,14 +90,16 @@ QQC2.Popup {
         const centerY = rootY + anchor.y + anchor.height / 2
         const bottomEdge = screenGeometry.y + screenGeometry.height
         const rightEdge = screenGeometry.x + screenGeometry.width
+        requestedWidth = Math.max(1, Math.min(requestedWidth, screenGeometry.width - inset * 2))
+        requestedHeight = Math.max(1, Math.min(requestedHeight, screenGeometry.height - inset * 2))
         if (verticalDock) {
             const onRight = dockEdge === 2
             const rightSpace = rightEdge - (rootX + anchor.x + anchor.width) - inset
             const leftSpace = rootX + anchor.x - screenGeometry.x - inset
             const chooseRight = onRight ? rightSpace >= leftSpace : !(leftSpace >= rightSpace)
-            const availableWidth = Math.max(1, Math.min(width, chooseRight ? rightSpace : leftSpace))
+            const availableWidth = Math.max(1, Math.min(requestedWidth, chooseRight ? rightSpace : leftSpace))
             requestedWidth = availableWidth
-            screenX = chooseRight ? rootX + anchor.x + anchor.width : rootX + anchor.x - width
+            screenX = chooseRight ? rootX + anchor.x + anchor.width : rootX + anchor.x - requestedWidth
             screenY = Math.max(screenGeometry.y + inset,
                 Math.min(bottomEdge - height - inset, centerY - height / 2))
         } else {
@@ -98,7 +107,7 @@ QQC2.Popup {
             const above = rootY + anchor.y - screenGeometry.y - inset
             const preferBelow = dockEdge === 0
             const chooseBelow = preferBelow ? below >= above : !(above >= below)
-            requestedHeight = Math.max(1, Math.min(maxPopupHeight, chooseBelow ? below : above))
+            requestedHeight = Math.max(1, Math.min(requestedHeight, chooseBelow ? below : above))
             screenX = Math.max(screenGeometry.x + inset,
                 Math.min(rightEdge - width - inset, centerX - width / 2))
             screenY = chooseBelow ? rootY + anchor.y + anchor.height : rootY + anchor.y - height
@@ -126,6 +135,7 @@ QQC2.Popup {
     contentItem: Loader {
         id: contentLoader
         objectName: "applicationLauncherStyleLoader"
+        active: popup.visible
         sourceComponent: popup.launcherState.style === "start" ? startComponent
             : popup.launcherState.style === "hierarchical" ? hierarchicalComponent : launchpadComponent
         onLoaded: {
@@ -156,8 +166,14 @@ QQC2.Popup {
     Connections {
         target: popup.launcherState
         function onStyleChanged() {
-            if (popup.visible && contentLoader.item && contentLoader.item.focusSearch)
-                contentLoader.item.focusSearch()
+            if (popup.visible) {
+                const preferred = popup.preferredSize(popup.launcherState.style)
+                popup.requestedWidth = preferred.width
+                popup.requestedHeight = preferred.height
+                popup.positionNearDock()
+                if (contentLoader.item && contentLoader.item.focusSearch)
+                    contentLoader.item.focusSearch()
+            }
         }
     }
 

@@ -22,10 +22,6 @@ ColumnLayout {
     readonly property var visibleItems: query.length ? catalog.search(query) : currentItems
 
     function focusSearch() { searchField.forceActiveFocus() }
-    function iconSource(item) {
-        const name = item.icon || (item.type === "folder" ? "folder" : "application-x-executable")
-        return "image://icon/" + encodeURIComponent(name) + "?v=" + DockView.iconCacheVersion
-    }
     function activate(item) {
         if (item.type === "folder") {
             path = path.concat([item])
@@ -37,8 +33,7 @@ ColumnLayout {
         }
     }
     function goBack() {
-        if (path.length)
-            path = path.slice(0, path.length - 1)
+        if (path.length) path = path.slice(0, path.length - 1)
     }
 
     spacing: Kirigami.Units.smallSpacing
@@ -56,14 +51,14 @@ ColumnLayout {
             objectName: "hierarchicalBreadcrumbs"
             Layout.fillWidth: true
             text: page.query.length ? i18n("Search results")
-                : page.path.length ? page.path.map(item => item.name).join(" › ") : i18n("Applications")
+                : page.path.length ? page.path.map(item => item.name).join(" › ") : i18n("Browse KDE menu categories")
             elide: Text.ElideMiddle
             font.bold: true
         }
         QQC2.TextField {
             id: searchField
             objectName: "hierarchicalSearchField"
-            Layout.preferredWidth: 210
+            Layout.preferredWidth: Math.min(280, Math.max(160, page.width * 0.28))
             placeholderText: i18n("Search applications")
             Accessible.name: i18n("Search applications")
             onTextEdited: searchDebounce.restart()
@@ -91,6 +86,7 @@ ColumnLayout {
     }
 
     QQC2.Label {
+        objectName: "hierarchicalCurrentHeading"
         Layout.fillWidth: true
         text: page.query.length ? i18n("Search results")
             : page.path.length ? page.path[page.path.length - 1].name : i18n("Browse KDE menu categories")
@@ -105,16 +101,17 @@ ColumnLayout {
         text: page.query.length ? i18n("No applications found") : i18n("This category is empty")
     }
 
-    ListView {
+    GridView {
         id: entries
-        objectName: "hierarchicalMenuList"
+        objectName: "hierarchicalCategoryGrid"
         Layout.fillWidth: true
         Layout.fillHeight: true
         Layout.minimumWidth: 1
         Layout.minimumHeight: 80
-        Layout.preferredHeight: 480
+        Layout.preferredHeight: 520
         clip: true
-        spacing: Kirigami.Units.smallSpacing
+        cellWidth: width / Math.max(1, Math.floor(width / 176))
+        cellHeight: 148
         model: page.visibleItems
         keyNavigationEnabled: true
         focus: true
@@ -131,55 +128,18 @@ ColumnLayout {
         Keys.onEscapePressed: launcherPopup.close()
         Keys.onBackPressed: page.goBack()
         QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
-
-        delegate: QQC2.ItemDelegate {
-            objectName: "hierarchicalMenuEntry"
-            required property var modelData
-            width: ListView.view.width
-            height: Kirigami.Units.gridUnit * 3
-            Accessible.role: Accessible.Button
-            Accessible.name: modelData.name
-            Accessible.description: modelData.type === "folder" ? i18n("Category")
-                : (modelData.genericName || modelData.comment || "")
-            onClicked: page.activate(modelData)
-            contentItem: RowLayout {
-                spacing: Kirigami.Units.largeSpacing
-                Image {
-                    objectName: "hierarchicalMenuIcon"
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
-                                        Math.ceil(height * Screen.devicePixelRatio))
-                    source: page.iconSource(modelData)
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    Accessible.ignored: true
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        text: modelData.name
-                        elide: Text.ElideRight
-                    }
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        visible: modelData.type !== "folder"
-                        text: modelData.genericName || modelData.comment || ""
-                        elide: Text.ElideRight
-                        color: Kirigami.Theme.textColor
-                    }
-                }
-                QQC2.Label {
-                    visible: modelData.type === "folder"
-                    text: "›"
-                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.3
-                    Accessible.ignored: true
-                }
+        delegate: Item {
+            property var entry: page.visibleItems[index] || ({})
+            width: entries.cellWidth
+            height: entries.cellHeight
+            ApplicationLauncherGridTile {
+                objectName: parent.entry.type === "folder"
+                    ? "hierarchicalCategoryTile" : "hierarchicalApplicationTile"
+                anchors.fill: parent
+                entry: parent.entry
+                iconExtent: 60
+                onActivated: page.activate(entry)
             }
-            Keys.onReturnPressed: page.activate(modelData)
-            Keys.onEnterPressed: page.activate(modelData)
         }
     }
 }
