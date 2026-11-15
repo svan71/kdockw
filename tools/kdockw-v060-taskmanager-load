@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+"""Create and run a bounded live Wayland TaskManager workload.
+
+The fixture controls only windows it starts. Run `prepare` once for both
+sequential version samples, then run `measure` once per dock process.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shlex
+import signal
+import socket
+import struct
+import subprocess
+import sys
+import time
+import threading
+import zlib
+
+
+def record(path: pathlib.Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def png(path: pathlib.Path, color: tuple[int, int, int]) -> None:
+    width = height = 64
+    raw = b"".join(b"\0" + bytes((*color, 255)) * width for _ in range(height))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    data = b"\x89PNG\r\n\x1a\n"
+    data += chunk(b"IHDR", struct.pack(">2I5B", width, height, 8, 6, 0, 0, 0))
+    data += chunk(b"IDAT", zlib.compress(raw, 6))
+    data += chunk(b"IEND", b"")
+    path.write_bytes(data)
+
+
+def manager_environment() -> dict[str, str]:
+    output = subprocess.run(
+        ["systemctl", "--user", "show-environment"], check=True,
+        capture_output=True, text=True,
+    ).stdout
+    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+
+
+def prepare(args: argparse.Namespace) -> int:
+    manifest = pathlib.Path(args.manifest).resolve()
+    if manifest.exists():
+        raise RuntimeError(f"refusing to overwrite existing manifest: {manifest}")
+    data_home = pathlib.Path(args.data_home).resolve()
+    fixture = pathlib.Path(args.fixture).resolve()
+    if not fixture.is_file() or not os.access(fixture, os.X_OK):
+        raise RuntimeError(f"fixture executable is unavailable: {fixture}")
+    applications = data_home / "applications"
+    applications.mkdir(parents=True, exist_ok=True)
+    run_id = args.run_id
+    if not re.fullmatch(r"[a-z0-9-]{4,40}", run_id):
+        raise RuntimeError("run-id must contain 4-40 lowercase letters, digits, or hyphens")
+    app_ids = {name: f"org.kdockw.p0load.{run_id}.{name}" for name in ("alpha", "beta", "gamma", "delta")}
+    icon_dir = manifest.parent / f"icons-{run_id}"
+    icon_dir.mkdir(parents=True, exist_ok=False)
+    colors = {"alpha": (220, 55, 55), "beta": (45, 145, 220), "gamma": (55, 175, 95), "delta": (190, 100, 210)}
+    icon_paths = {}
+    for index, (name, app_id) in enumerate(app_ids.items()):
+        icon_path = icon_dir / f"{name}.png"
+        png(icon_path, colors[name])
+        icon_paths[name] = str(icon_path)
+        desktop_path = applications / f"{app_id}.desktop"
+        if desktop_path.exists():
+            raise RuntimeError(f"refusing to overwrite existing test Desktop Entry: {desktop_path}")
+        desktop_path.write_text(
+            "[Desktop Entry]\nType=Application\n"
+            f"Name=KDockW P0 Load {name.title()}\n"
+            f"Exec={shlex.quote(str(fixture))} --app-id {app_id} --title KDockW-P0-{name} --icon-path {shlex.quote(str(icon_path))}\n"
+            f"Icon={icon_path}\nStartupWMClass={app_id}\nNoDisplay=true\n",
+            encoding="utf-8",
+        )
+    env = manager_environment()
+    cache_home = pathlib.Path(args.cache_home).resolve()
+    cache_home.mkdir(parents=True, exist_ok=True)
+    data_dirs = env.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share")
+    runtime_data_dirs = data_dirs if str(data_home) in data_dirs.split(":") else f"{data_home}:{data_dirs}"
+    clean_env = {**os.environ, **env, "XDG_DATA_HOME": str(data_home),
+                 "XDG_DATA_DIRS": runtime_data_dirs, "XDG_CACHE_HOME": str(cache_home)}
+    subprocess.run(["dbus-run-session", "--", "env",
+                    *(f"{key}={clean_env[key]}" for key in (
+                        "XDG_DATA_HOME", "XDG_DATA_DIRS", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
+                    )), "kbuildsycoca6"], env=clean_env, check=True, stdout=subprocess.DEVNULL)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps({
+        "runId": run_id, "fixture": str(fixture), "dataHome": str(data_home),
+        "cacheHome": str(cache_home), "dataDirs": runtime_data_dirs,
+        "appIds": app_ids, "icons": icon_paths,
+        "createdAt": time.time(),
+    }, indent=2) + "\n", encoding="utf-8")
+    print(manifest)
+    return 0
+
+
+def proc_ticks(pid: int, tid: int | None = None) -> int | None:
+    path = pathlib.Path(f"/proc/{pid}/stat") if tid is None else pathlib.Path(f"/proc/{pid}/task/{tid}/stat")
+    try:
+        raw = path.read_text()
+        fields = raw[raw.rfind(")") + 2:].split()
+        return int(fields[11]) + int(fields[12])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def proc_memory(pid: int) -> dict[str, int]:
+    values: dict[str, int] = {}
+    try:
+        for line in pathlib.Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
+            if ":" not in line:
+                continue
+            key, raw, *_ = line.split()
+            try:
+                values[key.rstrip(":")] = int(raw)
+            except ValueError:
+                continue
+        for line in pathlib.Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith(("VmRSS:", "Threads:")):
+                key, raw, *_ = line.split()
+                values[key.rstrip(":")] = int(raw)
+    except OSError:
+        pass
+    return values
+
+
+def elf_build_id(path: str) -> str:
+    env = {**os.environ, "LC_ALL": "C", "LANG": "C", "LANGUAGE": "C"}
+    result = subprocess.run(["readelf", "-n", path], check=True, capture_output=True, text=True, env=env)
+    for line in result.stdout.splitlines():
+        if "Build ID:" in line:
+            return line.split("Build ID:", 1)[1].strip()
+    raise RuntimeError(f"no GNU Build ID in {path}")
+
+
+class Window:
+    def __init__(self, process: subprocess.Popen[bytes], app_id: str, title: str, sock: pathlib.Path):
+        self.process = process
+        self.app_id = app_id
+        self.title = title
+        self.sock = sock
+
+    def send(self, operation: str, value: str = "") -> dict[str, object]:
+        if self.process.poll() is not None:
+            raise RuntimeError(f"test window exited unexpectedly: {self.title}")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(3)
+            connection.connect(str(self.sock))
+            payload = json.dumps({"operation": operation, "value": value}).encode() + b"\n"
+            connection.sendall(payload)
+            response = bytearray()
+            while b"\n" not in response:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                response.extend(chunk)
+        if not response:
+            raise RuntimeError(f"empty response from test window: {self.title}")
+        data = json.loads(bytes(response).split(b"\n", 1)[0])
+        if not data.get("ok"):
+            raise RuntimeError(f"test window rejected {operation}: {self.title}")
+        return data
+
+    def close(self) -> None:
+        if self.process.poll() is None:
+            try:
+                self.send("close")
+                self.process.wait(timeout=2)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait(timeout=2)
+
+
+class Scenario:
+    def __init__(self, args: argparse.Namespace, manifest: dict[str, object], events: pathlib.Path,
+                 stop_event: threading.Event):
+        self.args = args
+        self.manifest = manifest
+        self.events = events
+        self.stop_event = stop_event
+        self.windows: list[Window] = []
+        self.sequence = 0
+        self.env = {**os.environ, **manager_environment()}
+        self.env.update({
+            "XDG_CONFIG_HOME": args.config_home,
+            "XDG_DATA_HOME": manifest["dataHome"],
+            "XDG_DATA_DIRS": manifest["dataDirs"],
+            "XDG_CACHE_HOME": manifest["cacheHome"],
+            "QT_QPA_PLATFORM": "wayland",
+        })
+
+    def mark(self, action: str, **data: object) -> None:
+        record(self.events, {"monotonicNs": time.monotonic_ns(), "action": action, **data})
+
+    def open(self, name: str, title: str | None = None) -> Window:
+        self.sequence += 1
+        app_id = self.manifest["appIds"][name]
+        initial_title = title or f"KDockW P0 {name} {self.sequence}"
+        sock = pathlib.Path(f"/tmp/kdockw-{self.manifest['runId']}-{self.args.variant}-{self.sequence}.sock")
+        if sock.exists():
+            raise RuntimeError(f"refusing to reuse a control socket: {sock}")
+        cmd = [self.manifest["fixture"], "--app-id", app_id, "--title", initial_title,
+               "--icon-path", self.manifest["icons"][name], "--control-socket", str(sock)]
+        proc = subprocess.Popen(cmd, env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        window = Window(proc, app_id, initial_title, sock)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                raise RuntimeError(f"fixture window exited during startup: {initial_title}")
+            if sock.exists():
+                try:
+                    window.send("ping")
+                    break
+                except (OSError, RuntimeError):
+                    pass
+            time.sleep(0.05)
+        else:
+            raise TimeoutError(f"fixture window did not become controllable: {initial_title}")
+        self.windows.append(window)
+        self.mark("window-open", app=name, syntheticTitle=initial_title)
+        return window
+
+    def close(self, window: Window) -> None:
+        window.close()
+        self.windows = [item for item in self.windows if item is not window]
+        self.mark("window-close", app=window.app_id.rsplit(".", 1)[-1], syntheticTitle=window.title)
+
+    def wait(self, seconds: float, phase: str) -> None:
+        self.mark("phase", name=phase, durationSeconds=seconds)
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.stop_event.is_set() or (self.args.stop_file and pathlib.Path(self.args.stop_file).exists()):
+                raise InterruptedError("stop file requested by memory/event-loop guard")
+            time.sleep(min(0.1, deadline - time.monotonic()))
+
+    def pause(self, seconds: float) -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.stop_event.is_set():
+                raise InterruptedError("automatic memory/event-loop stop threshold reached")
+            time.sleep(min(0.1, deadline - time.monotonic()))
+
+    def run(self) -> None:
+        alpha1 = self.open("alpha")
+        alpha2 = self.open("alpha")
+        beta = self.open("beta")
+        self.wait(4, "settle")
+
+        self.mark("phase", name="title-only", events=20, intervalSeconds=0.3)
+        for i in range(20):
+            alpha1.title = f"KDockW P0 title {i:02d}"
+            alpha1.send("setTitle", alpha1.title)
+            self.mark("title-change", index=i)
+            self.pause(0.3)
+        self.wait(3, "title-settle")
+
+        self.mark("phase", name="icon-only", events=16, intervalSeconds=0.35)
+        icon_files = list(self.manifest["icons"].values())
+        icon_results = []
+        for i in range(16):
+            response = beta.send("setIcon", icon_files[i % len(icon_files)])
+            icon_results.append({"cacheKey": response["iconCacheKey"], "pixelSha256": response["iconPixelSha256"]})
+            self.mark("icon-change", index=i, cacheKey=response["iconCacheKey"], pixelSha256=response["iconPixelSha256"])
+            self.pause(0.35)
+        self.mark("icon-client-observation", distinctCacheKeys=len({x["cacheKey"] for x in icon_results}),
+                  distinctPixelHashes=len({x["pixelSha256"] for x in icon_results}))
+        self.wait(3, "icon-settle")
+
+        self.mark("phase", name="activation-minimize-restore", cycles=5)
+        for i in range(5):
+            (alpha1 if i % 2 == 0 else alpha2).send("activate")
+            beta.send("minimize")
+            self.pause(0.25)
+            beta.send("restore")
+            self.pause(0.25)
+        self.wait(3, "state-settle")
+
+        self.mark("phase", name="group-create-remove", cycles=3, windowsPerCycle=3, sameApp="alpha")
+        for cycle in range(3):
+            extra = [self.open("alpha", f"KDockW P0 group {cycle}-{i}") for i in range(3)]
+            self.wait(1, f"group-{cycle}-present")
+            for item in extra:
+                self.close(item)
+            self.wait(1, f"group-{cycle}-removed")
+
+        self.mark("phase", name="unpinned-task-churn", cycles=4, appCount=3)
+        for cycle in range(4):
+            transient = [self.open(name, f"KDockW P0 transient {cycle}-{name}")
+                         for name in ("beta", "gamma", "delta")]
+            self.wait(0.75, f"unpinned-{cycle}-present")
+            for item in transient:
+                self.close(item)
+            self.wait(0.75, f"unpinned-{cycle}-removed")
+
+        self.mark("phase", name="combined", durationSeconds=self.args.active_seconds,
+                  schedule="fixed-seed-title-icon-state-group")
+        deadline = time.monotonic() + self.args.active_seconds
+        step = 0
+        group: list[Window] = []
+        while time.monotonic() < deadline:
+            if step % 4 == 0:
+                alpha1.title = f"KDockW P0 combined {step}"
+                alpha1.send("setTitle", alpha1.title)
+                self.mark("title-change", index=step, phase="combined")
+            if step % 6 == 0:
+                response = beta.send("setIcon", icon_files[(step // 6) % len(icon_files)])
+                self.mark("icon-change", index=step, phase="combined",
+                          cacheKey=response["iconCacheKey"], pixelSha256=response["iconPixelSha256"])
+            if step % 8 == 0:
+                alpha2.send("activate")
+                beta.send("minimize")
+            elif step % 8 == 4:
+                beta.send("restore")
+                alpha1.send("activate")
+            if step % 20 == 0 and not group:
+                group = [self.open("gamma", f"KDockW P0 combined-group {step}-{i}") for i in range(2)]
+            elif step % 20 == 10 and group:
+                for item in group:
+                    self.close(item)
+                group = []
+            self.pause(0.25)
+            step += 1
+
+        for item in group:
+            self.close(item)
+        self.mark("phase-complete", name="active")
+        self.wait(2, "before-cleanup")
+        for item in list(self.windows):
+            self.close(item)
+        self.mark("phase-complete", name="all-test-windows-closed")
+        self.wait(self.args.post_seconds, "post-load-quiescence")
+
+
+def measure(args: argparse.Namespace) -> int:
+    manifest = json.loads(pathlib.Path(args.manifest).read_text(encoding="utf-8"))
+    output = pathlib.Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    actual_executable = os.path.realpath(f"/proc/{args.dock_pid}/exe")
+    expected_executable = os.path.realpath(args.dock_executable)
+    if actual_executable != expected_executable:
+        raise RuntimeError(f"dock PID executable mismatch: {actual_executable} != {expected_executable}")
+    running = [int(value) for value in subprocess.run(["pgrep", "-x", "kdockw"], capture_output=True, text=True).stdout.split()]
+    if running != [args.dock_pid]:
+        raise RuntimeError(f"expected exactly the selected KDockW process, found PIDs {running}")
+    actual_build_id = elf_build_id(f"/proc/{args.dock_pid}/exe")
+    if actual_build_id != args.build_id:
+        raise RuntimeError(f"dock GNU Build ID mismatch: {actual_build_id} != {args.build_id}")
+    events = output / "events.jsonl"
+    samples = output / "memory.csv"
+    process_env: dict[str, str] = {}
+    try:
+        raw_env = pathlib.Path(f"/proc/{args.dock_pid}/environ").read_bytes().split(b"\0")
+        allowed = {"XDG_CONFIG_HOME", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_DATA_DIRS", "XDG_CACHE_HOME",
+                   "QT_QPA_PLATFORM", "QT_QUICK_BACKEND", "QSG_RHI_BACKEND", "QSG_RENDER_LOOP",
+                   "KDOCKW_PREVIEW_CAPTURE_MODE", "DRI_PRIME", "__NV_PRIME_RENDER_OFFLOAD", "__GLX_VENDOR_LIBRARY_NAME"}
+        for item in raw_env:
+            if b"=" not in item:
+                continue
+            key, value = item.split(b"=", 1)
+            name = key.decode(errors="replace")
+            if name in allowed:
+                process_env[name] = value.decode(errors="replace")
+            elif name == "DBUS_SESSION_BUS_ADDRESS":
+                process_env[name] = "set"
+    except OSError:
+        pass
+    config_path = pathlib.Path(args.config_file)
+    metadata = {
+        "variant": args.variant, "version": "0.5.1" if args.variant == "v051" else "0.6.0-dev",
+        "dockPid": args.dock_pid, "dockExecutable": actual_executable, "gnuBuildId": actual_build_id,
+        "profileConfig": str(config_path),
+        "profileConfigSha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+        "environment": process_env, "manifestSha256": hashlib.sha256(pathlib.Path(args.manifest).read_bytes()).hexdigest(),
+        "activeSeconds": args.active_seconds, "postSeconds": args.post_seconds,
+        "schedule": "title-only, icon-only, activation/minimize/restore, same-app group churn, unpinned task churn, deterministic mixed workload",
+        "startedAt": time.time(),
+    }
+    (output / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    stop_event = threading.Event()
+    stop_reason: list[str] = []
+    sampler_done = threading.Event()
+    sampler_thread: threading.Thread | None = None
+    stop_requested = False
+    scenario = Scenario(args, manifest, events, stop_event)
+
+    def sample_dock() -> None:
+        hz = os.sysconf("SC_CLK_TCK")
+        previous_process = None
+        previous_main = None
+        previous_time = None
+        initial_memory: dict[str, int] | None = None
+        main_over_95 = 0
+        high_stall_windows = 0
+        log_path = pathlib.Path(args.dock_log) if args.dock_log else None
+        log_position = log_path.stat().st_size if log_path and log_path.exists() else 0
+        with samples.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=(
+                "monotonicSeconds", "processCpuPercent", "mainCpuPercent", "VmRSS", "Pss", "Pss_Anon", "Pss_File", "Private_Dirty", "Threads",
+            ))
+            writer.writeheader()
+            stream.flush()
+            started = time.monotonic()
+            while not sampler_done.is_set():
+                now = time.monotonic()
+                memory = proc_memory(args.dock_pid)
+                process_ticks = proc_ticks(args.dock_pid)
+                main_ticks = proc_ticks(args.dock_pid, args.dock_pid)
+                elapsed = max(0.001, now - previous_time) if previous_time is not None else 0.0
+                process_cpu = (100.0 * (process_ticks - previous_process) / hz / elapsed
+                               if elapsed > 0 and process_ticks is not None and previous_process is not None else 0.0)
+                main_cpu = (100.0 * (main_ticks - previous_main) / hz / elapsed
+                            if elapsed > 0 and main_ticks is not None and previous_main is not None else 0.0)
+                writer.writerow({
+                    "monotonicSeconds": round(now - started, 3),
+                    "processCpuPercent": round(process_cpu, 2), "mainCpuPercent": round(main_cpu, 2),
+                    **{key: memory.get(key, "") for key in (
+                        "VmRSS", "Pss", "Pss_Anon", "Pss_File", "Private_Dirty", "Threads",
+                    )},
+                })
+                stream.flush()
+                if int(now - started) % 5 == 0:
+                    os.fsync(stream.fileno())
+                previous_time = now
+                previous_process = process_ticks
+                previous_main = main_ticks
+                if initial_memory is None and memory:
+                    initial_memory = memory.copy()
+                if main_cpu >= 98.0:
+                    main_over_95 += 1
+                else:
+                    main_over_95 = 0
+
+                if log_path and log_path.exists():
+                    with log_path.open("r", encoding="utf-8", errors="replace") as log_stream:
+                        log_stream.seek(log_position)
+                        for line in log_stream:
+                            match = re.search(r"maxLatenessMs=\s*(\d+)", line)
+                            if match:
+                                high_stall_windows = high_stall_windows + 1 if int(match.group(1)) >= 500 else 0
+                        log_position = log_stream.tell()
+
+                if initial_memory:
+                    rss = memory.get("VmRSS", 0)
+                    anon = memory.get("Pss_Anon", 0)
+                    start_anon = initial_memory.get("Pss_Anon", anon)
+                    reason = None
+                    if rss >= args.stop_rss_kib:
+                        reason = f"RSS reached {rss} KiB"
+                    elif anon - start_anon >= args.stop_anon_growth_kib:
+                        reason = f"anonymous PSS grew by {anon - start_anon} KiB"
+                    elif main_over_95 >= args.stop_cpu_seconds:
+                        reason = f"main thread stayed above 98% for {main_over_95} samples"
+                    elif high_stall_windows >= 2:
+                        reason = "two consecutive dock event-loop windows exceeded 500 ms lateness"
+                    if reason:
+                        stop_reason.append(reason)
+                        record(events, {"monotonicNs": time.monotonic_ns(), "action": "guard-stop", "reason": reason})
+                        stop_event.set()
+                        break
+                sampler_done.wait(1.0)
+
+    sampler_thread = threading.Thread(target=sample_dock, name="dock-metric-sampler", daemon=True)
+    sampler_thread.start()
+    try:
+        scenario.mark("measurement-start", variant=args.variant, dockPid=args.dock_pid,
+                      dockBuildId=args.build_id, manifestSha256=hashlib.sha256(pathlib.Path(args.manifest).read_bytes()).hexdigest())
+        scenario.run()
+    except KeyboardInterrupt:
+        stop_requested = True
+        scenario.mark("aborted", reason="keyboard-interrupt")
+    except InterruptedError as exc:
+        stop_requested = True
+        scenario.mark("aborted", reason=str(exc), guardReasons=stop_reason)
+    finally:
+        for window in list(scenario.windows):
+            scenario.close(window)
+        scenario.mark("test-windows-cleaned")
+        sampler_done.set()
+        if sampler_thread:
+            sampler_thread.join(timeout=3)
+    return 2 if stop_requested else 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    commands = parser.add_subparsers(dest="command", required=True)
+    prep = commands.add_parser("prepare", help="Create isolated test Desktop Entries and icon fixtures")
+    prep.add_argument("--manifest", required=True)
+    prep.add_argument("--run-id", required=True)
+    prep.add_argument("--fixture", required=True)
+    prep.add_argument("--data-home", required=True)
+    prep.add_argument("--cache-home", required=True)
+    prep.set_defaults(func=prepare)
+    run = commands.add_parser("measure", help="Run active workload while sampling one KDockW PID")
+    run.add_argument("--manifest", required=True)
+    run.add_argument("--variant", choices=("v051", "v060"), required=True)
+    run.add_argument("--output", required=True)
+    run.add_argument("--config-home", required=True)
+    run.add_argument("--dock-pid", required=True, type=int)
+    run.add_argument("--dock-executable", required=True)
+    run.add_argument("--build-id", required=True)
+    run.add_argument("--config-file", required=True)
+    run.add_argument("--dock-log")
+    run.add_argument("--active-seconds", type=int, default=45)
+    run.add_argument("--post-seconds", type=int, default=30)
+    run.add_argument("--stop-file")
+    run.add_argument("--stop-rss-kib", type=int, default=900 * 1024)
+    run.add_argument("--stop-anon-growth-kib", type=int, default=400 * 1024)
+    run.add_argument("--stop-cpu-seconds", type=int, default=20)
+    run.set_defaults(func=measure)
+    args = parser.parse_args()
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: (_ for _ in ()).throw(KeyboardInterrupt()))
+    try:
+        return args.func(args)
+    except Exception as exc:  # diagnostic tool: fail visibly, preserve evidence
+        print(f"taskmanager-load: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

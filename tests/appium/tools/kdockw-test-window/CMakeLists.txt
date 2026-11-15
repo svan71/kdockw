@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets DBus)
+find_package(Qt6 REQUIRED COMPONENTS Widgets DBus Network)
 
 add_executable(kdockw-test-window main.cpp)
-target_link_libraries(kdockw-test-window Qt6::Widgets Qt6::DBus)
+target_link_libraries(kdockw-test-window Qt6::Widgets Qt6::DBus Qt6::Network)
 
 install(TARGETS kdockw-test-window DESTINATION bin)
 install(FILES org.kde.kdockw.testwindow.desktop org.kde.kdockw.testwindow2.desktop DESTINATION share/applications)

@@ -17,17 +17,27 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QColor>
+#include <QCryptographicHash>
 #include <QCommandLineParser>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QImage>
 #include <QIcon>
 #include <QLabel>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QFileInfo>
+#include <QPixmap>
 #include <QPalette>
 #include <QMainWindow>
 #include <QPushButton>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QWindow>
 
 #include <csignal>
 #include <cstdio>
@@ -108,6 +118,7 @@ int main(int argc, char **argv)
     parser.addOption({QStringLiteral("badge"), QStringLiteral("Unity LauncherEntry badge count"), QStringLiteral("n"), QStringLiteral("-1")});
     parser.addOption({QStringLiteral("color"), QStringLiteral("Solid background color of the window content (e.g. red, #00ff00)"), QStringLiteral("color")});
     parser.addOption({QStringLiteral("icon-path"), QStringLiteral("Explicit local test icon path"), QStringLiteral("path")});
+    parser.addOption({QStringLiteral("control-socket"), QStringLiteral("Private QLocalServer path for an automated test controller"), QStringLiteral("path")});
     parser.process(app);
 
     ::socketpair(AF_UNIX, SOCK_STREAM, 0, s_sigFd);
@@ -145,6 +156,75 @@ int main(int argc, char **argv)
     if (const QString iconPath = parser.value(QStringLiteral("icon-path")); !iconPath.isEmpty()) {
         // This is a raw-render test stimulus, not a claim about Wayland app_id semantics.
         window.setWindowIcon(QIcon(iconPath));
+    }
+
+    QLocalServer controlServer;
+    if (const QString socketPath = parser.value(QStringLiteral("control-socket")); !socketPath.isEmpty()) {
+        if (QFileInfo::exists(socketPath) || !controlServer.listen(socketPath)) {
+            qCritical("Could not bind the requested private test control socket");
+            return 3;
+        }
+        QObject::connect(&controlServer, &QLocalServer::newConnection, &app, [&] {
+            while (auto *socket = controlServer.nextPendingConnection()) {
+                auto *buffer = new QByteArray;
+                QObject::connect(socket, &QLocalSocket::readyRead, &app, [socket, buffer, &window, &app] {
+                    buffer->append(socket->readAll());
+                    const auto newline = buffer->indexOf('\n');
+                    if (newline < 0) {
+                        return;
+                    }
+                    const auto request = QJsonDocument::fromJson(buffer->left(newline)).object();
+                    const QString operation = request.value(QStringLiteral("operation")).toString();
+                    bool ok = true;
+                    if (operation == QLatin1String("setTitle")) {
+                        window.setWindowTitle(request.value(QStringLiteral("value")).toString());
+                    } else if (operation == QLatin1String("setIcon")) {
+                        const QIcon icon(request.value(QStringLiteral("value")).toString());
+                        ok = !icon.isNull();
+                        if (ok) {
+                            window.setWindowIcon(icon);
+                        }
+                    } else if (operation == QLatin1String("minimize")) {
+                        window.showMinimized();
+                    } else if (operation == QLatin1String("restore")) {
+                        window.showNormal();
+                    } else if (operation == QLatin1String("activate")) {
+                        window.showNormal();
+                        window.raise();
+                        window.activateWindow();
+                        if (window.windowHandle()) {
+                            window.windowHandle()->requestActivate();
+                        }
+                    } else if (operation == QLatin1String("close")) {
+                        window.close();
+                        QTimer::singleShot(0, &app, &QCoreApplication::quit);
+                    } else if (operation != QLatin1String("ping")) {
+                        ok = false;
+                    }
+
+                    const QPixmap pixmap = window.windowIcon().pixmap(QSize(64, 64));
+                    const QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                    QByteArray pixels;
+                    if (!image.isNull()) {
+                        pixels = QByteArray(reinterpret_cast<const char *>(image.constBits()),
+                                             static_cast<qsizetype>(image.sizeInBytes()));
+                    }
+                    const QJsonObject response{
+                        {QStringLiteral("ok"), ok},
+                        {QStringLiteral("title"), window.windowTitle()},
+                        {QStringLiteral("iconCacheKey"), QString::number(window.windowIcon().cacheKey())},
+                        {QStringLiteral("iconPixelSha256"), QString::fromLatin1(QCryptographicHash::hash(pixels, QCryptographicHash::Sha256).toHex())},
+                        {QStringLiteral("minimized"), window.isMinimized()},
+                        {QStringLiteral("visible"), window.isVisible()},
+                    };
+                    socket->write(QJsonDocument(response).toJson(QJsonDocument::Compact) + '\n');
+                    socket->flush();
+                    socket->disconnectFromServer();
+                });
+                QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QObject::destroyed, &app, [buffer] { delete buffer; });
+            }
+        });
     }
     window.show();
 
