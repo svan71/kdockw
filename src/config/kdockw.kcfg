@@ -626,7 +626,15 @@
       <default>launchpad</default>
     </entry>
     <entry name="StartPinnedApplications" type="StringList">
-      <label>Windows Start pinned application IDs</label>
+      <label>Launcher favorite application IDs shared by Windows Start and KDE Hierarchical</label>
+      <default></default>
+    </entry>
+    <entry name="LaunchpadFolders" type="String">
+      <label>User-created Launchpad folder records</label>
+      <default>[]</default>
+    </entry>
+    <entry name="LaunchpadItemOrder" type="StringList">
+      <label>Launchpad root application and folder order</label>
       <default></default>
     </entry>
     <entry name="StartFavoritesImportAttempted" type="Bool">

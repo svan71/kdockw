@@ -141,7 +141,9 @@ QQC2.ItemDelegate {
             maximumLineCount: tile.compact ? 1 : 2
             elide: Text.ElideRight
             font: Kirigami.Theme.smallFont
-            color: tile.launcherPopup.foreground
+            color: tile.down ? tile.launcherPopup.selectedForeground
+                : tile.hovered ? tile.launcherPopup.hoverForeground
+                    : tile.launcherPopup.foreground
         }
     }
 }

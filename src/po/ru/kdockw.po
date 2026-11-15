@@ -1933,6 +1933,62 @@ msgstr "Приложения не найдены"
 msgid "No applications are available"
 msgstr "Нет доступных приложений"
 
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Page %1 of %2"
+msgstr "Страница %1 из %2"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Page %1"
+msgstr "Страница %1"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Create folder from application…"
+msgstr "Создать папку из приложения…"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Move to folder"
+msgstr "Переместить в папку"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Remove from folder"
+msgstr "Извлечь из папки"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Rename folder…"
+msgstr "Переименовать папку…"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Delete folder"
+msgstr "Удалить папку"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Rename folder"
+msgstr "Переименовать папку"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "New folder"
+msgstr "Новая папка"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Folder name"
+msgstr "Название папки"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "Favorites"
+msgstr "Избранное"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "No favorite applications yet. Use an application's context menu to add favorites."
+msgstr "Пока нет избранных приложений. Добавляйте их через контекстное меню приложения."
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "Add to Favorites"
+msgstr "Добавить в избранное"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "Remove from Favorites"
+msgstr "Удалить из избранного"
+
 #: src/qml/ApplicationLauncherHierarchical.qml
 msgid "Category"
 msgstr "Категория"

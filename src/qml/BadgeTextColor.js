@@ -38,7 +38,29 @@ function choose(background, preferredForeground) {
     const black = { r: 0, g: 0, b: 0, a: 1 }
     const white = { r: 1, g: 1, b: 1, a: 1 }
     return contrastRatio(black, background) >= contrastRatio(white, background)
-        ? "#000000" : "#ffffff"
+        ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1)
+}
+
+function secondary(background, preferredForeground) {
+    if (contrastRatio(preferredForeground, background) >= 4.5)
+        return preferredForeground
+
+    const safeForeground = choose(background, preferredForeground)
+    let low = 0
+    let high = 1
+    for (let iteration = 0; iteration < 16; ++iteration) {
+        const amount = (low + high) / 2
+        const candidate = Qt.rgba(safeForeground.r * (1 - amount) + background.r * amount,
+                                  safeForeground.g * (1 - amount) + background.g * amount,
+                                  safeForeground.b * (1 - amount) + background.b * amount, 1)
+        if (contrastRatio(candidate, background) >= 4.5)
+            low = amount
+        else
+            high = amount
+    }
+    return Qt.rgba(safeForeground.r * (1 - low) + background.r * low,
+                   safeForeground.g * (1 - low) + background.g * low,
+                   safeForeground.b * (1 - low) + background.b * low, 1)
 }
 
 function composite(foreground, background) {

@@ -215,6 +215,8 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::SeparateLaunchersChanged, context, saveSettings);
     connect(settings, &KDockWSettings::ApplicationLauncherStyleChanged, context, saveSettings);
     connect(settings, &KDockWSettings::StartPinnedApplicationsChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::LaunchpadFoldersChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::LaunchpadItemOrderChanged, context, saveSettings);
     connect(settings, &KDockWSettings::StartFavoritesImportAttemptedChanged, context, saveSettings);
     connect(settings, &KDockWSettings::StartFavoritesImportStatusChanged, context, saveSettings);
     connect(settings, &KDockWSettings::LanguageChanged, context, [settings, saveSettings]() {

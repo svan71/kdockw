@@ -368,3 +368,50 @@ TEST_CASE("Windows Start records unavailable Plasma favorites and preserves exis
         CHECK(state.startFavoritesImportStatus() == QStringLiteral("existingPinsPreserved"));
     }
 }
+
+TEST_CASE("Launchpad folders persist identity, membership, names, and root position", "[application-launcher][state][folders]")
+{
+    const ScopedConfigHome home;
+    const QString firstId = QStringLiteral("org.example.first.desktop");
+    const QString secondId = QStringLiteral("org.example.second.desktop");
+    const QString thirdId = QStringLiteral("org.example.third.desktop");
+    QString folderId;
+    {
+        KDockWSettings settings;
+        settings.load();
+        kdockw::ApplicationLauncherState state(&settings);
+        state.setLaunchpadItemOrder({firstId, secondId, thirdId});
+        folderId = state.createLaunchpadFolder(QStringLiteral("Creative"),
+            {secondId, firstId}, {firstId, secondId, thirdId});
+        REQUIRE_FALSE(folderId.isEmpty());
+        CHECK(state.launchpadItemOrder() == QStringList{folderId, thirdId});
+        REQUIRE(state.launchpadFolders().size() == 1);
+        CHECK(state.launchpadFolders().first().toMap().value(QStringLiteral("name")).toString()
+              == QStringLiteral("Creative"));
+        CHECK(state.launchpadFolders().first().toMap().value(QStringLiteral("applicationIds")).toStringList()
+              == QStringList{secondId, firstId});
+
+        CHECK(state.addApplicationToLaunchpadFolder(folderId, thirdId));
+        CHECK(state.launchpadItemOrder() == QStringList{folderId});
+        CHECK(state.removeApplicationFromLaunchpadFolder(folderId, firstId));
+        CHECK(state.launchpadItemOrder() == QStringList{folderId, firstId});
+        CHECK(state.renameLaunchpadFolder(folderId, QStringLiteral("Work")));
+        CHECK_FALSE(state.renameLaunchpadFolder(folderId, QStringLiteral("  ")));
+        settings.save();
+    }
+
+    KDockWSettings restoredSettings;
+    restoredSettings.load();
+    kdockw::ApplicationLauncherState restored(&restoredSettings);
+    REQUIRE(restored.launchpadFolders().size() == 1);
+    CHECK(restored.launchpadFolders().first().toMap().value(QStringLiteral("id")).toString() == folderId);
+    CHECK(restored.launchpadFolders().first().toMap().value(QStringLiteral("name")).toString()
+          == QStringLiteral("Work"));
+    CHECK(restored.launchpadFolders().first().toMap().value(QStringLiteral("applicationIds")).toStringList()
+          == QStringList{secondId, thirdId});
+    CHECK(restored.launchpadItemOrder() == QStringList{folderId, firstId});
+
+    CHECK(restored.deleteLaunchpadFolder(folderId));
+    CHECK(restored.launchpadFolders().isEmpty());
+    CHECK(restored.launchpadItemOrder() == QStringList{secondId, thirdId, firstId});
+}

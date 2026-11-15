@@ -33,7 +33,12 @@ QtObject {
         }
         function resetLoading() { ++_loadGeneration; ready = false; loading = false }
         function refresh() { ++_loadGeneration; ready = true; loading = false; catalogChanged() }
-        function search(query) { return [] }
+        function search(query) {
+            const needle = String(query || "").trim().toLocaleLowerCase()
+            if (!needle) return applications
+            return applications.filter(app => `${app.name || ""} ${app.genericName || ""} ${app.comment || ""}`
+                .toLocaleLowerCase().includes(needle))
+        }
         function application(serviceId) {
             return applications.find(app => app.id === serviceId) || ({})
         }
@@ -43,11 +48,75 @@ QtObject {
     readonly property QtObject applicationLauncherState: QtObject {
         property string style: "launchpad"
         property var pinnedApplicationIds: []
+        property var launchpadFolders: []
+        property var launchpadItemOrder: []
         property bool startFavoritesImportAttempted: false
         property string startFavoritesImportStatus: "notAttempted"
         function isPinned(serviceId) { return pinnedApplicationIds.includes(serviceId) }
-        function togglePinned(serviceId) { }
+        function togglePinned(serviceId) {
+            pinnedApplicationIds = isPinned(serviceId)
+                ? pinnedApplicationIds.filter(id => id !== serviceId)
+                : pinnedApplicationIds.concat([serviceId])
+        }
         function movePinned(fromIndex, toIndex) { return false }
+        function setLaunchpadItemOrder(ids) { launchpadItemOrder = ids.slice() }
+        function createLaunchpadFolder(name, applicationIds, currentRootOrder) {
+            const id = "folder:mock-" + (launchpadFolders.length + 1)
+            const order = currentRootOrder.slice()
+            let insertAt = order.length
+            for (const appId of applicationIds) {
+                const index = order.indexOf(appId)
+                if (index >= 0) insertAt = Math.min(insertAt, index)
+            }
+            for (const folder of launchpadFolders)
+                folder.applicationIds = folder.applicationIds.filter(appId => !applicationIds.includes(appId))
+            for (const appId of applicationIds) {
+                const index = order.indexOf(appId)
+                if (index >= 0) order.splice(index, 1)
+            }
+            order.splice(insertAt, 0, id)
+            launchpadItemOrder = order
+            launchpadFolders = launchpadFolders.concat([{ id, type: "folder", name,
+                applicationIds: applicationIds.slice() }])
+            return id
+        }
+        function renameLaunchpadFolder(folderId, name) {
+            const updated = launchpadFolders.map(folder => folder.id === folderId
+                ? Object.assign({}, folder, { name }) : folder)
+            launchpadFolders = updated
+            return true
+        }
+        function addApplicationToLaunchpadFolder(folderId, applicationId) {
+            launchpadFolders = launchpadFolders.map(folder => Object.assign({}, folder, {
+                applicationIds: folder.id === folderId
+                    ? Array.from(new Set(folder.applicationIds.concat([applicationId])))
+                    : folder.applicationIds.filter(id => id !== applicationId)
+            }))
+            launchpadItemOrder = launchpadItemOrder.filter(id => id !== applicationId)
+            return true
+        }
+        function removeApplicationFromLaunchpadFolder(folderId, applicationId) {
+            const folder = launchpadFolders.find(item => item.id === folderId)
+            if (!folder) return false
+            launchpadFolders = launchpadFolders.map(item => item.id === folderId
+                ? Object.assign({}, item, {
+                    applicationIds: item.applicationIds.filter(id => id !== applicationId)
+                }) : item)
+            const index = launchpadItemOrder.indexOf(folderId)
+            const order = launchpadItemOrder.slice()
+            order.splice(index < 0 ? order.length : index + 1, 0, applicationId)
+            launchpadItemOrder = order
+            return true
+        }
+        function deleteLaunchpadFolder(folderId) {
+            const folder = launchpadFolders.find(item => item.id === folderId)
+            if (!folder) return false
+            const index = launchpadItemOrder.indexOf(folderId)
+            launchpadItemOrder.splice(index < 0 ? launchpadItemOrder.length : index, 1,
+                ...folder.applicationIds)
+            launchpadFolders = launchpadFolders.filter(item => item.id !== folderId)
+            return true
+        }
         function importPlasmaFavorites(favoriteIds, availableApplicationIds, sourceAvailable) {
             if (startFavoritesImportAttempted) return false
             startFavoritesImportAttempted = true

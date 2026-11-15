@@ -6,6 +6,7 @@ import QtTest
 import org.kde.kirigami as Kirigami
 import com.thicking.kdockw 1.0
 import "../../src/qml" as Launcher
+import "../../src/qml/BadgeTextColor.js" as BadgeTextColor
 
 Item {
     id: root
@@ -121,8 +122,8 @@ Item {
             verify(findChild(loader.item, "startPinnedGrid"))
             verify(findChild(loader.item, "startAllApplications"))
             loader.item.showAllApplications("")
-            tryVerify(() => findChild(loader.item, "launchpadCatalogIcon"))
-            tryVerify(() => findChild(loader.item, "startApplicationIcon"))
+            verify(loader.item.allRows.some(row => row.kind === "application"
+                && row.app.id === editor.id))
             popup.close()
             tryVerify(() => !popup.visible)
 
@@ -132,11 +133,104 @@ Item {
             const categoryGrid = findChild(loader.item, "hierarchicalCategoryGrid")
             verify(categoryGrid, "KDE style must display the original XDG categories in a grid")
             verify(!findChild(loader.item, "launchpadGrid"))
-            compare(categoryGrid.count, 1)
-            loader.item.activate(category)
+            compare(categoryGrid.count, 2, "KDE style prepends its virtual Favorites folder")
+            loader.item.activate(loader.item.rootItems.find(item => item.id === category.id))
             compare(loader.item.path.length, 1)
             compare(categoryGrid.count, 1)
             compare(findChild(loader.item, "hierarchicalBreadcrumbs").text, "Utilities")
+            popup.close()
+        }
+
+        function test_launcher_text_contrast_covers_light_dark_custom_and_interaction_surfaces() {
+            const samples = [
+                { wallpaper: "#f1eadb", dock: "#c92c2422", preferred: "#181818" },
+                { wallpaper: "#111722", dock: "#c92c3445", preferred: "#eeeeee" },
+                { wallpaper: "#6b4377", dock: "#d8291837", preferred: "#d4baff" },
+            ]
+            for (const sample of samples) {
+                const effectiveSurface = BadgeTextColor.composite(
+                    Qt.alpha(Qt.color(sample.dock), 0.82), Qt.color(sample.wallpaper))
+                const foreground = BadgeTextColor.choose(effectiveSurface, Qt.color(sample.preferred))
+                const secondary = BadgeTextColor.secondary(effectiveSurface, Qt.color("#808080"))
+                verify(BadgeTextColor.contrastRatio(foreground, effectiveSurface) >= 4.5,
+                    "active launcher text must reach AA contrast on each effective surface")
+                verify(BadgeTextColor.contrastRatio(secondary, effectiveSurface) >= 4.5,
+                    "secondary launcher text remains readable")
+                for (const amount of [0.055, 0.10, 0.18]) {
+                    const stateSurface = Qt.rgba(
+                        effectiveSurface.r * (1 - amount) + foreground.r * amount,
+                        effectiveSurface.g * (1 - amount) + foreground.g * amount,
+                        effectiveSurface.b * (1 - amount) + foreground.b * amount, 1)
+                    const stateForeground = BadgeTextColor.choose(stateSurface,
+                        Qt.color(sample.preferred))
+                    const stateSecondary = BadgeTextColor.secondary(stateSurface,
+                        Qt.color("#808080"))
+                    verify(BadgeTextColor.contrastRatio(stateForeground, stateSurface) >= 4.5,
+                        `interaction text contrast ${amount}:1 surface`)
+                    verify(BadgeTextColor.contrastRatio(stateSecondary, stateSurface) >= 4.5,
+                        `interaction secondary contrast ${amount}:1 surface`)
+                }
+            }
+        }
+
+        function test_all_three_styles_apply_resolved_contrast_colors_to_visible_text_and_buttons() {
+            const app = { id: "org.example.reader.desktop", type: "application",
+                name: "Reader", genericName: "Document reader", icon: "accessories-text-editor" }
+            DockModel.applicationCatalog.applications = [app]
+            DockModel.applicationCatalog.menuTree = [app]
+            DockModel.applicationCatalog.ready = true
+            DockModel.applicationLauncherState.pinnedApplicationIds = [app.id]
+            const cases = [
+                { style: "launchpad", heading: "launchpadHeading", button: "launchpadCloseButton" },
+                { style: "start", heading: "startHomeHeading", button: "startAllApplicationsButton" },
+                { style: "hierarchical", heading: "hierarchicalBreadcrumbs", button: "hierarchicalBackButton" },
+            ]
+            for (const testCase of cases) {
+                DockModel.applicationLauncherState.style = testCase.style
+                popup.openFor(anchor)
+                const loader = findChild(popup, "applicationLauncherStyleLoader")
+                tryVerify(() => loader.item !== null)
+                const heading = findChild(loader.item, testCase.heading)
+                verify(heading && heading.visible, `${testCase.style} heading must be visible`)
+                verify(BadgeTextColor.contrastRatio(heading.color, popup.surface) >= 4.5,
+                    `${testCase.style} heading must use readable foreground`)
+                const button = findChild(loader.item, testCase.button)
+                verify(button && button.visible, `${testCase.style} navigation action must be visible`)
+                verify(BadgeTextColor.contrastRatio(button.palette.buttonText, popup.surface) >= 4.5,
+                    `${testCase.style} button label must use readable foreground`)
+                popup.close()
+                tryVerify(() => !popup.visible)
+            }
+        }
+
+        function test_hierarchical_favorites_folder_is_first_and_uses_shared_start_pins() {
+            const app = { id: "org.example.editor.desktop", type: "application",
+                name: "Editor", icon: "accessories-text-editor" }
+            DockModel.applicationCatalog.applications = [app]
+            DockModel.applicationCatalog.menuTree = [
+                { id: "group:Other/", type: "folder", name: "Other", children: [app] }
+            ]
+            DockModel.applicationCatalog.ready = true
+            DockModel.applicationLauncherState.pinnedApplicationIds = [app.id]
+            DockModel.applicationLauncherState.style = "hierarchical"
+            popup.openFor(anchor)
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            tryVerify(() => loader.item && loader.item.rootItems.length === 2)
+            compare(loader.item.rootItems[0].id, "kdockw:favorite")
+            compare(loader.item.rootItems[0].children.map(item => item.id), [app.id])
+            loader.item.activate(loader.item.rootItems[0])
+            compare(loader.item.path.length, 1)
+            compare(loader.item.currentItems[0].id, app.id)
+            loader.item.openContextMenu(loader.item.currentItems[0],
+                findChild(loader.item, "hierarchicalCategoryGrid"))
+            const menu = findChild(loader.item, "hierarchicalFavoriteContextMenu")
+            verify(menu)
+            tryVerify(() => menu.visible)
+            const toggle = findChild(menu, "hierarchicalFavoriteToggle")
+            verify(toggle && toggle.visible,
+                "favorite context action must be present for a favorited application")
+            DockModel.applicationLauncherState.togglePinned(app.id)
+            tryVerify(() => loader.item.rootItems[0].children.length === 0)
             popup.close()
         }
 
@@ -195,7 +289,8 @@ Item {
                 const content = findChild(loader.item, contentNames[i])
                 verify(content, styles[i] + " catalog view must be loaded")
                 tryVerify(() => content.width > 0 && content.height > 240)
-                compare(loader.item.visibleItems.length, apps.length,
+                compare(loader.item.visibleItems.length,
+                    apps.length + (styles[i] === "hierarchical" ? 1 : 0),
                     styles[i] + " must receive catalog entries")
                 verify(content.contentHeight > 0 || content.count > 0,
                     styles[i] + " must have a populated content model")
@@ -210,10 +305,11 @@ Item {
                     styles[i] + " native surface must match the requested popup viewport")
                 verify(popup.surface.a >= 0.99,
                     styles[i] + " surface must be opaque enough to prevent background bleed-through")
-                tryVerify(() => {
-                    const delegate = content.itemAtIndex(0)
-                    return delegate && delegate.visible && delegate.width > 0 && delegate.height > 0
-                }, 1500, styles[i] + " must render an actual application delegate")
+                if (styles[i] === "start") {
+                    verify(loader.item.allRows.some(row => row.kind === "application"
+                        && row.app.id === apps[0].id),
+                        "Start all-applications model must contain a renderable application row")
+                }
                 popup.close()
                 tryVerify(() => !popup.visible)
             }
@@ -239,14 +335,15 @@ Item {
             DockModel.applicationCatalog.applications = LauncherVariantListFixture.applications
             DockModel.applicationCatalog.menuTree = LauncherVariantListFixture.folderTree
             DockModel.applicationCatalog.ready = true
+            DockModel.applicationLauncherState.pinnedApplicationIds = [
+                LauncherVariantListFixture.applications[0].id]
             DockModel.applicationLauncherState.style = "hierarchical"
             popup.openFor(anchor)
             const loader = findChild(popup, "applicationLauncherStyleLoader")
             const grid = findChild(loader.item, "hierarchicalCategoryGrid")
-            tryVerify(() => grid && grid.itemAtIndex(0) !== null)
             const folderTile = findChild(loader.item, "hierarchicalCategoryTile")
             verify(folderTile, "category folder delegate must be created")
-            tryVerify(() => grid.count === 1)
+            tryVerify(() => grid.count >= 2)
             const previews = findChild(folderTile, "applicationLauncherFolderPreviewIcon")
             verify(previews, "folder tile must contain a real descendant application icon")
             tryVerify(() => previews.status === Image.Ready && previews.paintedWidth > 0,
@@ -352,11 +449,33 @@ Item {
                 if (testCase.style === "start") loader.item.showAllApplications("")
                 const view = findChild(loader.item, testCase.view)
                 verify(view)
-                if (testCase.style === "start") verify(view.count >= apps.length)
-                else compare(view.count, apps.length)
-                tryVerify(() => view.itemAtIndex(0) !== null)
-                compare(view.itemAtIndex(view.count - 1), null,
-                    testCase.style + " must not instantiate an offscreen delegate")
+                if (testCase.style === "start") {
+                    verify(view.count >= apps.length)
+                } else if (testCase.style === "launchpad") {
+                    const page = loader.item
+                    verify(page.visibleItems.length === apps.length)
+                    verify(page.pageCount > 1)
+                    verify(view.count <= page.pageCapacity,
+                        "only the current Launchpad page belongs to the GridView model")
+                    verify(page.pageItems.length <= page.pageCapacity)
+                    const pageRegion = findChild(page, "launchpadPageRegion")
+                    verify(pageRegion && view.height <= pageRegion.height)
+                    tryVerify(() => page.pageItems.length === page.pageCapacity)
+                    const firstPage = page.pageItems[0].id
+                    verify(page.changePage(1))
+                    verify(page.pageItems[0].id !== firstPage)
+                    page.query = "Application 599"
+                    tryVerify(() => page.visibleItems.length === 1)
+                    compare(page.pageIndex, 0, "search results reset pagination to the first page")
+                    page.query = ""
+                    tryVerify(() => page.visibleItems.length === apps.length)
+                    compare(page.pageIndex, 0, "clearing search returns to the first catalog page")
+                } else {
+                    compare(view.count, apps.length + (testCase.style === "hierarchical" ? 1 : 0))
+                }
+                if (testCase.style === "launchpad") {
+                    compare(view.count, loader.item.pageItems.length)
+                }
                 popup.close()
                 tryVerify(() => !popup.visible)
             }

@@ -6,20 +6,48 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import com.thicking.kdockw 1.0
+import "BadgeTextColor.js" as BadgeTextColor
 
 ColumnLayout {
     id: page
     objectName: "applicationLauncherHierarchical"
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
-    Kirigami.Theme.inherit: true
+    Kirigami.Theme.inherit: false
+    Kirigami.Theme.backgroundColor: launcherPopup.surface
+    Kirigami.Theme.alternateBackgroundColor: launcherPopup.alternateSurface
+    Kirigami.Theme.textColor: launcherPopup.foreground
+    Kirigami.Theme.disabledTextColor: launcherPopup.secondaryForeground
+    Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+    Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+    Kirigami.Theme.focusColor: launcherPopup.focusColor
 
     property var catalog
     property var launcherState
     property var launcherPopup
     property var path: []
     property string query: ""
-    readonly property var currentItems: path.length ? path[path.length - 1].children : catalog.menuTree
+    property var contextEntry: ({})
+    readonly property var favorites: toArray(launcherState.pinnedApplicationIds)
+        .map(id => catalog.application(id)).filter(app => app && app.id)
+    readonly property var favoritesFolder: ({
+        id: "kdockw:favorite",
+        type: "folder",
+        name: i18n("Favorites"),
+        applicationIds: toArray(launcherState.pinnedApplicationIds),
+        children: favorites,
+        previewIcons: favorites.slice(0, 4),
+        isFavorites: true,
+    })
+    readonly property var rootItems: [favoritesFolder].concat(toArray(catalog.menuTree))
+    readonly property var currentItems: path.length ? path[path.length - 1].children : rootItems
     readonly property var visibleItems: query.length ? catalog.search(query) : currentItems
+
+    function toArray(value) {
+        if (!value || typeof value.length !== "number") return []
+        const result = []
+        for (let index = 0; index < value.length; ++index) result.push(value[index])
+        return result
+    }
 
     function focusSearch() { searchField.forceActiveFocus() }
     function activate(item) {
@@ -36,6 +64,15 @@ ColumnLayout {
         if (path.length) path = path.slice(0, path.length - 1)
     }
 
+    function openContextMenu(entry, sourceItem) {
+        if (!entry || entry.type !== "application") return
+        contextEntry = entry
+        const point = sourceItem.mapToItem(launcherPopup.contentItem, 0, sourceItem.height)
+        favoriteMenu.x = Math.max(0, Math.min(launcherPopup.contentItem.width - favoriteMenu.implicitWidth, point.x))
+        favoriteMenu.y = Math.max(0, Math.min(launcherPopup.contentItem.height - favoriteMenu.implicitHeight, point.y))
+        favoriteMenu.open()
+    }
+
     spacing: Kirigami.Units.smallSpacing
 
     RowLayout {
@@ -45,6 +82,13 @@ ColumnLayout {
             text: i18n("Back")
             icon.name: "go-previous"
             enabled: page.path.length > 0
+            palette.buttonText: !enabled ? launcherPopup.secondaryForeground
+                : down ? launcherPopup.selectedForeground
+                    : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+            background: Rectangle {
+                color: parent.down ? launcherPopup.selectedSurface
+                    : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+            }
             onClicked: page.goBack()
         }
         QQC2.Label {
@@ -54,6 +98,7 @@ ColumnLayout {
                 : page.path.length ? page.path.map(item => item.name).join(" › ") : i18n("Browse KDE menu categories")
             elide: Text.ElideMiddle
             font.bold: true
+            color: launcherPopup.foreground
         }
         QQC2.TextField {
             id: searchField
@@ -65,7 +110,9 @@ ColumnLayout {
             color: launcherPopup.foreground
             placeholderTextColor: launcherPopup.secondaryForeground
             selectionColor: launcherPopup.selectedSurface
-            selectedTextColor: launcherPopup.foreground
+            selectedTextColor: launcherPopup.selectedForeground
+            palette.text: launcherPopup.foreground
+            palette.placeholderText: launcherPopup.secondaryForeground
             background: Rectangle {
                 radius: Kirigami.Units.smallSpacing
                 color: launcherPopup.alternateSurface
@@ -76,6 +123,12 @@ ColumnLayout {
         QQC2.ToolButton {
             text: i18n("Close")
             icon.name: "window-close"
+            palette.buttonText: down ? launcherPopup.selectedForeground
+                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+            background: Rectangle {
+                color: parent.down ? launcherPopup.selectedSurface
+                    : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+            }
             onClicked: launcherPopup.close()
         }
     }
@@ -93,13 +146,18 @@ ColumnLayout {
         horizontalAlignment: Text.AlignHCenter
         visible: !page.catalog.ready
         text: i18n("Loading applications…")
+        color: launcherPopup.secondaryForeground
     }
 
     QQC2.Label {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
         visible: catalog.ready && page.visibleItems.length === 0
-        text: page.query.length ? i18n("No applications found") : i18n("This category is empty")
+        text: page.query.length ? i18n("No applications found")
+            : page.path.length && page.path[page.path.length - 1].id === "kdockw:favorite"
+                ? i18n("No favorite applications yet. Use an application's context menu to add favorites.")
+                : i18n("This category is empty")
+        color: launcherPopup.secondaryForeground
     }
 
     GridView {
@@ -140,8 +198,37 @@ ColumnLayout {
                 entry: parent.entry
                 launcherPopup: page.launcherPopup
                 iconExtent: 58
+                Keys.onMenuPressed: page.openContextMenu(parent.entry, parent)
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: page.openContextMenu(parent.entry, parent)
+                }
                 onActivated: page.activate(entry)
             }
+        }
+    }
+
+    QQC2.Menu {
+        id: favoriteMenu
+        objectName: "hierarchicalFavoriteContextMenu"
+        QQC2.MenuItem {
+            objectName: "hierarchicalFavoriteToggle"
+            text: page.launcherState.isPinned(page.contextEntry.id)
+                ? i18n("Remove from Favorites") : i18n("Add to Favorites")
+            palette.text: down ? launcherPopup.selectedForeground
+                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+            palette.buttonText: down ? launcherPopup.selectedForeground
+                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+            background: Rectangle {
+                color: parent.down ? launcherPopup.selectedSurface
+                    : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+            }
+            onTriggered: page.launcherState.togglePinned(page.contextEntry.id)
+        }
+        background: Rectangle {
+            color: launcherPopup.surface
+            border.color: launcherPopup.borderColor
+            radius: Kirigami.Units.smallSpacing
         }
     }
 }

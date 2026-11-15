@@ -39,12 +39,23 @@ QQC2.Popup {
         : Qt.rgba(dockRoot.Kirigami.Theme.backgroundColor.r, dockRoot.Kirigami.Theme.backgroundColor.g,
                   dockRoot.Kirigami.Theme.backgroundColor.b, 1.0)
     readonly property color foreground: BadgeTextColor.choose(surface, dockRoot.Kirigami.Theme.textColor)
-    readonly property color secondaryForeground: BadgeTextColor.contrastRatio(
-        dockRoot.Kirigami.Theme.disabledTextColor, surface) >= 4.5
-        ? dockRoot.Kirigami.Theme.disabledTextColor : foreground
+    readonly property color secondaryForeground: BadgeTextColor.secondary(
+        surface, dockRoot.Kirigami.Theme.disabledTextColor)
     readonly property color alternateSurface: mixSurface(foreground, 0.055)
     readonly property color hoverSurface: mixSurface(foreground, 0.10)
     readonly property color selectedSurface: mixSurface(foreground, 0.18)
+    readonly property color alternateForeground: BadgeTextColor.choose(alternateSurface,
+        dockRoot.Kirigami.Theme.textColor)
+    readonly property color hoverForeground: BadgeTextColor.choose(hoverSurface,
+        dockRoot.Kirigami.Theme.textColor)
+    readonly property color selectedForeground: BadgeTextColor.choose(selectedSurface,
+        dockRoot.Kirigami.Theme.textColor)
+    readonly property color secondaryOnAlternate: BadgeTextColor.secondary(alternateSurface,
+        dockRoot.Kirigami.Theme.disabledTextColor)
+    readonly property color secondaryOnHover: BadgeTextColor.secondary(hoverSurface,
+        dockRoot.Kirigami.Theme.disabledTextColor)
+    readonly property color secondaryOnSelected: BadgeTextColor.secondary(selectedSurface,
+        dockRoot.Kirigami.Theme.disabledTextColor)
     readonly property color borderColor: Qt.alpha(foreground, 0.28)
     readonly property color focusColor: foreground
     readonly property bool verticalDock: DockView.isVertical
