@@ -19,12 +19,13 @@ profile `launcher-review`; build and staged executable report
 `6b140e60c31ca9d65a9ac75bfcfacc3d3a1bf57e`. Russian source/staged catalogs are
 byte-identical. `msgfmt --check --check-format` and `git diff --check` passed.
 
-No real Plasma/Wayland screenshot or owner visual acceptance is claimed. This
-environment has no Wayland screenshot or input-injection utility, and the
-candidate was not started while stable v0.5.1 was active. The candidate is
-prepared for the owner's manual review. The responsiveness P0 remains closed
-only for the earlier owner-accepted candidate; this UI work does not establish
-the source of historical anonymous-PSS growth, which remains UNKNOWN.
+No real Plasma/Wayland screenshot or owner visual acceptance is claimed.
+Spectacle is available, but no input automation is installed to drive the
+Launcher through all three styles and nested pages. The candidate was not
+started while stable v0.5.1 was active. It is prepared for the owner's manual
+review. The responsiveness P0 remains closed only for the earlier
+owner-accepted candidate; this UI work does not establish the source of
+historical anonymous-PSS growth, which remains UNKNOWN.
 
 ## Current status — owner acceptance, 2026-11-15
 
