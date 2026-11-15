@@ -311,18 +311,26 @@ The signed tag and all five release assets were verified on the
   because the current content-wrapping `Flow` has no safe free-space allocator.
   Unit and QML regressions pass; real Plasma/Wayland acceptance remains in
   review. The internal model has no public plugin API.
-- [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): implemented
-  the shared KService/KServiceGroup catalog, KApplicationTrader search, KIO
-  launch path, saved launcher widget and style/pin state, plus three switchable
-  views: compact macOS Launchpad app/folder grid; Windows Start with ordered
-  pins, search and full list; and KDE hierarchical browsing of the original
-  XDG Menu tree. The views now have separate layouts, the popup uses an opaque
-  KDE-themed surface and the shared icon provider, and the Launcher dock icon
-  participates in Spring Magnification. Initial catalog loading is incremental;
-  search filters cached service records. Only one new Launcher can be added
-  because style/pins are global; existing duplicates are preserved. Production
-  and Diagnostic Release CTest pass; manual Plasma/Wayland and frame-pacing
-  review remains open.
+- [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): retain the
+  shared KService/KServiceGroup catalog, KApplicationTrader search, KIO launch
+  path, persisted launcher/style/pin state, cached incremental catalog loading,
+  and single-new-instance rule (existing duplicates are preserved). The three
+  popup views must be functionally and visually distinct: macOS Launchpad is a
+  responsive grid of all applications and navigable folders; Windows Start has
+  a pinned-app grid, a separate alphabetized all-apps page, and a keyboard- and
+  pointer-accessible letter index that returns to the unfiltered list at the
+  selected section; KDE Hierarchical is a grid of real XDG Menu categories and
+  nested groups, with up to four actual child-app icon previews and breadcrumbs.
+  All use the user's active KDE icon theme and KDockW/Kirigami theme without
+  hard-coded platform palettes. Popup sizes adapt by style, screen, DPR, dock
+  edge, and content, remain inside available output geometry, and stay stable
+  during in-style navigation. Search, keyboard focus, Escape, outside-click,
+  launch dismissal, TaskManager, Folder Stacks, and Spring Magnification remain
+  compatible. The catalog is shared and cached; closed views stay unloaded.
+  Separator must render a visible theme-derived line perpendicular to the dock,
+  distinct from an empty fixed spacer and sized with its saved slot. Automated
+  regressions pass; owner visual/functional acceptance in real Plasma/Wayland
+  remains open.
 
   Follow-up: “Manage Widgets…” is now in the KDockW submenu for application
   icons and the blank dock-area menu; the manager names its add-launcher action

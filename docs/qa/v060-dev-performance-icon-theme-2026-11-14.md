@@ -1,8 +1,49 @@
 # v0.6.0-dev performance and icon-theme investigation — 2026-11-14
 
-## P0 diagnostic follow-up — low-overhead counters
+## Launcher UI follow-up — 2026-11-15
 
-This section supersedes the older “Bounded next measurement” recommendation below. It records the follow-up performed after that note; it does not claim that the slowdown is fixed.
+Implemented the agreed visual/interaction correction while preserving the shared
+KService catalog and owner-accepted responsiveness fix. Launchpad now shows all
+apps in an adaptive grid alongside navigable system folders. Windows Start has
+a pinned-app home grid, a separate locale-sorted full list, a letter grid with
+active/inactive entries, and return-to-full-list navigation. KDE Hierarchical
+uses an XDG category/folder grid with previews from real child application
+icons. Popup pages unload when closed. The built-in separator line is now
+visible above the empty-icon placeholder and remains distinct from a fixed
+spacer.
+
+Final local verification: Production Release CTest **210/210** and Diagnostic
+Release CTest **217/217**. The isolated diagnostic stage preflight passed for
+profile `launcher-review`; build and staged executable report
+`kdockw 0.6.0-dev` and matching GNU Build ID
+`6b140e60c31ca9d65a9ac75bfcfacc3d3a1bf57e`. Russian source/staged catalogs are
+byte-identical. `msgfmt --check --check-format` and `git diff --check` passed.
+
+No real Plasma/Wayland screenshot or owner visual acceptance is claimed. This
+environment has no Wayland screenshot or input-injection utility, and the
+candidate was not started while stable v0.5.1 was active. The candidate is
+prepared for the owner's manual review. The responsiveness P0 remains closed
+only for the earlier owner-accepted candidate; this UI work does not establish
+the source of historical anonymous-PSS growth, which remains UNKNOWN.
+
+## Current status — owner acceptance, 2026-11-15
+
+The owner accepted the current candidate in real Plasma/Wayland with 8/8 checks:
+no immediate slowdown; smooth desktop/browser, Spring Magnification, and window
+previews; new tasks appeared; pinned applications and the selected user icon
+theme were preserved; and no slowdown appeared after several minutes. The
+blocking responsiveness P0 is closed for the accepted candidate on this owner
+runtime evidence. The acceptance report did not capture the exact executable
+path or GNU Build ID, so this is not independently tied to a particular ELF.
+
+The acceptance does not establish the cause of historical anonymous-PSS growth
+(61→522 MiB) or the earlier 1009 MiB RSS peak. Memory ownership remains UNKNOWN;
+the measurements and limits below are preserved as history. The Launcher and
+widget cards remain in review pending separate functional and visual acceptance.
+
+## Historical P0 diagnostic follow-up — low-overhead counters
+
+At the time of these diagnostics the slowdown was not yet accepted as resolved. This section superseded the older “Bounded next measurement” recommendation and records the evidence collected before the owner's 2026-11-15 acceptance above.
 
 - Added opt-in (`KDOCKW_PERF_DIAGNOSTICS=1`) five-second aggregates to the diagnostic build only. TaskManager/DockModel reports structural notifications, `dataChanged` row/role ranges, partition request/coalescing/run counts and duration. DockPresentationModel reports forwarded roles, structural signals, rebuild counts and duration. DockView reports event-loop lateness and Qt Quick `frameSwapped` intervals. The feature is off by default and not compiled into Production.
 - A fresh 10-second idle stable sample averaged **0.0%** KDockW CPU. Candidate with counters averaged **62.6%** process CPU (leader/main thread **54.4%**); the same candidate profile without counters averaged **66.4%** (leader **57.1%**). These short, sequential samples show that the counters did not materially remove or create the load; they are not randomized causal measurements. Candidate RSS was about 481 MiB with counters and 343→486 MiB without; both had about 18 threads.

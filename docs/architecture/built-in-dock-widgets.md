@@ -19,8 +19,10 @@ extensions can share the persisted item and presentation path.
   widget row has no task index. Start/center/end slot rank is stable, and the
   relative order within each slot follows the saved model order.
 - `DockItem` renders separators and spacers inside the existing dock surface.
-  Separator marks adapt to dock orientation; fixed spacer extents use logical
-  pixels on the primary axis for all four edges and HiDPI scale factors.
+  A separator is a visible theme-derived line perpendicular to the dock's
+  primary axis; its line length follows the saved slot extent with clear
+  insets. A fixed spacer remains empty. Both use logical pixels on the primary
+  axis for all four edges and HiDPI scale factors.
 - A QML manager operates directly on `DockEntriesModel`: add/remove, reorder,
   resize, change slot, and toggle visibility. Its persistent entry point is a
   dock-level right-click menu and does not depend on a built-in widget being
@@ -90,23 +92,33 @@ extension/plugin API.
 - `ApplicationLauncherState` persists the selected style and ordered Start
   pins. Pins are stable service IDs and survive temporary removal from the
   current catalog.
-- A single native popup loads one of three distinct QML layouts: Launchpad
-  presents apps and folders in a searchable grid; Start shows ordered pins,
-  search, and a full application list; KDE Hierarchical browses the original
-  nested XDG menu as category rows with breadcrumbs. All views use the same
-  catalog and KIO launch path. Application and category icons use the existing
-  `image://icon/` provider, which resolves KDE theme/file icons and falls back
-  to an application icon.
+- A single native popup loads one of three distinct QML layouts. macOS Launchpad
+  shows every application in an adaptive icon grid and adds navigable folder
+  tiles sourced from the existing XDG groups; system groups do not replace the
+  application grid. Windows Start uses a pinned-app grid on its home page and a
+  separate all-applications page with locale-sorted letter sections. Activating
+  a section heading opens an alphabet grid; choosing a letter returns to the
+  full list scrolled to that section, without filtering away other apps. KDE
+  Hierarchical presents the original XDG menu order as a grid of category
+  folders with previews made from up to four real child application icons;
+  nested groups and app tiles remain navigable with breadcrumbs. Its search
+  continues to cover the entire catalog. All views use the same catalog and
+  KIO launch path. Application and category icons use the existing
+  `image://icon/` provider, which resolves the active KDE icon theme/file icons
+  and falls back to an application icon. Tile and popup colors inherit the
+  active KDockW/Kirigami theme.
 - The popup uses an opaque Kirigami Window-theme surface independent of dock
   background opacity. Text and controls inherit the same KDE theme for light
   and dark palettes.
-- The popup chooses the available screen space along either axis for all four
-  dock edges. Its content root has explicit implicit dimensions matching the
-  requested viewport, and each fill-height catalog view has a useful minimum
-  size before the first native Wayland surface commit. It closes on outside
-  click, Escape, dock hide, output change, and after a successful launch, and
-  reloads its view when the style changes. Actual Wayland popup placement,
-  fractional scaling, and lock/unlock remain visual review items.
+- The popup chooses style-specific preferred dimensions and clamps them to the
+  available screen space along either axis for all four dock edges. Grid columns
+  adapt to the resulting viewport; page changes within a style keep the popup
+  dimensions stable. Its content root has explicit implicit dimensions matching
+  the requested viewport, and each fill-height catalog view has a useful
+  minimum size before the first native Wayland surface commit. It closes on
+  outside click, Escape, dock hide, output change, and after a successful
+  launch, and reloads its view when the style changes. Actual Wayland popup
+  placement and fractional-scaling rendering remain visual review items.
 
 ## Verification status
 

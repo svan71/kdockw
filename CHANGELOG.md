@@ -28,10 +28,13 @@ carried forward from the Krema-based development period.
 - Loaded the KDE application catalog incrementally on first use and filtered searches from its in-memory records instead of re-querying desktop metadata on each keystroke.
 - Added the widget manager to the KDockW submenu of application and blank-dock context menus, and clarified the add-menu button state when a launcher already exists.
 - Seeded only the selected KDE icon theme into a new isolated diagnostic profile so app and category icons use the user's Plasma theme without sharing the production configuration.
+- Rendered built-in dock separators as visible theme-derived lines, distinct from empty fixed spacers in both dock orientations.
 
 ### Changed
 
 - Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
+- Organized Windows Start into a pinned-app home grid, a separate locale-sorted full list, and an alphabet index that returns to the unfiltered list at the selected section.
+- Reworked Launchpad into an adaptive all-application grid with navigable system folders, and KDE Hierarchical into a grid of nested XDG categories with real child-app icon previews.
 
 ## [0.5.1] - 2026-11-13
 
