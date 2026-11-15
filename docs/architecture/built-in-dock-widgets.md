@@ -143,6 +143,42 @@ extension/plugin API.
   placement, fractional-scaling rendering, live theme changes, and owner
   confirmation of favorites mapping remain visual review items.
 
+### Fourth Launcher refinement
+
+Launchpad paging reuses its existing page model. During a page change, only the
+current and target page models are bound to two clipped GridViews; both translate
+horizontally for 220 ms with end deceleration. The active page indicator tracks
+the target. A new input while transitioning first completes the current target,
+then starts the next bounded transition. Search changes, layout changes, and
+popup close cancel an in-flight transition and reset its offset. The duration
+uses Kirigami's configured long-duration setting, so zero-duration system motion
+settings produce an immediate page change. No timer, shader, or always-loaded
+page set is used.
+
+Folder menu actions are derived from the current entry and folder context:
+root applications can create a folder or move to one; applications inside a
+folder can be extracted or moved to another folder; user folders can be opened,
+renamed, or deleted. Create/rename share a themed dialog with trimmed-name,
+empty-name, and case-insensitive duplicate validation. Folder deletion confirms
+that applications return to the root without deleting their desktop entries.
+Membership remains unique through `ApplicationLauncherState` persistence.
+
+All three context menus map the source-tile point into the Qt Quick Controls
+overlay and use the same resolved KDockW/Kirigami surface and foreground colors.
+Qt's `Menu.popup(parent, point)` positioner handles available screen space and
+submenu side selection; tests cover the menu action policy and theme colors,
+while real edge placement and contrast still require Plasma/Wayland review.
+Launchpad's QML contains no attached horizontal ScrollBar/ScrollIndicator; its
+GridView is now non-interactive, vertical-only, and uses floored cell widths
+within a clipped page region. The source does not prove the origin of the stripe
+seen in the owner's screenshot; the visual artifact remains to be rechecked.
+
+The Windows Start home already conditionally displays its “All applications”
+button. Fourth-cycle regressions now verify its visibility, non-zero geometry,
+screen-bound placement, and transition to the complete list for the loaded page.
+The reported screenshot did not identify its exact candidate build, so a
+source-level regression was not established.
+
 ## Verification status
 
 Automated model, catalog-filtering, metadata, persistence, three-style QML,
@@ -153,10 +189,13 @@ catalog was ready, 0 ms for 40 warm `ensureLoaded()` calls, and 28 ms for 80
 in-memory searches. This does not measure interactive frame pacing or CPU/GPU
 load during real popup rendering.
 
-Full Production Release CTest passed 209/209 and full Diagnostic Release CTest
-passed 214/214 after the asynchronous refresh-cancellation regression was
-added. The earlier integration teardown failure is fixed by destroying the
-fixture QObject graph before `QApplication` teardown. Real Plasma/Wayland
-visual acceptance, including app/category icon rendering, light/dark popup
-contrast, Spring hover on the Launcher icon, CPU/GPU load, and frame pacing,
-remains open; these tasks stay in `review`.
+Full Production Release CTest passed **214/214** and full Diagnostic Release
+CTest passed **221/221** during the fourth refinement. The first Production
+run had one stale assertion expecting a synchronous page change; the focused
+rerun passed after waiting for the 220 ms transition. The subsequent full
+Production and Diagnostic runs both passed. The real Kicker source probe loaded
+successfully but returned zero favorites, so it could not validate mapping of
+real Plasma favorite IDs. Owner feature acceptance is 19/29; the widget/model/
+launcher cards remain `review`. No new Plasma/Wayland visual acceptance was
+performed; menu placement, the screenshot stripe, animation feel, real favorite
+mapping, and DPI/light-dark rendering remain owner checks.

@@ -381,6 +381,24 @@ The signed tag and all five release assets were verified on the
   functional and visual acceptance. See
   [the investigation and bounded sampling procedure](docs/qa/v060-dev-performance-icon-theme-2026-11-14.md).
 
+  Fourth Launcher refinement: the owner accepted 19/29 criteria (main-view
+  contrast 4/4, Launchpad paging 6/6, KDE Hierarchical/shared favorites 5/5).
+  Source inspection found the Start “All applications” control already present
+  for home mode; its absence in the screenshot was not tied to a source-level
+  visibility regression. Added visible-geometry/action coverage. Launchpad now
+  exposes create/open/rename/delete/extract/move folder actions with themed
+  validation and deletion confirmation. All three context menus use overlay
+  relative popup positioning and the resolved theme palette. Launchpad page
+  changes slide for 220 ms while retaining at most current and target page
+  delegates; search, geometry changes and close cancel safely. No explicit
+  horizontal ScrollBar exists in Launchpad QML; GridView is now non-interactive
+  and vertical-only, but the screenshot stripe's runtime origin remains
+  unconfirmed. A read-only Kicker probe returned an empty favorites model, so
+  real favorite IDs could not be imported in this environment. Production
+  CTest passed 214/214 and Diagnostic CTest 221/221. No live visual retest was
+  possible while the owner's candidate remained active; all three cards stay
+  in `review`.
+
   Controlled GOOD/BAD endpoint runs on 2026-11-14 did not reproduce the earlier
   high-load BAD state: the exact dirty BAD candidate measured 0.18–0.27% CPU
   across three settled samples, while the isolated GOOD stage measured 0.3% in

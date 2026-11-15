@@ -19,10 +19,12 @@ carried forward from the Krema-based development period.
 - Added an optional one-time import of KDE Plasma launcher favorites into an empty Windows Start pin list, preserving the source order and KDockW-owned settings afterward.
 - Added paginated Launchpad navigation and persistent user-created application folders.
 - Added a shared launcher favorites list to KDE Hierarchical, using the existing Windows Start favorites.
+- Added a 220 ms horizontal Launchpad page transition with bounded current/target page delegates and cancellation on search, layout changes, and popup close.
 
 ### Changed
 
 - Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
+- Anchored Launcher context menus to the clicked item through the Qt Quick Controls overlay and applied the resolved KDockW/Kirigami theme palette to all three menus.
 
 ### Fixed
 
@@ -37,12 +39,15 @@ carried forward from the Krema-based development period.
 - Seeded only the selected KDE icon theme into a new isolated diagnostic profile so app and category icons use the user's Plasma theme without sharing the production configuration.
 - Rendered built-in dock separators as visible theme-derived lines, distinct from empty fixed spacers in both dock orientations.
 - Resolved KDE category previews from QVariantList-backed KService children so folders show real descendant application icons.
+- Added accessible Launchpad folder actions, themed name validation and delete confirmation, and move/extract actions that preserve unique app membership.
+- Kept the Windows Start “All applications” action visible and actionable in the pinned home header; added geometry coverage for zero, one and many pins.
+- Disabled unintended horizontal GridView interaction in paginated Launchpad and constrained its grid width to the viewport; no explicit horizontal ScrollBar was present in the QML.
 
 ### Changed
 
 - Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
 - Organized Windows Start into a pinned-app home grid, a separate locale-sorted full list, and an alphabet index that returns to the unfiltered list at the selected section.
-- Kept Launchpad as an adaptive grid of all applications and confined XDG menu categories to KDE Hierarchical, whose tiles show real descendant app icons. Launchpad user-owned folders remain unimplemented because no folder model or supported creation flow exists.
+- Kept Launchpad as an adaptive grid of all applications with persisted user folders and confined XDG menu categories to KDE Hierarchical, whose tiles show real descendant app icons.
 - Tuned the preferred Launcher viewports to 900×600 for Launchpad, 680×600 for Start, and 800×600 for KDE Hierarchical, with dimensions clamped to the available output area.
 - Made built-in dock widgets available as long-press drag sources among pinned entries, persisting their target slot and order while keeping dynamic TaskManager rows outside widget reordering.
 

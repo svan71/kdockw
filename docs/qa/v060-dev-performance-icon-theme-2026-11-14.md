@@ -496,3 +496,66 @@ stable `/usr/bin/kdockw` v0.5.1 remained active, and a second dock was not start
   cycle; all three cards remain `review` pending owner retest. No performance
   profiling was repeated; prior P0 owner acceptance and UNKNOWN historical
   anonymous-PSS attribution remain as previously recorded.
+
+## Fourth Application Launcher refinement cycle — 2026-11-15
+
+The owner reported 19/29 accepted criteria: main-view contrast 4/4, Launchpad
+pagination 6/6, and KDE Hierarchical/shared favorites 5/5. Performance was
+reported smooth and comparable to v0.5.1; this cycle did not re-open P0 or run
+performance profiling. The remaining report concerns came from screenshots
+without a captured candidate path or GNU Build ID.
+
+### Findings and changes
+
+- Windows Start source already had a home-mode “All applications” action and no
+  condition based on the number of pins. The screenshot's missing action could
+  not be tied to a source-level defect or exact binary. Regression coverage now
+  checks visible geometry, containment, click behavior, and Start geometry at
+  zero, one, and many pins; all three styles expose a checked close button.
+- Launchpad root app menus now include a distinct Create Folder action. Folder
+  name input is themed, trims names, rejects empty and case-insensitive duplicate
+  names, and moves the selected app into the created folder. Folder menus expose
+  Open, Rename, and confirmed Delete; the confirmation states apps return to the
+  root. Apps inside a folder can be extracted or moved to another folder. The
+  existing state model continues to enforce unique app membership and persist
+  UUID/name/order/root order.
+- Start, Launchpad and Hierarchical menus now use overlay-relative
+  `Menu.popup(parent, point)` positioning and resolved palette/Kirigami colors.
+  Menu policy and foreground/background contrast are covered by QML tests.
+  Actual edge flipping and disabled/submenu arrow appearance still require the
+  owner's real Plasma visual review.
+- Launchpad has no attached horizontal ScrollBar or ScrollIndicator in source.
+  Its GridView was interactive with default horizontal/vertical Flickable
+  direction; it is now non-interactive with vertical-only direction and floored
+  cell widths inside the clipped viewport. Tests check the bounded grid width
+  and page capacity. Without the screenshot file or a fresh runtime capture, the
+  exact origin of the reported stripe is **UNKNOWN**; the visual must be checked
+  by the owner.
+- Page changes use a 220 ms horizontal OutCubic translation with only outgoing
+  and incoming page models loaded. Rapid page changes complete the pending
+  target before starting another transition. Search, layout resizing and popup
+  close reset/cancel animation state. Tests cover forward/back direction,
+  bounds, rapid input, cancellation, and current/target delegate limits.
+- A read-only QML probe loaded the installed Plasma 6.6.6 Kicker RootModel and
+  observed an available model with zero favorites. No real desktop IDs were
+  available to test mapping; no Kicker/Plasma favorites were written. Existing
+  isolated `launcher-review` state was not modified.
+
+### Verification
+
+- Final full Production Release CTest: **214/214 passed**.
+- Final full Diagnostic Release CTest: **221/221 passed**.
+- Targeted Launcher QML (both page tests): **2/2 passed** in Production and
+  Diagnostic; `msgfmt --check --check-format` and `git diff --check` passed.
+- A Production full run before the animation-aware assertion was updated had
+  one failure at the old synchronous page-switch expectation. The exact QML
+  test was reproduced, corrected to wait for the 220 ms transition after layout
+  settles, and then the full Production and Diagnostic suites passed. The
+  failed full run remains historical evidence.
+- Isolated diagnostic stage: `/home/stout/Documents/vibecoding/kdockw/build/visual-review-diagnostic/stage/bin/kdockw`, version `0.6.0-dev`, source/stage GNU Build ID `9b1038185407c18c0495903eae3aaa2a828c8f36`; source/stage Russian MO SHA-256 both `4a8f04318b276e1bef86a97dd35f76c018c198de190036e552bf97f21efef72f`. A fresh private temporary Sycoca preflight matched this exact staged executable and required KWin Wayland interfaces.
+- The owner's active candidate was not stopped or replaced: PID 892091 still runs
+  `build/v060-dev-diagnostic/stage/bin/kdockw`, GNU Build ID
+  `f8e23d54c06e995d71d0eedaf2e12b409b90e88d`. Stable `/usr/bin/kdockw` remains
+  v0.5.1. The fourth-cycle stage was not launched to avoid a second dock and no
+  new Plasma screenshot/video was captured. No real visual acceptance is
+  claimed; widget, model and Launcher cards remain `review`. No release/tag/push.
