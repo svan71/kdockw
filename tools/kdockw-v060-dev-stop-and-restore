@@ -6,9 +6,6 @@ repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
 diagnostic_root="${repo_root}/diagnostics/v060-dev"
 state_dir="${diagnostic_root}/launcher-state"
 desktop_candidate="${state_dir}/candidate.desktop"
-desktop_backup="${state_dir}/desktop-entry-backup"
-desktop_was_absent="${state_dir}/desktop-entry-was-absent"
-external_desktop_saved="${state_dir}/desktop-entry-edited-during-test"
 state_file="${state_dir}/restore-state"
 service="kdockw-v060-dev-diagnostic.service"
 restore_service="kdockw-v051-restored.service"
@@ -17,13 +14,21 @@ fail() { printf 'KDockW v0.6.0-dev restore refused: %s\n' "$1" >&2; exit 1; }
 
 [[ -f "$state_file" ]] || fail "no restore state is recorded"
 mapfile -t restore_values < "$state_file"
-((${#restore_values[@]} == 3)) || fail "restore state is incomplete; preserving it at $state_dir"
+(( ${#restore_values[@]} == 7 )) || fail "restore state is incomplete; preserving it at $state_dir"
 test_binary="${restore_values[0]}"
 desktop_file="${restore_values[1]}"
 stable_binary="${restore_values[2]}"
+runtime_data_home="${restore_values[3]}"
+runtime_cache_home="${restore_values[4]}"
+data_home="${restore_values[5]}"
+desktop_id="${restore_values[6]}"
 expected_binary="$(readlink -f -- "${repo_root}/build/v060-dev-diagnostic/stage/bin/kdockw" 2>/dev/null || true)"
 [[ -n "$expected_binary" && "$test_binary" == "$expected_binary" ]] || fail "restore state does not match this diagnostic binary"
-[[ -f "$desktop_candidate" ]] || fail "generated Desktop Entry is missing; refusing to overwrite the current per-user entry"
+[[ "$desktop_file" == "${data_home}/applications/${desktop_id}" \
+    && "$desktop_id" == "kdockw-v060-dev-diagnostic.desktop" \
+    && "$runtime_data_home" == "${state_dir}/runtime-data" \
+    && "$runtime_cache_home" == "${state_dir}/runtime-cache" \
+    && -f "$desktop_candidate" ]] || fail "isolated candidate Desktop Entry record is invalid"
 [[ "$("$stable_binary" --version 2>/dev/null || true)" == 'kdockw 0.5.1' ]] \
     || fail "installed stable binary is no longer KDockW v0.5.1: $stable_binary"
 
@@ -53,36 +58,25 @@ for pid in "${remaining_pids[@]}"; do
 done
 
 manager_env="$(systemctl --user show-environment)" || fail "cannot read Plasma user-manager environment"
-data_home="$(sed -n 's/^XDG_DATA_HOME=//p' <<<"$manager_env")"
-[[ -n "$data_home" ]] || data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
+manager_data_home="$(sed -n 's/^XDG_DATA_HOME=//p' <<<"$manager_env")"
+[[ -n "$manager_data_home" ]] || manager_data_home="${HOME}/.local/share"
+[[ "$data_home" == "$manager_data_home" ]] || fail "restore data home does not match KWin's current user data home"
 data_dirs="$(sed -n 's/^XDG_DATA_DIRS=//p' <<<"$manager_env")"
-cache_home="$(sed -n 's/^XDG_CACHE_HOME=//p' <<<"$manager_env")"
-[[ -n "$cache_home" ]] || cache_home="${XDG_CACHE_HOME:-${HOME}/.cache}"
+manager_cache_home="$(sed -n 's/^XDG_CACHE_HOME=//p' <<<"$manager_env")"
+[[ -n "$manager_cache_home" ]] || manager_cache_home="${HOME}/.cache"
 
-if [[ -f "$desktop_backup" ]]; then
-    if [[ -e "$desktop_file" ]] && ! cmp -s "$desktop_candidate" "$desktop_file" \
-            && ! cmp -s "$desktop_backup" "$desktop_file"; then
-        [[ ! -e "$external_desktop_saved" ]] || fail "a concurrent Desktop Entry edit is already preserved at $external_desktop_saved"
-        cp -p -- "$desktop_file" "$external_desktop_saved"
-    fi
-    restore_tmp="${desktop_file}.restore.$$"
-    cp -p -- "$desktop_backup" "$restore_tmp"
-    mv -f -- "$restore_tmp" "$desktop_file"
-elif [[ -f "$desktop_was_absent" ]]; then
-    if [[ -e "$desktop_file" ]] && ! cmp -s "$desktop_candidate" "$desktop_file"; then
-        [[ ! -e "$external_desktop_saved" ]] || fail "a concurrent Desktop Entry edit is already preserved at $external_desktop_saved"
-        cp -p -- "$desktop_file" "$external_desktop_saved"
-    fi
-    [[ ! -e "$desktop_file" ]] || rm -f -- "$desktop_file"
-else
-    fail "Desktop Entry backup/absence marker is missing; preserving restore records"
+# Remove only the exact diagnostic entry recorded by this launch, then refresh
+# the same user Sycoca once so KWin stops authorizing the staged executable.
+if [[ -e "$desktop_file" ]]; then
+    cmp -s "$desktop_candidate" "$desktop_file" \
+        || fail "KWin authorization Desktop Entry changed; preserving it and restore state"
+    rm -- "$desktop_file"
 fi
-env XDG_DATA_HOME="$data_home" XDG_DATA_DIRS="$data_dirs" \
-    XDG_CACHE_HOME="$cache_home" kbuildsycoca6 >/dev/null
-
-# Remove only the transaction markers created by this launcher. Logs and the
-# separate diagnostic config remain available for review.
-rm -f -- "$desktop_backup" "$desktop_was_absent" "$desktop_candidate" "$state_file"
+dbus_address="$(sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' <<<"$manager_env")"
+env DBUS_SESSION_BUS_ADDRESS="$dbus_address" XDG_DATA_HOME="$data_home" \
+    XDG_DATA_DIRS="$data_dirs" XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null \
+    || fail "could not refresh user Sycoca after removing the owned diagnostic Desktop Entry"
+rm -f -- "$desktop_candidate" "$state_file"
 
 mapfile -t running_pids < <(pgrep -x kdockw || true)
 if ((${#running_pids[@]} > 0)); then
@@ -92,16 +86,16 @@ if ((${#running_pids[@]} > 0)); then
         if [[ "$exe" == "$stable_binary" ]]; then
             stable_running=true
         else
-            fail "another KDockW process ($pid, $exe) started during restore; Desktop Entry is restored, leaving processes untouched"
+            fail "another KDockW process ($pid, $exe) started during restore; candidate remains stopped"
         fi
     done
     if [[ "$stable_running" == true ]]; then
-        printf 'Restored the original per-user Desktop Entry; installed KDockW v0.5.1 is already running and was left untouched.\n'
+        printf 'Stopped the diagnostic candidate; installed KDockW v0.5.1 is already running and was left untouched.\n'
         exit 0
     fi
 fi
 
-systemctl --user is-active --quiet "$restore_service" && fail "$restore_service is already active; Desktop Entry is restored"
+systemctl --user is-active --quiet "$restore_service" && fail "$restore_service is already active"
 systemd-run --user --no-block --collect --unit="$restore_service" \
     --property=Type=exec \
     --setenv="XDG_DATA_HOME=${data_home}" \
@@ -119,6 +113,5 @@ for _ in {1..50}; do
     fi
     sleep 0.1
 done
-[[ "$restored" == true ]] || fail "Desktop Entry is restored, but installed KDockW v0.5.1 did not become active"
-printf 'Stopped the diagnostic candidate, restored the original Desktop Entry, and started installed KDockW v0.5.1: %s\n' "$stable_binary"
-[[ ! -e "$external_desktop_saved" ]] || printf 'A concurrent Desktop Entry edit was preserved at %s\n' "$external_desktop_saved"
+[[ "$restored" == true ]] || fail "installed KDockW v0.5.1 did not become active"
+printf 'Stopped the diagnostic candidate and started installed KDockW v0.5.1: %s\n' "$stable_binary"

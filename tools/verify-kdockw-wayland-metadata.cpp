@@ -50,12 +50,16 @@ int main(int argc, char **argv)
         std::cerr << "KService metadata does not grant org_kde_plasma_window_management.\n";
         return 1;
     }
+    if (!interfaces.contains(QStringLiteral("org_kde_plasma_activation_feedback"))) {
+        std::cerr << "KService metadata does not grant org_kde_plasma_activation_feedback.\n";
+        return 1;
+    }
     if (!interfaces.contains(QStringLiteral("zkde_screencast_unstable_v1"))) {
         std::cerr << "KService metadata does not grant zkde_screencast_unstable_v1.\n";
         return 1;
     }
 
     std::cout << "KService matched " << service->storageId().toStdString()
-              << " to the diagnostic executable and grants Plasma window management and KWin ScreenCast.\n";
+              << " to the diagnostic executable and grants Plasma window management, activation feedback, and KWin ScreenCast.\n";
     return 0;
 }

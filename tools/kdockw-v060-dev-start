@@ -7,36 +7,104 @@ build_dir="${repo_root}/build/v060-dev-diagnostic"
 source_binary="${build_dir}/bin/kdockw"
 binary="${build_dir}/stage/bin/kdockw"
 source "${script_dir}/lib/kdockw-stage-build-id.sh"
+source "${script_dir}/lib/kdockw-config-seed.sh"
 metadata_checker="${build_dir}/bin/kdockw_diagnostic_metadata_check"
 diagnostic_root="${repo_root}/diagnostics/v060-dev"
 state_dir="${diagnostic_root}/launcher-state"
 desktop_candidate="${state_dir}/candidate.desktop"
-desktop_backup="${state_dir}/desktop-entry-backup"
-desktop_was_absent="${state_dir}/desktop-entry-was-absent"
-external_desktop_saved="${state_dir}/desktop-entry-edited-during-test"
+runtime_data_home="${state_dir}/runtime-data"
+runtime_cache_home="${state_dir}/runtime-cache"
 state_file="${state_dir}/restore-state"
+candidate_desktop_id="kdockw-v060-dev-diagnostic.desktop"
 config_file="${diagnostic_root}/config/kdockwrc"
+diagnostic_xdg_config_home="${diagnostic_root}/xdg-config"
 log_file="${diagnostic_root}/logs/kdockw.log"
 service="kdockw-v060-dev-diagnostic.service"
 preflight_only=false
 wayland_debug=false
 wayland_debug_args=()
+profile_name=""
+preview_capture_mode=cpu-only
+task_diagnostics=false
+model_debug=false
+performance_diagnostics=false
+qml_profiler=false
+experiment_suppress_task_model_forwarding=false
+gdb_attach=false
+object_census=false
+kservice_trace=false
 
 fail() { printf 'KDockW v0.6.0-dev launcher refused: %s\n' "$1" >&2; exit 1; }
 
-for argument in "$@"; do
-    case "$argument" in
-        --preflight-only) preflight_only=true ;;
-        --wayland-debug) wayland_debug=true ;;
-        *) fail "usage: $0 [--preflight-only] [--wayland-debug]" ;;
+while (($#)); do
+    case "$1" in
+        --preflight-only) preflight_only=true; shift ;;
+        --wayland-debug) wayland_debug=true; shift ;;
+        --profile)
+            (($# >= 2)) || fail "--profile requires a name"
+            profile_name="$2"
+            shift 2
+            ;;
+        --profile=*)
+            profile_name="${1#*=}"
+            [[ -n "$profile_name" ]] || fail "--profile requires a name"
+            shift
+            ;;
+        --preview-capture-mode)
+            (($# >= 2)) || fail "--preview-capture-mode requires auto or cpu-only"
+            preview_capture_mode="$2"
+            [[ "$preview_capture_mode" == auto || "$preview_capture_mode" == cpu-only ]] \
+                || fail "--preview-capture-mode must be auto or cpu-only"
+            shift 2
+            ;;
+        --preview-capture-mode=*)
+            preview_capture_mode="${1#*=}"
+            [[ "$preview_capture_mode" == auto || "$preview_capture_mode" == cpu-only ]] \
+                || fail "--preview-capture-mode must be auto or cpu-only"
+            shift
+            ;;
+        --task-diagnostics) task_diagnostics=true; shift ;;
+        --model-debug) model_debug=true; shift ;;
+        --performance-diagnostics) performance_diagnostics=true; shift ;;
+        --qml-profiler) qml_profiler=true; shift ;;
+        --experiment-suppress-task-model-forwarding) experiment_suppress_task_model_forwarding=true; shift ;;
+        --gdb-attach) gdb_attach=true; shift ;;
+        --object-census) object_census=true; shift ;;
+        --kservice-trace) kservice_trace=true; shift ;;
+        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace]" ;;
     esac
 done
+if [[ "$qml_profiler" == true ]]; then
+    [[ -x /usr/lib/qt6/bin/qmlprofiler ]] || fail "Qt QML profiler client is not installed"
+    grep -Fq -- '-DQT_QML_DEBUG' "${build_dir}/CMakeCache.txt" \
+        || fail "diagnostic build does not include Qt QML debugging support"
+fi
+if [[ "$gdb_attach" == true || "$object_census" == true ]]; then
+    performance_diagnostics=true
+fi
+if [[ -n "$profile_name" ]]; then
+    profile_directory="$(kdockw_diagnostic_profile_directory "$diagnostic_root" "$profile_name")" \
+        || fail "profile name must contain 1-32 lowercase letters, digits, or hyphens and start with a letter or digit"
+    config_file="${profile_directory}/kdockwrc"
+    diagnostic_xdg_config_home="${profile_directory}/xdg-config"
+fi
+if [[ "$profile_name" == launcher-review ]]; then
+    # The owner reproduction profile collects low-rate TaskManager, icon,
+    # event-loop, frame, object and KService aggregates from startup.
+    performance_diagnostics=true
+    kservice_trace=true
+fi
+if [[ "$kservice_trace" == true ]]; then
+    [[ -r "${build_dir}/bin/kdockw-kservice-query-trace.so" ]] \
+        || fail "KService query trace library is missing; build tools/kdockw-v060-kservice-query-trace.cpp first"
+fi
 if [[ "$wayland_debug" == true ]]; then
     wayland_debug_args+=(--setenv=WAYLAND_DEBUG=client)
 fi
 
 [[ -x "$source_binary" ]] || fail "diagnostic build binary is missing: $source_binary"
 [[ -x "$metadata_checker" ]] || fail "KService metadata checker is missing: $metadata_checker"
+command -v dbus-run-session >/dev/null || fail "dbus-run-session is required to keep private Sycoca rebuilds off the user session bus"
 [[ -f "${build_dir}/CMakeCache.txt" ]] || fail "CMake cache is missing"
 grep -Fxq 'CMAKE_BUILD_TYPE:STRING=Release' "${build_dir}/CMakeCache.txt" || fail "candidate must use Release"
 grep -Fxq 'KDOCKW_DIAGNOSTIC_BUILD:BOOL=ON' "${build_dir}/CMakeCache.txt" || fail "candidate must use KDOCKW_DIAGNOSTIC_BUILD=ON"
@@ -57,11 +125,11 @@ grep -Fxq 'KDE_SESSION_VERSION=6' <<<"$manager_env" || fail "manager is not in P
 wayland_display="$(sed -n 's/^WAYLAND_DISPLAY=//p' <<<"$manager_env")"
 dbus_address="$(sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' <<<"$manager_env")"
 manager_data_dirs="$(sed -n 's/^XDG_DATA_DIRS=//p' <<<"$manager_env")"
-manager_cache_home="$(sed -n 's/^XDG_CACHE_HOME=//p' <<<"$manager_env")"
+manager_config_home="$(sed -n 's/^XDG_CONFIG_HOME=//p' <<<"$manager_env")"
 [[ -S "/run/user/$(id -u)/${wayland_display}" ]] || fail "Wayland socket is unavailable"
 [[ "$dbus_address" == "unix:path=/run/user/$(id -u)/bus" && -S "/run/user/$(id -u)/bus" ]] || fail "user D-Bus is unavailable"
 grep -Fxq 'KWIN_WAYLAND_NO_PERMISSION_CHECKS=1' <<<"$manager_env" && fail "KWin permission checks are disabled"
-if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_PREVIEW_CAPTURE_MODE|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
+if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_PREVIEW_CAPTURE_MODE|KDOCKW_PERF_DIAGNOSTICS|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
     fail "Plasma manager has a pre-existing diagnostic override"
 fi
 for xdg_name in XDG_CONFIG_HOME XDG_CONFIG_DIRS XDG_DATA_HOME XDG_CACHE_HOME; do
@@ -70,14 +138,14 @@ for xdg_name in XDG_CONFIG_HOME XDG_CONFIG_DIRS XDG_DATA_HOME XDG_CACHE_HOME; do
 done
 
 data_home="$(sed -n 's/^XDG_DATA_HOME=//p' <<<"$manager_env")"
-[[ -n "$data_home" ]] || data_home="${XDG_DATA_HOME:-${HOME}/.local/share}"
-[[ -n "$manager_cache_home" ]] || manager_cache_home="${XDG_CACHE_HOME:-${HOME}/.cache}"
-desktop_file="${data_home}/applications/com.thicking.kdockw.desktop"
-[[ ! -e "$state_file" && ! -e "$desktop_backup" && ! -e "$desktop_was_absent" ]] \
-    || fail "a previous override needs restoration first: $state_dir"
-[[ ! -e "$external_desktop_saved" ]] || fail "a concurrent desktop-entry edit is preserved at $external_desktop_saved"
+[[ -n "$data_home" ]] || data_home="${HOME}/.local/share"
+manager_cache_home="$(sed -n 's/^XDG_CACHE_HOME=//p' <<<"$manager_env")"
+[[ -n "$manager_cache_home" ]] || manager_cache_home="${HOME}/.cache"
+desktop_file="${data_home}/applications/${candidate_desktop_id}"
+[[ ! -e "$state_file" ]] \
+    || fail "a previous diagnostic launch needs restoration first: $state_dir"
 [[ ! -e "$desktop_candidate" ]] || fail "a stale candidate Desktop Entry needs review: $desktop_candidate"
-[[ ! -e "$desktop_file" || -f "$desktop_file" ]] || fail "per-user Desktop ID entry is not a regular file: $desktop_file"
+[[ ! -e "$desktop_file" ]] || fail "diagnostic Desktop ID already exists and will not be replaced: $desktop_file"
 systemctl --user is-active --quiet "$service" && fail "$service is already active"
 
 # Never replace the isolated install tree while the diagnostic candidate is
@@ -133,26 +201,26 @@ check_candidate_metadata() {
     temporary_home="$(mktemp -d "${TMPDIR:-/tmp}/kdockw-v060-preflight.XXXXXX")"
     trap 'rm -rf -- "$temporary_home"' RETURN
     mkdir -p "${temporary_home}/applications" "${temporary_home}/cache"
-    cat > "${temporary_home}/applications/com.thicking.kdockw.desktop" <<EOF
+    cat > "${temporary_home}/applications/${candidate_desktop_id}" <<EOF
 [Desktop Entry]
 Type=Application
 Name=KDockW v0.6.0-dev Diagnostic
 Name[ru]=KDockW v0.6.0-dev — диагностика
-NoDisplay=false
+NoDisplay=true
 Terminal=false
 Exec=${canonical_binary}
 Icon=com.thicking.kdockw
 X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,org_kde_plasma_activation_feedback,zkde_screencast_unstable_v1
 EOF
-    chmod 0644 "${temporary_home}/applications/com.thicking.kdockw.desktop"
-    desktop-file-validate "${temporary_home}/applications/com.thicking.kdockw.desktop" \
+    chmod 0644 "${temporary_home}/applications/${candidate_desktop_id}"
+    desktop-file-validate "${temporary_home}/applications/${candidate_desktop_id}" \
         || fail "candidate Desktop Entry is invalid"
-    env XDG_DATA_HOME="$temporary_home" XDG_DATA_DIRS="$manager_data_dirs" \
+    dbus-run-session -- env XDG_DATA_HOME="$temporary_home" XDG_DATA_DIRS="$manager_data_dirs" \
         XDG_CACHE_HOME="${temporary_home}/cache" kbuildsycoca6 >/dev/null
     env XDG_DATA_HOME="$temporary_home" XDG_DATA_DIRS="$manager_data_dirs" \
         XDG_CACHE_HOME="${temporary_home}/cache" \
-        "$metadata_checker" "$canonical_binary" com.thicking.kdockw.desktop \
-        || fail "KService did not resolve com.thicking.kdockw to the diagnostic executable and required KWin interfaces"
+        "$metadata_checker" "$canonical_binary" "$candidate_desktop_id" \
+        || fail "private KService preflight did not resolve the candidate Desktop ID and required KWin interfaces"
     rm -rf -- "$temporary_home"
     trap - RETURN
 }
@@ -167,35 +235,47 @@ check_candidate_metadata
     exit 0
 }
 
-mkdir -p "$state_dir" "$(dirname -- "$config_file")" "$(dirname -- "$log_file")"
-if [[ -e "$desktop_file" ]]; then
-    cp -p -- "$desktop_file" "$desktop_backup"
-else
-    : > "$desktop_was_absent"
+mkdir -p "$state_dir" "$(dirname -- "$config_file")" "$(dirname -- "$log_file")" \
+    "$runtime_data_home/applications" "$runtime_cache_home"
+mkdir -p "$diagnostic_xdg_config_home"
+source_config_home="$manager_config_home"
+[[ -n "$source_config_home" ]] || source_config_home="${XDG_CONFIG_HOME:-${HOME}/.config}"
+kdockw_seed_icon_theme_if_missing "$source_config_home" "$diagnostic_xdg_config_home" \
+    || fail "could not safely initialize the isolated profile icon theme"
+source_config_file="${source_config_home}/kdockwrc"
+if [[ ! -s "$config_file" && -f "$source_config_file" \
+        && ( ! -e "$config_file" || ( -f "$config_file" && ! -L "$config_file" ) ) ]]; then
+    kdockw_seed_config_if_empty "$config_file" "$source_config_file" \
+        || fail "could not safely initialize the empty diagnostic config"
+    printf 'Initialized the empty diagnostic config from installed user settings; later runs preserve this candidate config.\n'
 fi
-printf '%s\n%s\n%s\n' "$canonical_binary" "$desktop_file" "$stable_binary" > "$state_file"
+cat > "$desktop_candidate" <<EOF
+[Desktop Entry]
+Type=Application
+Name=KDockW v0.6.0-dev Diagnostic
+Name[ru]=KDockW v0.6.0-dev — диагностика
+NoDisplay=true
+Terminal=false
+Exec=${canonical_binary}
+Icon=com.thicking.kdockw
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,org_kde_plasma_activation_feedback,zkde_screencast_unstable_v1
+EOF
+chmod 0644 "$desktop_candidate"
+desktop-file-validate "$desktop_candidate" || fail "generated KWin authorization Desktop Entry is invalid"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$canonical_binary" "$desktop_file" "$stable_binary" \
+    "$runtime_data_home" "$runtime_cache_home" "$data_home" "$candidate_desktop_id" > "$state_file"
 
 restore_desktop_entry() {
-    if [[ -f "$desktop_backup" ]]; then
-        if [[ -e "$desktop_file" ]] && ! cmp -s "$desktop_candidate" "$desktop_file" \
-                && ! cmp -s "$desktop_backup" "$desktop_file"; then
-            [[ ! -e "$external_desktop_saved" ]] || fail "a concurrent desktop-entry edit is already preserved at $external_desktop_saved"
-            cp -p -- "$desktop_file" "$external_desktop_saved"
-        fi
-        local restore_tmp="${desktop_file}.restore.$$"
-        cp -p -- "$desktop_backup" "$restore_tmp"
-        mv -f -- "$restore_tmp" "$desktop_file"
-    elif [[ -f "$desktop_was_absent" ]]; then
-        if [[ -e "$desktop_file" ]] && ! cmp -s "$desktop_candidate" "$desktop_file"; then
-            [[ ! -e "$external_desktop_saved" ]] || fail "a concurrent desktop-entry edit is already preserved at $external_desktop_saved"
-            cp -p -- "$desktop_file" "$external_desktop_saved"
-        fi
-        [[ ! -e "$desktop_file" ]] || rm -f -- "$desktop_file"
-    else
-        fail "desktop-entry restore record is missing"
+    [[ -f "$desktop_candidate" ]] || fail "candidate Desktop Entry ownership record is missing"
+    if [[ -e "$desktop_file" ]]; then
+        cmp -s "$desktop_candidate" "$desktop_file" || fail "KWin authorization Desktop Entry changed; preserving it and restore state"
+        rm -- "$desktop_file"
     fi
-    env XDG_DATA_HOME="$data_home" XDG_DATA_DIRS="$manager_data_dirs" \
-        XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null
+    if ! env DBUS_SESSION_BUS_ADDRESS="$dbus_address" XDG_DATA_HOME="$data_home" \
+        XDG_DATA_DIRS="$manager_data_dirs" XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null; then
+        fail "could not refresh the user Sycoca after removing the owned diagnostic Desktop Entry"
+    fi
+    rm -f -- "$desktop_candidate" "$state_file"
 }
 
 cleanup_failed_start() {
@@ -222,31 +302,73 @@ cleanup_failed_start() {
 restore_pending=true
 trap cleanup_failed_start EXIT
 
-cat > "$desktop_candidate" <<EOF
-[Desktop Entry]
-Type=Application
-Name=KDockW v0.6.0-dev Diagnostic
-Name[ru]=KDockW v0.6.0-dev — диагностика
-NoDisplay=false
-Terminal=false
-Exec=${canonical_binary}
-Icon=com.thicking.kdockw
-X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,org_kde_plasma_activation_feedback,zkde_screencast_unstable_v1
-EOF
-chmod 0644 "$desktop_candidate"
 desktop-file-validate "$desktop_candidate" || fail "generated Desktop Entry is invalid"
-local_tmp="${desktop_file}.kdockw-v060.$$"
-install -D -m 0644 -- "$desktop_candidate" "$local_tmp"
-mv -f -- "$local_tmp" "$desktop_file"
-env XDG_DATA_HOME="$data_home" XDG_DATA_DIRS="$manager_data_dirs" \
-    XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null
-env XDG_DATA_HOME="$data_home" XDG_DATA_DIRS="$manager_data_dirs" \
-    XDG_CACHE_HOME="$manager_cache_home" "$metadata_checker" "$canonical_binary" com.thicking.kdockw.desktop \
-    || fail "registered Desktop ID did not resolve to the candidate with required KWin interfaces"
+install -D -m 0644 -- "$desktop_candidate" "$desktop_file"
+if [[ ":${manager_data_dirs}:" == *":${data_home}:"* ]]; then
+    runtime_data_dirs="$manager_data_dirs"
+else
+    runtime_data_dirs="${data_home}:${manager_data_dirs}"
+fi
+env DBUS_SESSION_BUS_ADDRESS="$dbus_address" XDG_DATA_HOME="$data_home" \
+    XDG_DATA_DIRS="$manager_data_dirs" XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null \
+    || fail "could not register the diagnostic Desktop Entry in the KWin-visible user Sycoca"
+env DBUS_SESSION_BUS_ADDRESS="$dbus_address" XDG_DATA_HOME="$data_home" \
+    XDG_DATA_DIRS="$manager_data_dirs" XDG_CACHE_HOME="$manager_cache_home" \
+    "$metadata_checker" "$canonical_binary" "$candidate_desktop_id" \
+    || fail "KWin-visible Sycoca does not resolve the diagnostic Desktop ID to this candidate and required interfaces"
 
 touch "$config_file" "$log_file"
 mapfile -t running_pids < <(pgrep -x kdockw || true)
-((${#running_pids[@]} == 0)) || fail "KDockW started during the launch setup (PIDs: ${running_pids[*]}); restoring the original Desktop Entry"
+((${#running_pids[@]} == 0)) || fail "KDockW started during the launch setup (PIDs: ${running_pids[*]}); no user Desktop Entry was changed"
+task_diagnostic_args=()
+if [[ "$task_diagnostics" == true ]]; then
+    task_diagnostic_args+=(--setenv=KDOCKW_TASK_DIAGNOSTICS=1)
+fi
+kservice_trace_args=()
+if [[ "$kservice_trace" == true ]]; then
+    kservice_trace_log="${diagnostic_root}/logs/kservice-query-$(date +%Y%m%d-%H%M%S).csv"
+    install -m 0600 /dev/null "$kservice_trace_log"
+    printf 'interval_ns,query_count,final\n' > "$kservice_trace_log"
+    kservice_trace_args+=(--setenv="LD_PRELOAD=${build_dir}/bin/kdockw-kservice-query-trace.so")
+    kservice_trace_args+=(--setenv="KDOCKW_KSERVICE_TRACE_OUT=${kservice_trace_log}")
+fi
+model_logging_args=()
+if [[ "$model_debug" == false ]]; then
+    model_logging_args+=(--setenv='QT_LOGGING_RULES=kdockw.model.debug=false;kdockw.presentation.debug=false')
+fi
+performance_diagnostic_args=()
+if [[ "$performance_diagnostics" == true ]]; then
+    performance_diagnostic_args+=(--setenv=KDOCKW_PERF_DIAGNOSTICS=1)
+fi
+experiment_args=()
+if [[ "$experiment_suppress_task_model_forwarding" == true ]]; then
+    [[ "$performance_diagnostics" == true ]] || fail "the task-model suppression experiment requires performance diagnostics"
+    experiment_args+=(--setenv=KDOCKW_EXPERIMENT_SUPPRESS_TASK_MODEL_FORWARDING=1)
+fi
+gdb_attach_args=()
+if [[ "$gdb_attach" == true ]]; then
+    gdb_attach_args+=(--setenv=KDOCKW_GDB_ATTACH=1)
+fi
+object_census_args=()
+if [[ "$object_census" == true ]]; then
+    object_census_args+=(--setenv=KDOCKW_OBJECT_CENSUS=1)
+fi
+qml_profiler_args=()
+if [[ "$qml_profiler" == true ]]; then
+    qml_profiler_args+=(-qmljsdebugger=port:3768,host:127.0.0.1,services:QmlProfiler)
+fi
+runtime_observer_log="${diagnostic_root}/logs/runtime-${profile_name:-default}-$(date +%Y%m%d-%H%M%S).jsonl"
+runtime_observer_service="kdockw-v060-runtime-observer-$(date +%s)"
+if [[ "$performance_diagnostics" == true ]]; then
+    install -m 0600 /dev/null "$runtime_observer_log"
+    systemd-run --user --no-block --collect --unit="$runtime_observer_service" \
+        --property=Type=exec \
+        python3 "${script_dir}/kdockw-v060-dev-runtime-observer.py" \
+        --executable "$canonical_binary" --output "$runtime_observer_log" \
+        --config "$config_file" \
+        --duration 180 --wait-seconds 20 \
+        || fail "could not start the bounded runtime observer"
+fi
 systemd-run --user --no-block --collect --unit="$service" \
     --property=Type=exec \
     --property="WorkingDirectory=${repo_root}" \
@@ -254,13 +376,21 @@ systemd-run --user --no-block --collect --unit="$service" \
     --property="StandardError=append:${log_file}" \
     --setenv='QT_MESSAGE_PATTERN=[%{time boot}] %{category}: %{message}' \
     --setenv="KDOCKW_DIAGNOSTIC_CONFIG=${config_file}" \
-    --setenv=KDOCKW_TASK_DIAGNOSTICS=1 \
+    --setenv="XDG_CONFIG_HOME=${diagnostic_xdg_config_home}" \
+    "${task_diagnostic_args[@]}" \
+    "${model_logging_args[@]}" \
+    "${performance_diagnostic_args[@]}" \
+    "${experiment_args[@]}" \
+    "${gdb_attach_args[@]}" \
+    "${object_census_args[@]}" \
+    "${kservice_trace_args[@]}" \
     --setenv=KDOCKW_GEOMETRY_TRACE=1 \
-    --setenv="XDG_DATA_HOME=${data_home}" \
-    --setenv="XDG_DATA_DIRS=${manager_data_dirs}" \
-    --setenv=KDOCKW_PREVIEW_CAPTURE_MODE=cpu-only \
+    --setenv="XDG_DATA_HOME=${runtime_data_home}" \
+    --setenv="XDG_DATA_DIRS=${runtime_data_dirs}" \
+    --setenv="XDG_CACHE_HOME=${runtime_cache_home}" \
+    --setenv="KDOCKW_PREVIEW_CAPTURE_MODE=${preview_capture_mode}" \
     "${wayland_debug_args[@]}" \
-    "$binary"
+    "$binary" "${qml_profiler_args[@]}"
 
 started=false
 for _ in {1..50}; do
@@ -278,6 +408,12 @@ done
 restore_pending=false
 trap - EXIT
 
-printf 'Started %s\nBinary: %s\nRuntime Desktop ID: com.thicking.kdockw\nSeparate config: %s\nLog: %s\n' \
-    "$service" "$canonical_binary" "$config_file" "$log_file"
+printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview capture mode: %s\nTask diagnostics: %s\nModel debug logging: %s\nPerformance diagnostics: %s\nQML Profiler: %s\nKService query trace: %s\nSeparate config: %s\nIsolated XDG_CONFIG_HOME: %s\nIsolated XDG_DATA_HOME: %s\nIsolated XDG_CACHE_HOME: %s\nLog: %s\n' \
+    "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
+if [[ "$kservice_trace" == true ]]; then
+    printf 'KService trace: %s\n' "$kservice_trace_log"
+fi
+if [[ "$performance_diagnostics" == true ]]; then
+    printf 'Bounded runtime telemetry: %s (%s, up to 180 s)\n' "$runtime_observer_service" "$runtime_observer_log"
+fi
 printf 'After visual testing, run: %s/tools/kdockw-v060-dev-stop-and-restore\n' "$repo_root"

@@ -139,6 +139,32 @@ def proc_memory(pid: int) -> dict[str, int]:
     return values
 
 
+def assess_taskmanager_transitions(log: str, run_id: str, existing_windows: int) -> dict[str, object]:
+    initial_title = f"KDockW P0 PREFLIGHT {run_id} INITIAL"
+    changed_title = f"KDockW P0 PREFLIGHT {run_id} RENAMED"
+    checks = {
+        "protocolAndExistingWindows": existing_windows > 0,
+        "testWindowAppeared": any(initial_title in line and "isWindow= true" in line for line in log.splitlines()),
+        "titleChanged": changed_title in log and "[KDOCKW_TASK_DATA_TRACE]" in log,
+        "decorationRoleChanged": re.search(r"dataChangedRoles=.*(?:\bdecoration|\b1):\s*[1-9]\d*", log) is not None,
+        "groupingObserved": any("desktopId= kdockw-test-window" in line and "isGroupParent= true" in line
+                                 for line in log.splitlines()),
+        "testWindowDisappeared": False,
+    }
+    snapshot_markers = list(re.finditer(r"Task diagnostic snapshot:", log))
+    removal_markers = [marker for marker in snapshot_markers
+                       if re.search(r'"rows removed"', log[marker.start():].splitlines()[0])]
+    if removal_markers:
+        last = removal_markers[-1]
+        prior = max((marker.end() for marker in snapshot_markers if marker.start() < last.start()), default=0)
+        snapshot_block = log[prior:last.end()]
+        checks["testWindowDisappeared"] = initial_title not in snapshot_block
+    passed = all(checks.values())
+    return {"status": "PASS" if passed else "INVALID", "checks": checks,
+            "reason": "All required live TaskManager transitions were observed." if passed
+            else "One or more required TaskManager transitions were not observed; do not use this run for performance analysis."}
+
+
 def elf_build_id(path: str) -> str:
     env = {**os.environ, "LC_ALL": "C", "LANG": "C", "LANGUAGE": "C"}
     result = subprocess.run(["readelf", "-n", path], check=True, capture_output=True, text=True, env=env)
@@ -258,6 +284,49 @@ class Scenario:
             if self.stop_event.is_set():
                 raise InterruptedError("automatic memory/event-loop stop threshold reached")
             time.sleep(min(0.1, deadline - time.monotonic()))
+
+    def run_functional_preflight(self) -> dict[str, object]:
+        run_id = self.manifest["runId"]
+        app_id = self.manifest["appIds"]["alpha"]
+        log_path = pathlib.Path(self.args.dock_log)
+        deadline = time.monotonic() + self.args.ready_timeout
+        recent = ""
+        existing_windows = 0
+        while time.monotonic() < deadline:
+            current_log = log_path.read_text(encoding="utf-8", errors="replace")
+            initial_at = current_log.rfind('Task diagnostic snapshot: "initial"')
+            if initial_at >= 0:
+                recent = current_log[initial_at:]
+                counts = [int(value) for value in re.findall(r"\bwindows=\s*(\d+)", recent)]
+                existing_windows = max(counts, default=0)
+                existing_windows = max(existing_windows, len(re.findall(r"Task diagnostic row .*window= true", recent)))
+                if existing_windows > 0:
+                    break
+            time.sleep(0.2)
+        if existing_windows <= 0:
+            return {"status": "INVALID", "checks": {"protocolAndExistingWindows": False},
+                    "reason": "No initial TaskManager snapshot with existing windows; do not use this run for performance analysis."}
+
+        log_start = len(log_path.read_text(encoding="utf-8", errors="replace"))
+        first = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} INITIAL")
+        self.wait(2, "functional-window-insert")
+        changed_title = f"KDockW P0 PREFLIGHT {run_id} RENAMED"
+        first.title = changed_title
+        first.send("setTitle", changed_title)
+        self.mark("functional-title-changed", appId=app_id)
+        first.send("setIcon", self.manifest["icons"]["beta"])
+        self.mark("functional-icon-changed", appId=app_id)
+
+        second = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 2")
+        third = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 3")
+        self.wait(6, "functional-group-and-decoration-settle")
+        self.close(second)
+        self.close(third)
+        self.close(first)
+        self.wait(3, "functional-removal-settle")
+
+        log = log_path.read_text(encoding="utf-8", errors="replace")[log_start:]
+        return assess_taskmanager_transitions(log, run_id, existing_windows)
 
     def run(self) -> None:
         alpha1 = self.open("alpha")
@@ -500,6 +569,36 @@ def measure(args: argparse.Namespace) -> int:
     return 2 if stop_requested else 0
 
 
+def functional_preflight(args: argparse.Namespace) -> int:
+    manifest = json.loads(pathlib.Path(args.manifest).read_text(encoding="utf-8"))
+    output = pathlib.Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    actual_executable = os.path.realpath(f"/proc/{args.dock_pid}/exe")
+    if actual_executable != os.path.realpath(args.dock_executable):
+        raise RuntimeError(f"dock PID executable mismatch: {actual_executable} != {args.dock_executable}")
+    if elf_build_id(f"/proc/{args.dock_pid}/exe") != args.build_id:
+        raise RuntimeError("dock GNU Build ID mismatch")
+    running = [int(value) for value in subprocess.run(["pgrep", "-x", "kdockw"], capture_output=True, text=True).stdout.split()]
+    if running != [args.dock_pid]:
+        raise RuntimeError(f"expected exactly the selected KDockW process, found PIDs {running}")
+    stop_event = threading.Event()
+    scenario = Scenario(args, manifest, output / "events.jsonl", stop_event)
+    try:
+        result = scenario.run_functional_preflight()
+    finally:
+        for window in list(scenario.windows):
+            scenario.close(window)
+    result.update({"variant": args.variant, "dockPid": args.dock_pid,
+                   "dockExecutable": actual_executable, "gnuBuildId": args.build_id,
+                   "runId": manifest["runId"], "monotonicCompletedNs": time.monotonic_ns()})
+    (output / "functional-preflight.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(f"TaskManager functional preflight: {result['status']} ({output / 'functional-preflight.json'})")
+    if result["status"] != "PASS":
+        print(result["reason"], file=sys.stderr)
+        return 3
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
@@ -527,6 +626,18 @@ def main() -> int:
     run.add_argument("--stop-anon-growth-kib", type=int, default=400 * 1024)
     run.add_argument("--stop-cpu-seconds", type=int, default=20)
     run.set_defaults(func=measure)
+    preflight = commands.add_parser("functional-preflight", help="Exercise TaskManager before any performance run")
+    preflight.add_argument("--manifest", required=True)
+    preflight.add_argument("--output", required=True)
+    preflight.add_argument("--config-home", required=True)
+    preflight.add_argument("--dock-pid", required=True, type=int)
+    preflight.add_argument("--dock-executable", required=True)
+    preflight.add_argument("--build-id", required=True)
+    preflight.add_argument("--variant", choices=("v051", "v060"), required=True)
+    preflight.add_argument("--dock-log", required=True)
+    preflight.add_argument("--ready-timeout", type=float, default=15.0)
+    preflight.add_argument("--stop-file")
+    preflight.set_defaults(func=functional_preflight)
     args = parser.parse_args()
     signal.signal(signal.SIGTERM, lambda _signum, _frame: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:

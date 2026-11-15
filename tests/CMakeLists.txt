@@ -35,6 +35,10 @@ if(UNIX AND EXISTS "/usr/bin/readelf" AND EXISTS "/usr/bin/true" AND EXISTS "/us
 endif()
 
 if(KDOCKW_DIAGNOSTIC_BUILD)
+    add_test(NAME kdockw_diagnostic_config_seed
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_config_seed.sh
+    )
+    set_tests_properties(kdockw_diagnostic_config_seed PROPERTIES LABELS "diagnostic;launcher" TIMEOUT 10)
     add_test(NAME kdockw_v051_launcher_active_guard
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v051_launcher_active_guard.sh
     )
@@ -42,8 +46,21 @@ if(KDOCKW_DIAGNOSTIC_BUILD)
     if(KDOCKW_DIAGNOSTIC_VERSION STREQUAL "0.6.0")
         add_test(NAME kdockw_v060_launcher_active_guard
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v060_launcher_active_guard.sh
+                ${CMAKE_BINARY_DIR}/CMakeCache.txt
         )
         set_tests_properties(kdockw_v060_launcher_active_guard PROPERTIES LABELS "diagnostic;launcher" TIMEOUT 30)
+        if(KDOCKW_PYTHON3_EXECUTABLE)
+            add_test(NAME kdockw_v060_taskmanager_preflight
+                COMMAND ${KDOCKW_PYTHON3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v060_taskmanager_preflight.py
+            )
+            set_tests_properties(kdockw_v060_taskmanager_preflight PROPERTIES LABELS "diagnostic;taskmanager" TIMEOUT 15)
+            add_test(NAME kdockw_v060_runtime_observer
+                COMMAND ${KDOCKW_PYTHON3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v060_runtime_observer.py
+            )
+            set_tests_properties(kdockw_v060_runtime_observer PROPERTIES LABELS "diagnostic;performance" TIMEOUT 15)
+        endif()
     endif()
 endif()
 

@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
+log_root="${repo_root}/diagnostics/v060-dev/logs"
+
+usage() {
+    cat >&2 <<EOF
+Usage: $0 [--role candidate|stable] PID [OUTPUT_FILE]
+
+Captures a bounded 10-second read-only process snapshot. The default role is
+candidate. Output defaults to ${log_root}/performance-<role>-<timestamp>.log.
+EOF
+    exit "${1:-2}"
+}
+
+role=candidate
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then usage 0; fi
+if [[ "${1:-}" == --role ]]; then
+    (($# >= 2)) || usage 2
+    role="$2"
+    shift 2
+fi
+[[ "$role" == candidate || "$role" == stable ]] || usage 2
+(($# >= 1 && $# <= 2)) || usage 2
+[[ "$1" =~ ^[1-9][0-9]*$ ]] || usage 2
+pid="$1"
+if (($# == 2)); then
+    output="$2"
+else
+    output="${log_root}/performance-${role}-$(date +%Y%m%d-%H%M%S).log"
+fi
+
+exe="$(readlink -f -- "/proc/${pid}/exe" 2>/dev/null || true)"
+[[ -n "$exe" ]] || { printf 'PID %s is not running.\n' "$pid" >&2; exit 1; }
+stable_binary="$(readlink -f -- /usr/bin/kdockw 2>/dev/null || true)"
+candidate_bin="${repo_root}/build/v060-dev-diagnostic/bin/kdockw"
+candidate_stage="${repo_root}/build/v060-dev-diagnostic/stage/bin/kdockw"
+candidate_bin="$(readlink -f -- "$candidate_bin" 2>/dev/null || true)"
+candidate_stage="$(readlink -f -- "$candidate_stage" 2>/dev/null || true)"
+if [[ "$role" == candidate ]]; then
+    [[ "$exe" == "$candidate_bin" || "$exe" == "$candidate_stage" ]] \
+        || { printf 'Refusing candidate sample for non-candidate executable: %s\n' "$exe" >&2; exit 1; }
+else
+    [[ "$exe" == "$stable_binary" ]] \
+        || { printf 'Refusing stable sample for non-production executable: %s\n' "$exe" >&2; exit 1; }
+fi
+
+umask 077
+mkdir -p -- "$(dirname -- "$output")"
+printf 'Capturing KDockW %s PID %s for 10 seconds -> %s\n' "$role" "$pid" "$output"
+clock_ticks="$(getconf CLK_TCK)"
+log_file="${repo_root}/diagnostics/v060-dev/logs/kdockw.log"
+log_offset=0
+[[ -f "$log_file" ]] && log_offset="$(stat -c %s "$log_file")"
+
+declare -A previous_ticks=()
+declare -A previous_uptime=()
+tracked_comm='kdockw|plasmashell|kwin_wayland|kpipewire|pipewire'
+{
+    printf 'KDockW bounded performance snapshot\n'
+    printf 'started_wall=%s\n' "$(date --iso-8601=seconds)"
+    printf 'started_monotonic_uptime=%s\n' "$(awk '{print $1}' /proc/uptime)"
+    printf 'role=%s\npid=%s\nexecutable=%s\n' "$role" "$pid" "$exe"
+    printf 'duration_seconds=10\ninterval_seconds=1\nclock_ticks_per_second=%s\n' "$clock_ticks"
+    printf 'metric_note=cpu_pct is interval CPU time divided by elapsed wall time; ps lifetime CPU is reported separately.\n'
+    printf 'No process is started or stopped; this script only reads /proc, the existing diagnostic log, and GPU counters.\n'
+} > "$output"
+
+for sample in {0..9}; do
+    [[ -r "/proc/${pid}/stat" ]] || { printf 'candidate_exited=true\n' >> "$output"; break; }
+    uptime="$(awk '{print $1}' /proc/uptime)"
+    for proc_pid in $(ps -eo pid=,comm= | awk -v pattern="$tracked_comm" '$2 ~ pattern {print $1}'); do
+        [[ -r "/proc/${proc_pid}/stat" ]] || continue
+        proc_stat="$(cat "/proc/${proc_pid}/stat")"
+        fields="${proc_stat##*) }"
+        read -r -a values <<< "$fields"
+        ticks=$(( ${values[11]:-0} + ${values[12]:-0} ))
+        threads="$(awk '/^Threads:/ {print $2}' "/proc/${proc_pid}/status" 2>/dev/null || true)"
+        rss_kb="$(awk '/^VmRSS:/ {print $2}' "/proc/${proc_pid}/status" 2>/dev/null || true)"
+        comm="$(cat "/proc/${proc_pid}/comm" 2>/dev/null || printf unknown)"
+        cpu_pct=na
+        if [[ -n "${previous_ticks[$proc_pid]:-}" && -n "${previous_uptime[$proc_pid]:-}" ]]; then
+            elapsed="$(awk -v now="$uptime" -v before="${previous_uptime[$proc_pid]}" 'BEGIN {print now-before}')"
+            cpu_pct="$(awk -v current="$ticks" -v before="${previous_ticks[$proc_pid]}" -v hz="$clock_ticks" -v seconds="$elapsed" 'BEGIN {if (seconds>0) printf "%.1f", 100*(current-before)/hz/seconds; else print "na"}')"
+        fi
+        previous_ticks[$proc_pid]="$ticks"
+        previous_uptime[$proc_pid]="$uptime"
+        printf 'sample=%s monotonic_uptime=%s process_pid=%s comm=%s cpu_pct=%s cpu_ticks=%s threads=%s rss_kb=%s\n' \
+            "$sample" "$uptime" "$proc_pid" "$comm" "$cpu_pct" "$ticks" "${threads:-na}" "${rss_kb:-na}" >> "$output"
+        if [[ "$proc_pid" == "$pid" ]]; then
+            for task_stat_path in "/proc/${pid}/task/"*/stat; do
+                [[ -r "$task_stat_path" ]] || continue
+                task_stat="$(cat "$task_stat_path" 2>/dev/null || true)"
+                [[ -n "$task_stat" ]] || continue
+                task_fields="${task_stat##*) }"
+                read -r -a task_values <<< "$task_fields"
+                task_ticks=$(( ${task_values[11]:-0} + ${task_values[12]:-0} ))
+                tid="${task_stat_path%/stat}"
+                tid="${tid##*/}"
+                task_cpu_pct=na
+                thread_key="thread:${pid}:${tid}"
+                if [[ -n "${previous_ticks[$thread_key]:-}" && -n "${previous_uptime[$thread_key]:-}" ]]; then
+                    elapsed="$(awk -v now="$uptime" -v before="${previous_uptime[$thread_key]}" 'BEGIN {print now-before}')"
+                    task_cpu_pct="$(awk -v current="$task_ticks" -v before="${previous_ticks[$thread_key]}" -v hz="$clock_ticks" -v seconds="$elapsed" 'BEGIN {if (seconds>0) printf "%.1f", 100*(current-before)/hz/seconds; else print "na"}')"
+                fi
+                previous_ticks[$thread_key]="$task_ticks"
+                previous_uptime[$thread_key]="$uptime"
+                task_comm="$(cat "/proc/${pid}/task/${tid}/comm" 2>/dev/null || printf unknown)"
+                printf 'sample=%s monotonic_uptime=%s thread_pid=%s tid=%s comm=%s cpu_pct=%s cpu_ticks=%s\n' \
+                    "$sample" "$uptime" "$pid" "$tid" "$task_comm" "$task_cpu_pct" "$task_ticks" >> "$output"
+            done
+        fi
+    done
+
+    current_offset="$log_offset"
+    if [[ -f "$log_file" ]]; then current_offset="$(stat -c %s "$log_file")"; fi
+    if ((current_offset > log_offset)); then
+        delta_bytes=$((current_offset - log_offset))
+        counts="$(tail -c "$delta_bytes" "$log_file" | awk '
+            /Task row changed/ {task++}
+            /KDOCKW_TASK_DATA_TRACE/ {forwarded++}
+            /KDOCKW_DOCK_ROW/ {dock++}
+            END {printf "task_row_changed=%d task_data_trace=%d dock_row=%d", task, forwarded, dock}
+        ')"
+        printf 'sample=%s log_delta_bytes=%s %s\n' "$sample" "$delta_bytes" "$counts" >> "$output"
+        log_offset="$current_offset"
+    else
+        printf 'sample=%s log_delta_bytes=0 task_row_changed=0 task_data_trace=0 dock_row=0\n' "$sample" >> "$output"
+    fi
+    if ((sample == 0 || sample == 4 || sample == 9)) && command -v nvidia-smi >/dev/null 2>&1; then
+        gpu="$(nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw --format=csv,noheader 2>/dev/null || true)"
+        [[ -z "$gpu" ]] || printf 'sample=%s gpu=%s\n' "$sample" "$gpu" >> "$output"
+    fi
+    ((sample == 9)) || sleep 1
+done
+{
+    printf 'ended_wall=%s\n' "$(date --iso-8601=seconds)"
+    printf 'ended_monotonic_uptime=%s\n' "$(awk '{print $1}' /proc/uptime)"
+} >> "$output"
+printf 'Completed 10-second sample: %s\n' "$output"
