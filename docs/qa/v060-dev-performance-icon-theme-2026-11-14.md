@@ -370,3 +370,77 @@ The owner accepted the current candidate with **8/8** results: no immediate slow
 This closes the blocking P0 responsiveness regression **for the accepted candidate based on owner runtime acceptance**. It does not identify the exact cause of the previously observed anonymous-PSS growth (61→522 MiB) or RSS peak (1009 MiB); those historical measurements and diagnostic limitations remain unchanged and memory ownership is still UNKNOWN. The user acceptance report did not include an independently captured executable path or GNU Build ID, so no particular ELF is inferred from the report. No new optimization or runtime behavior change was made for this acceptance.
 
 Built-in Dock Widgets, Built-in Dock Widget Model, and Application Launcher remain `review` until their individual functional and visual acceptance is complete. The next stage is user testing and refinement of the three Launcher interfaces. The diagnostic P0 is accepted; the v0.6.0 feature milestone is not marked done, and no release, tag, or push was made.
+
+## Launcher and built-in widget visual refinement cycle 2 — 2026-11-15
+
+The owner entered this cycle with feature acceptance at **22/29**. The owner
+reported that dock performance was comparable to v0.5.1 and asked not to resume
+profiling unless needed. This cycle made no performance changes and did not
+restart or replace the active owner candidate.
+
+### Findings and implementation
+
+- The narrow launcher popup was caused by the native `Popup.Window` being
+  constrained by its content's implicit size before the first Wayland configure;
+  changing view-level widths alone had not changed the actual top-level window.
+  The popup now requests stable style-specific preferred sizes before opening
+  (Launchpad 900×600, Start 680×600, KDE Hierarchical 800×600 logical pixels),
+  clamped to available screen geometry. The popup remains anchored to the
+  launcher icon, with a small themed gap and scrollable content. Actual visual
+  confirmation remains pending the owner's next session.
+- The detached popup did not inherit the dock's Kirigami palette. Popup colors
+  now come from the resolved dock surface/theme and are passed into its child
+  views, including backgrounds, text, search fields, hover/selected states and
+  borders. No glass, blur, lighting or shadow effects were added. Light, dark
+  and custom themes still require owner visual review.
+- Category folder records already carried their children, but the tile preview
+  contract omitted the actual descendant app records expected by the QML tile.
+  The catalog now derives up to four real descendant application previews,
+  without borrowing entries from other branches; the tile resolves each icon
+  through the application icon path. The updated QML regression checks actual
+  preview model data and rendering inputs. Empty categories use the themed empty
+  folder presentation.
+- The Launcher model has no user-owned folder creation or editing facility.
+  Launchpad therefore remains an application grid and does not present KDE XDG
+  categories as user folders. Folder tiles/creation remain an open roadmap
+  requirement; they are not reported as implemented.
+- Windows Start can import Plasma Favorites once through the supported
+  read-only Kicker favorites source. Desktop IDs are matched to catalog entries,
+  order is preserved, invalid/duplicate entries are ignored, existing Start
+  pins are preserved, and a persisted attempt flag prevents a later empty list
+  from triggering re-import. Changes are not written back to Plasma.
+- Separator/fixed spacer rendering and widget-management movement/order/size
+  regressions remain covered by the existing implementation and tests; the
+  targeted settings autosave regression was fixed for the Favorites import
+  attempt/status fields.
+
+### Verification and limitations
+
+- Isolated full Diagnostic Release CTest: **220/220 passed** after updating the
+  stale Launchpad assertion and confirming the new launcher active-guard test.
+- Full Production Release CTest: **212/213**. The one failure was the existing
+  integration case “Parabolic zoom in a settings preview matches the computed
+  panel edge” timing out while waiting for hover/zoom state. Running that exact
+  case separately passed **67 assertions / 1 case**. The original full-suite
+  failure remains recorded as a test instability; production code for that
+  behavior was not changed.
+- The application source and isolated staged executable both report GNU Build
+  ID `1497d3286a63f8778200ff5bb8c75043bb3f66da` and version `0.6.0-dev`. The
+  staged Russian catalog is present; `msgfmt --check --check-format`, shell
+  syntax and `git diff --check` passed. Embedded application-launcher resources
+  are packaged in the staged executable.
+- A custom-prefix install initially attempted to write `/etc/xdg/autostart` and
+  was refused by filesystem permissions; no system files changed. Re-running
+  through an isolated `DESTDIR` completed successfully. The candidate's real
+  launcher/preflight was not run while the owner's candidate was active; running
+  another dock would violate the single-instance safety boundary. At final read-only
+  verification, only `/usr/bin/kdockw` v0.5.1 (Build ID
+  `7c410e5c4355c330092377e082705df97e1baef6`) was running. The production config
+  SHA-256 still matches the pre-run backup: `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`.
+- No screenshot/video or new owner visual acceptance was available in this
+  cycle. The previous overall **22/29** acceptance remains the latest owner
+  score, not a pass for these changes. Built-in Dock Widgets, Built-in Dock
+  Widget Model and Application Launcher remain `review`; all visual and
+  functional acceptance still requires the owner to inspect the new candidate.
+  The earlier P0 acceptance is preserved above; its exact historical memory
+  growth cause remains UNKNOWN. No release, tag or push was created.

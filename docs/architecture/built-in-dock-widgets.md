@@ -49,12 +49,14 @@ pixels; separators can use automatic size or an explicit 4–512 logical-pixel
 primary slot extent while keeping the same orientation-aware mark.
 
 Slot placement is independent of screen orientation: `start` and `end` refer
-to the dock's primary axis. Application and Folder Stack Drag & Drop remains
-unchanged; built-in widgets are excluded as drag sources and targets. Explicit
-reordering is available through the widget manager. Spring zoom receives a
-per-row primary extent. The Application Launcher icon can magnify; separators
-and spacers retain configured extents. Real extents feed neighboring icon
-centres, offsets, and background growth.
+to the dock's primary axis. Built-in widgets can be long-pressed and dragged
+among pinned dock entries. A move adopts the target widget's slot (or center
+when dropped on a pinned app or Folder Stack), then persists both slot and
+order through `DockEntriesModel`; dynamic TaskManager rows remain outside this
+reorder path. Application and Folder Stack drag behavior is otherwise
+unchanged. Spring zoom receives a per-row primary extent. The Application
+Launcher icon can magnify; separators and spacers retain configured extents.
+Real extents feed neighboring icon centres, offsets, and background growth.
 
 The current content-wrapping `Flow` has no free-space allocator. A stretching
 spacer is therefore not enabled: allocating remaining screen space would
@@ -91,11 +93,18 @@ extension/plugin API.
   `KIO::ApplicationLauncherJob`; `Exec` is never parsed or passed to a shell.
 - `ApplicationLauncherState` persists the selected style and ordered Start
   pins. Pins are stable service IDs and survive temporary removal from the
-  current catalog.
+  current catalog. On the first Start view, an optional Plasma Kicker favorites
+  model is read once; favorites map to current catalog IDs, invalid or repeated
+  items are skipped, and existing Start pins are never overwritten. The
+  attempted/status marker is persisted, so removing pins later does not import
+  them again. The Kicker QML module is private and optional; an unavailable
+  model leaves Start usable and reports that favorites could not be imported.
+  KDockW does not write to Plasma favorites.
 - A single native popup loads one of three distinct QML layouts. macOS Launchpad
-  shows every application in an adaptive icon grid and adds navigable folder
-  tiles sourced from the existing XDG groups; system groups do not replace the
-  application grid. Windows Start uses a pinned-app grid on its home page and a
+  shows every application in an adaptive icon grid. The current launcher model
+  has no user-owned application-folder records; XDG menu groups remain exclusive
+  to KDE Hierarchical and are not presented as Launchpad folders. Windows Start
+  uses a pinned-app grid on its home page and a
   separate all-applications page with locale-sorted letter sections. Activating
   a section heading opens an alphabet grid; choosing a letter returns to the
   full list scrolled to that section, without filtering away other apps. KDE
@@ -105,11 +114,14 @@ extension/plugin API.
   continues to cover the entire catalog. All views use the same catalog and
   KIO launch path. Application and category icons use the existing
   `image://icon/` provider, which resolves the active KDE icon theme/file icons
-  and falls back to an application icon. Tile and popup colors inherit the
-  active KDockW/Kirigami theme.
-- The popup uses an opaque Kirigami Window-theme surface independent of dock
-  background opacity. Text and controls inherit the same KDE theme for light
-  and dark palettes.
+  and falls back to an application icon. Tile and popup colors derive from the
+  resolved KDockW dock surface and contrast-aware foreground, while controls
+  use the same attached Kirigami palette for light and dark themes.
+- The popup uses a fully opaque surface independent of dock background
+  opacity. Its preferred viewport is 900x600 for Launchpad, 680x600 for Start,
+  and 800x600 for KDE Hierarchical, clamped to the selected output. Its content
+  Loader is activated before opening the native Popup.Window so the first
+  configure uses the populated page size.
 - The popup chooses style-specific preferred dimensions and clamps them to the
   available screen space along either axis for all four dock edges. Grid columns
   adapt to the resulting viewport; page changes within a style keep the popup
@@ -118,7 +130,8 @@ extension/plugin API.
   minimum size before the first native Wayland surface commit. It closes on
   outside click, Escape, dock hide, output change, and after a successful
   launch, and reloads its view when the style changes. Actual Wayland popup
-  placement and fractional-scaling rendering remain visual review items.
+  placement, fractional-scaling rendering, live theme changes, and owner
+  confirmation of favorites mapping remain visual review items.
 
 ## Verification status
 

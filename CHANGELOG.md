@@ -13,15 +13,16 @@ carried forward from the Krema-based development period.
 - Added built-in dock separators and fixed-size spacers with saved identity, order, start/center/end placement, visibility, resizing, and a dock widget manager.
 - Added four-edge spacer geometry that participates in Spring Magnification layout without becoming a TaskManager row or drag-and-drop target.
 - Added an Application Launcher widget backed by the live KDE service catalog, XDG menu hierarchy, KDE metadata search, and asynchronous KIO application/action launch.
-- Added three switchable launcher views: a searchable Launchpad grid with folders, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
+- Added three switchable launcher views: a searchable Launchpad app grid, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
 - Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
 - Added Spring Magnification support for the Application Launcher dock icon while keeping spacers and separators at their configured size.
+- Added an optional one-time import of KDE Plasma launcher favorites into an empty Windows Start pin list, preserving the source order and KDockW-owned settings afterward.
 
 ### Fixed
 
 - Avoided reloading every dock icon when TaskManager updates one task's icon, reducing repeated icon work and preserving responsive dock updates.
 - Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.
-- Kept the Application Launcher catalog visible in its native popup by sizing the content item before the first Wayland surface commit and bounding its placement to the selected screen.
+- Sized Launcher Popup.Window surfaces from the selected page before the first Wayland configure and positioned them using the actual requested surface geometry.
 - Made the dock widget manager available from the dock-area context menu even when no built-in widgets remain, and prevented left-clicks on empty dock space from opening it.
 - Reflowed widget settings into labeled, adaptive cards so controls remain reachable in narrow and scaled windows.
 - Gave the three launcher styles distinct layouts, made the popup surface opaque and theme-aware, and resolved app/category icons through the existing KDE icon provider with its fallback.
@@ -29,12 +30,15 @@ carried forward from the Krema-based development period.
 - Added the widget manager to the KDockW submenu of application and blank-dock context menus, and clarified the add-menu button state when a launcher already exists.
 - Seeded only the selected KDE icon theme into a new isolated diagnostic profile so app and category icons use the user's Plasma theme without sharing the production configuration.
 - Rendered built-in dock separators as visible theme-derived lines, distinct from empty fixed spacers in both dock orientations.
+- Resolved KDE category previews from QVariantList-backed KService children so folders show real descendant application icons.
 
 ### Changed
 
 - Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
 - Organized Windows Start into a pinned-app home grid, a separate locale-sorted full list, and an alphabet index that returns to the unfiltered list at the selected section.
-- Reworked Launchpad into an adaptive all-application grid with navigable system folders, and KDE Hierarchical into a grid of nested XDG categories with real child-app icon previews.
+- Kept Launchpad as an adaptive grid of all applications and confined XDG menu categories to KDE Hierarchical, whose tiles show real descendant app icons. Launchpad user-owned folders remain unimplemented because no folder model or supported creation flow exists.
+- Tuned the preferred Launcher viewports to 900×600 for Launchpad, 680×600 for Start, and 800×600 for KDE Hierarchical, with dimensions clamped to the available output area.
+- Made built-in dock widgets available as long-press drag sources among pinned entries, persisting their target slot and order while keeping dynamic TaskManager rows outside widget reordering.
 
 ## [0.5.1] - 2026-11-13
 

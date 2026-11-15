@@ -31,6 +31,7 @@ Verified API documentation from actual KDE headers (`/usr/include/`).
 |----------|-------------|
 | [desktop-actions.md](desktop-actions.md) | KService::actions / KServiceAction, KIO::ApplicationLauncherJob, KNotificationJobUiDelegate — .desktop file actions in the dock item menu |
 | [application-launcher.md](application-launcher.md) | KServiceGroup XDG menu traversal, KApplicationTrader search, KSycoca refresh, and safe asynchronous app launch |
+| [plasma-favorites.md](plasma-favorites.md) | Optional read-only Kicker favorites model and one-time Windows Start pin import on Plasma 6.6.6 |
 
 ### M5: Theming & i18n
 

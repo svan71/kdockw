@@ -307,16 +307,18 @@ The signed tag and all five release assets were verified on the
   existing `DockEntriesModel` now supports persistent separators and fixed-size
   spacers, start/center/end placement, visibility, size editing, ordering, and
   a QML manager. Per-row extents are included in Spring Magnification; widgets
-  remain outside TaskManager and app/folder DnD. Stretching spacers are deferred
-  because the current content-wrapping `Flow` has no safe free-space allocator.
-  Unit and QML regressions pass; real Plasma/Wayland acceptance remains in
-  review. The internal model has no public plugin API.
+  remain outside TaskManager. Built-in widgets can be dragged among pinned
+  entries; dynamic tasks stay outside that reorder path. Stretching spacers are
+  deferred because the current content-wrapping `Flow` has no safe free-space
+  allocator. Unit and QML regressions pass; real Plasma/Wayland acceptance
+  remains in review. The internal model has no public plugin API.
 - [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): retain the
   shared KService/KServiceGroup catalog, KApplicationTrader search, KIO launch
   path, persisted launcher/style/pin state, cached incremental catalog loading,
   and single-new-instance rule (existing duplicates are preserved). The three
   popup views must be functionally and visually distinct: macOS Launchpad is a
-  responsive grid of all applications and navigable folders; Windows Start has
+  responsive grid of all applications, with user-owned folders only when a
+  supported folder model exists; Windows Start has
   a pinned-app grid, a separate alphabetized all-apps page, and a keyboard- and
   pointer-accessible letter index that returns to the unfiltered list at the
   selected section; KDE Hierarchical is a grid of real XDG Menu categories and
@@ -330,7 +332,22 @@ The signed tag and all five release assets were verified on the
   Separator must render a visible theme-derived line perpendicular to the dock,
   distinct from an empty fixed spacer and sized with its saved slot. Automated
   regressions pass; owner visual/functional acceptance in real Plasma/Wayland
-  remains open.
+  remains open. The second visual pass sizes Popup.Window from the loaded page
+  before opening, uses the native surface size for placement, and sets preferred
+  viewports to 900×600 (Launchpad), 680×600 (Start), and 800×600 (KDE
+  Hierarchical), clamped to the selected output. Popup surfaces and controls
+  derive colors from the resolved KDockW dock theme. Folder previews read real
+  descendant app records from QVariantList-backed KService groups. Windows
+  Start can seed an empty pin list once from the optional read-only Plasma
+  Kicker favorites model; existing pins are preserved, import attempts persist,
+  and unavailable private Kicker APIs leave the launcher usable. Favorites
+  mapping and visual corrections still require owner retest in Plasma/Wayland.
+  Local tests exercise native popup-window bounds, icons, and one-time import
+  state; they are not visual acceptance.
+  The current backend has no user-owned app-folder model: KService XDG groups
+  are kept in KDE Hierarchical and are not substituted as Launchpad folders.
+  Therefore the Launchpad folder requirement remains unimplemented and this
+  card stays in review; no user-folder editor or sorting feature was added.
 
   Follow-up: “Manage Widgets…” is now in the KDockW submenu for application
   icons and the blank dock-area menu; the manager names its add-launcher action
