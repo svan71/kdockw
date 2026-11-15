@@ -30,6 +30,10 @@ ColumnLayout {
     property real minimumCellWidth: 120
     property int wheelRemainder: 0
     property bool wheelPageLocked: false
+    property bool pageTransitioning: false
+    property int transitionTargetIndex: 0
+    property int transitionDirection: 1
+    property real slideOffset: 0
     property var targetEntry: ({})
 
     readonly property var folders: toArray(launcherState.launchpadFolders)
@@ -44,6 +48,10 @@ ColumnLayout {
     readonly property int pageCount: Math.max(1, Math.ceil(visibleItems.length / pageCapacity))
     readonly property var pageItems: visibleItems.slice(pageIndex * pageCapacity,
         (pageIndex + 1) * pageCapacity)
+    readonly property var transitionItems: visibleItems.slice(transitionTargetIndex * pageCapacity,
+        (transitionTargetIndex + 1) * pageCapacity)
+    readonly property int activePageIndex: pageTransitioning ? transitionTargetIndex : pageIndex
+    readonly property int pageTransitionDuration: Kirigami.Units.longDuration > 0 ? 220 : 0
 
     function toArray(value) {
         if (!value || typeof value.length !== "number") return []
@@ -73,6 +81,23 @@ ColumnLayout {
     function folderApplications(folder) {
         return toArray(folder.applicationIds)
             .map(id => catalog.application(id)).filter(app => app && app.id)
+    }
+
+    function canCreateFolder(entry) {
+        return entry && entry.type === "application" && currentFolderId.length === 0
+    }
+
+    function canMoveToFolder(entry) {
+        return entry && entry.type === "application"
+            && folders.some(folder => folder.id !== currentFolderId)
+    }
+
+    function canExtractFromFolder(entry) {
+        return entry && entry.type === "application" && currentFolderId.length > 0
+    }
+
+    function isLaunchpadFolder(entry) {
+        return entry && entry.type === "folder"
     }
 
     function buildRootItems() {
@@ -126,12 +151,45 @@ ColumnLayout {
     }
 
     function changePage(delta) {
+        if (pageTransitioning)
+            finishPageTransition()
         const nextPage = Math.max(0, Math.min(pageCount - 1, pageIndex + delta))
         if (nextPage === pageIndex) return false
-        pageIndex = nextPage
-        grid.currentIndex = delta > 0 ? 0 : Math.max(0, pageItems.length - 1)
-        grid.forceActiveFocus()
+        transitionTargetIndex = nextPage
+        transitionDirection = nextPage > pageIndex ? 1 : -1
+        slideOffset = 0
+        pageTransitioning = true
+        if (pageTransitionDuration === 0) {
+            finishPageTransition()
+        } else {
+            pageSlideAnimation.to = -transitionDirection * pageRegion.width
+            pageSlideAnimation.start()
+        }
         return true
+    }
+
+    function finishPageTransition() {
+        pageSlideAnimation.stop()
+        pageIndex = transitionTargetIndex
+        pageTransitioning = false
+        slideOffset = 0
+        grid.currentIndex = transitionDirection > 0 ? 0 : Math.max(0, pageItems.length - 1)
+        grid.forceActiveFocus()
+    }
+
+    function cancelPageTransition(resetToFirstPage) {
+        pageSlideAnimation.stop()
+        pageTransitioning = false
+        slideOffset = 0
+        if (resetToFirstPage)
+            pageIndex = 0
+    }
+
+    function selectPage(index) {
+        const basePage = pageTransitioning ? transitionTargetIndex : pageIndex
+        const delta = index - basePage
+        if (delta !== 0)
+            changePage(delta)
     }
 
     function handleWheel(event) {
@@ -148,18 +206,22 @@ ColumnLayout {
         event.accepted = true
     }
 
-    function openContextMenu(entry, sourceItem) {
+    function openContextMenu(entry, sourceItem, localPoint) {
+        if (!entry || !sourceItem)
+            return
         targetEntry = entry
-        const point = sourceItem.mapToItem(launcherPopup.contentItem, 0, sourceItem.height)
-        contextMenu.x = Math.max(0, Math.min(launcherPopup.contentItem.width - contextMenu.implicitWidth, point.x))
-        contextMenu.y = Math.max(0, Math.min(launcherPopup.contentItem.height - contextMenu.implicitHeight, point.y))
-        contextMenu.open()
+        contextMenu.entry = entry
+        const pointInOverlay = sourceItem.mapToItem(QQC2.Overlay.overlay,
+            localPoint ? localPoint.x : sourceItem.width / 2,
+            localPoint ? localPoint.y : sourceItem.height / 2)
+        contextMenu.popup(QQC2.Overlay.overlay, pointInOverlay)
     }
 
     function beginCreateFolder(applicationId) {
         folderNameDialog.targetApplicationId = applicationId
         folderNameDialog.targetFolderId = ""
         folderNameField.text = ""
+        folderNameDialog.validationMessage = ""
         folderNameDialog.open()
         folderNameField.forceActiveFocus()
     }
@@ -168,6 +230,7 @@ ColumnLayout {
         folderNameDialog.targetApplicationId = ""
         folderNameDialog.targetFolderId = folderId
         folderNameField.text = name
+        folderNameDialog.validationMessage = ""
         folderNameDialog.open()
         folderNameField.selectAll()
         folderNameField.forceActiveFocus()
@@ -177,11 +240,20 @@ ColumnLayout {
         launcherState.setLaunchpadItemOrder(rootItems.map(item => item.id))
     }
 
-    onQueryChanged: pageIndex = 0
-    onCurrentFolderIdChanged: pageIndex = 0
-    onPageCountChanged: pageIndex = Math.min(pageIndex, pageCount - 1)
-    onWidthChanged: pageIndex = 0
-    onHeightChanged: pageIndex = 0
+    onQueryChanged: cancelPageTransition(true)
+    onCurrentFolderIdChanged: cancelPageTransition(true)
+    onPageCountChanged: {
+        if (pageTransitioning && transitionTargetIndex >= pageCount)
+            cancelPageTransition(false)
+        pageIndex = Math.min(pageIndex, pageCount - 1)
+    }
+    onWidthChanged: cancelPageTransition(false)
+    onHeightChanged: cancelPageTransition(false)
+
+    Connections {
+        target: page.launcherPopup
+        function onClosed() { page.cancelPageTransition(false) }
+    }
 
     spacing: Kirigami.Units.smallSpacing
 
@@ -314,10 +386,15 @@ ColumnLayout {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width
             height: Math.min(parent.height, page.rowCount * page.cellExtent)
-            cellWidth: width / page.columnCount
+            cellWidth: Math.floor(width / page.columnCount)
             cellHeight: page.cellExtent
             model: page.pageItems
             clip: true
+            interactive: false
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            flow: GridView.FlowLeftToRight
+            x: page.pageTransitioning ? page.slideOffset : 0
             keyNavigationEnabled: true
             focus: true
 
@@ -389,12 +466,54 @@ ColumnLayout {
                     Keys.onMenuPressed: page.openContextMenu(delegateRoot.entry, tile)
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: page.openContextMenu(delegateRoot.entry, tile)
+                        onTapped: function(eventPoint) {
+                            page.openContextMenu(delegateRoot.entry, tile, eventPoint.position)
+                        }
                     }
                     onActivated: page.activate(entry)
                 }
             }
         }
+
+        GridView {
+            id: incomingGrid
+            objectName: "launchpadIncomingGrid"
+            anchors.top: parent.top
+            width: grid.width
+            height: grid.height
+            cellWidth: grid.cellWidth
+            cellHeight: page.cellExtent
+            model: page.transitionItems
+            clip: true
+            interactive: false
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            flow: GridView.FlowLeftToRight
+            visible: page.pageTransitioning
+            x: page.slideOffset + page.transitionDirection * pageRegion.width
+            delegate: Item {
+                property var entry: page.transitionItems[index] || ({})
+                width: incomingGrid.cellWidth
+                height: incomingGrid.cellHeight
+                ApplicationLauncherGridTile {
+                    anchors.fill: parent
+                    entry: parent.entry
+                    launcherPopup: page.launcherPopup
+                    iconExtent: 64
+                    onActivated: page.activate(entry)
+                }
+            }
+        }
+    }
+
+    NumberAnimation {
+        id: pageSlideAnimation
+        target: page
+        property: "slideOffset"
+        from: 0
+        duration: page.pageTransitionDuration
+        easing.type: Easing.OutCubic
+        onFinished: page.finishPageTransition()
     }
 
     Row {
@@ -411,24 +530,22 @@ ColumnLayout {
                 width: Kirigami.Units.iconSizes.small
                 height: width
                 Accessible.name: i18n("Page %1", index + 1)
-                Accessible.checked: page.pageIndex === index
-                palette.buttonText: page.pageIndex === index
+                Accessible.checked: page.activePageIndex === index
+                palette.buttonText: page.activePageIndex === index
                     ? launcherPopup.selectedForeground : launcherPopup.secondaryForeground
                 background: Rectangle {
                     anchors.centerIn: parent
                     width: parent.width * 0.56
                     height: width
                     radius: width / 2
-                    color: page.pageIndex === index ? launcherPopup.foreground
+                    color: page.activePageIndex === index ? launcherPopup.foreground
                         : launcherPopup.alternateSurface
-                    border.color: page.pageIndex === index ? launcherPopup.foreground
+                    border.color: page.activePageIndex === index ? launcherPopup.foreground
                         : launcherPopup.borderColor
                     border.width: 1
                 }
                 onClicked: {
-                    page.pageIndex = index
-                    grid.currentIndex = 0
-                    grid.forceActiveFocus()
+                    page.selectPage(index)
                 }
             }
         }
@@ -438,10 +555,27 @@ ColumnLayout {
         id: contextMenu
         objectName: "launchpadContextMenu"
         property var entry: ({})
+        modal: false
+        focus: true
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.backgroundColor: launcherPopup.surface
+        Kirigami.Theme.textColor: launcherPopup.foreground
+        Kirigami.Theme.disabledTextColor: launcherPopup.secondaryForeground
+        Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+        Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+        palette.window: launcherPopup.surface
+        palette.base: launcherPopup.surface
+        palette.text: launcherPopup.foreground
+        palette.buttonText: launcherPopup.foreground
+        palette.highlight: launcherPopup.selectedSurface
+        palette.highlightedText: launcherPopup.selectedForeground
 
         QQC2.MenuItem {
-            text: i18n("Create folder from application…")
-            visible: contextMenu.entry.type === "application"
+            objectName: "launchpadCreateFolderAction"
+            text: i18n("Create folder…")
+            visible: page.canCreateFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
@@ -451,15 +585,30 @@ ColumnLayout {
             onTriggered: page.beginCreateFolder(contextMenu.entry.id)
         }
         QQC2.Menu {
-            title: i18n("Move to folder")
-            visible: contextMenu.entry.type === "application" && page.folders.length > 0
+            objectName: "launchpadMoveToFolderMenu"
+            title: page.currentFolderId.length > 0
+                ? i18n("Move to another folder") : i18n("Move to folder")
+            visible: page.canMoveToFolder(contextMenu.entry)
+            Kirigami.Theme.colorSet: Kirigami.Theme.Window
+            Kirigami.Theme.inherit: false
+            Kirigami.Theme.backgroundColor: launcherPopup.surface
+            Kirigami.Theme.textColor: launcherPopup.foreground
+            Kirigami.Theme.disabledTextColor: launcherPopup.secondaryForeground
+            Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+            Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+            palette.window: launcherPopup.surface
+            palette.base: launcherPopup.surface
+            palette.text: launcherPopup.foreground
+            palette.buttonText: launcherPopup.foreground
+            palette.highlight: launcherPopup.selectedSurface
+            palette.highlightedText: launcherPopup.selectedForeground
             Repeater {
-                model: page.folders
+                model: page.folders.filter(folder => folder.id !== page.currentFolderId)
                 delegate: QQC2.MenuItem {
                     required property var modelData
                     text: modelData.name
                     palette.buttonText: down ? launcherPopup.selectedForeground
-                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+                        : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
                     background: Rectangle {
                         color: parent.down ? launcherPopup.selectedSurface
                             : parent.hovered ? launcherPopup.hoverSurface : "transparent"
@@ -470,8 +619,9 @@ ColumnLayout {
             }
         }
         QQC2.MenuItem {
-            text: i18n("Remove from folder")
-            visible: contextMenu.entry.type === "application" && page.currentFolderId.length > 0
+            objectName: "launchpadExtractFromFolderAction"
+            text: i18n("Extract from folder")
+            visible: page.canExtractFromFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
@@ -482,8 +632,20 @@ ColumnLayout {
                 page.currentFolderId, contextMenu.entry.id)
         }
         QQC2.MenuItem {
+            objectName: "launchpadOpenFolderAction"
+            text: i18n("Open")
+            visible: page.isLaunchpadFolder(contextMenu.entry)
+            palette.buttonText: down ? launcherPopup.selectedForeground
+                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+            background: Rectangle {
+                color: parent.down ? launcherPopup.selectedSurface
+                    : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+            }
+            onTriggered: page.activate(contextMenu.entry)
+        }
+        QQC2.MenuItem {
             text: i18n("Rename folder…")
-            visible: contextMenu.entry.type === "folder"
+            visible: page.isLaunchpadFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
@@ -494,14 +656,18 @@ ColumnLayout {
         }
         QQC2.MenuItem {
             text: i18n("Delete folder")
-            visible: contextMenu.entry.type === "folder"
+            visible: page.isLaunchpadFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
             }
-            onTriggered: page.launcherState.deleteLaunchpadFolder(contextMenu.entry.id)
+            onTriggered: {
+                deleteFolderDialog.folderId = contextMenu.entry.id
+                deleteFolderDialog.folderName = contextMenu.entry.name
+                deleteFolderDialog.open()
+            }
         }
         background: Rectangle {
             color: launcherPopup.surface
@@ -515,28 +681,131 @@ ColumnLayout {
         objectName: "launchpadFolderNameDialog"
         property string targetApplicationId: ""
         property string targetFolderId: ""
+        property string validationMessage: ""
         title: targetFolderId ? i18n("Rename folder") : i18n("New folder")
-        standardButtons: QQC2.Dialog.Ok | QQC2.Dialog.Cancel
-        anchors.centerIn: QQC2.Overlay.overlay
-        onOpened: folderNameField.forceActiveFocus()
-        onAccepted: {
+        implicitWidth: 400
+        width: Math.min(420, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.backgroundColor: launcherPopup.surface
+        Kirigami.Theme.textColor: launcherPopup.foreground
+        Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+        Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+        function duplicateName() {
+            const requested = folderNameField.text.trim().toLocaleLowerCase()
+            if (!requested) return false
+            return page.folders.some(folder => folder.id !== targetFolderId
+                && String(folder.name || "").trim().toLocaleLowerCase() === requested)
+        }
+        function submit() {
+            const name = folderNameField.text.trim()
+            if (!name) {
+                validationMessage = i18n("Enter a folder name.")
+                return
+            }
+            if (duplicateName()) {
+                validationMessage = i18n("A folder with this name already exists.")
+                return
+            }
             if (targetFolderId) {
-                launcherState.renameLaunchpadFolder(targetFolderId, folderNameField.text)
+                launcherState.renameLaunchpadFolder(targetFolderId, name)
             } else {
                 page.persistVisibleOrder()
-                launcherState.createLaunchpadFolder(folderNameField.text,
+                launcherState.createLaunchpadFolder(name,
                     [targetApplicationId], page.rootItems.map(item => item.id))
             }
+            close()
         }
-        contentItem: QQC2.TextField {
-            id: folderNameField
-            objectName: "launchpadFolderNameField"
-            placeholderText: i18n("Folder name")
-            selectByMouse: true
+        anchors.centerIn: QQC2.Overlay.overlay
+        onOpened: folderNameField.forceActiveFocus()
+        contentItem: ColumnLayout {
+            QQC2.TextField {
+                id: folderNameField
+                objectName: "launchpadFolderNameField"
+                Layout.fillWidth: true
+                placeholderText: i18n("Folder name")
+                selectByMouse: true
+                color: launcherPopup.foreground
+                palette.text: launcherPopup.foreground
+                palette.placeholderText: launcherPopup.secondaryForeground
+                onTextEdited: folderNameDialog.validationMessage = ""
+                onAccepted: folderNameDialog.submit()
+            }
+            QQC2.Label {
+                objectName: "launchpadFolderNameError"
+                Layout.fillWidth: true
+                visible: folderNameDialog.validationMessage.length > 0
+                text: folderNameDialog.validationMessage
+                color: launcherPopup.foreground
+                wrapMode: Text.Wrap
+            }
+        }
+        footer: RowLayout {
+            QQC2.Button {
+                text: i18n("Cancel")
+                palette.buttonText: down ? launcherPopup.selectedForeground
+                    : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+                onClicked: folderNameDialog.close()
+            }
+            QQC2.Button {
+                objectName: "launchpadFolderNameSubmit"
+                text: i18n("Save")
+                enabled: folderNameField.text.trim().length > 0
+                    && !folderNameDialog.duplicateName()
+                palette.buttonText: down ? launcherPopup.selectedForeground
+                    : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+                onClicked: folderNameDialog.submit()
+            }
+        }
+        background: Rectangle {
+            color: launcherPopup.surface
+            border.color: launcherPopup.borderColor
+            radius: Kirigami.Units.smallSpacing
+        }
+    }
+
+    QQC2.Dialog {
+        id: deleteFolderDialog
+        objectName: "launchpadDeleteFolderDialog"
+        property string folderId: ""
+        property string folderName: ""
+        title: i18n("Delete folder")
+        implicitWidth: 400
+        width: Math.min(420, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.backgroundColor: launcherPopup.surface
+        Kirigami.Theme.textColor: launcherPopup.foreground
+        Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+        Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+        anchors.centerIn: QQC2.Overlay.overlay
+        contentItem: QQC2.Label {
+            text: i18n("Applications in %1 will return to Applications. They will not be removed from your system.", deleteFolderDialog.folderName)
+            wrapMode: Text.Wrap
             color: launcherPopup.foreground
-            palette.text: launcherPopup.foreground
-            palette.placeholderText: launcherPopup.secondaryForeground
-            onAccepted: folderNameDialog.accept()
+        }
+        footer: RowLayout {
+            QQC2.Button {
+                text: i18n("Cancel")
+                palette.buttonText: down ? launcherPopup.selectedForeground
+                    : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+                onClicked: deleteFolderDialog.close()
+            }
+            QQC2.Button {
+                objectName: "launchpadDeleteFolderConfirm"
+                text: i18n("Delete folder")
+                palette.buttonText: down ? launcherPopup.selectedForeground
+                    : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
+                onClicked: {
+                    launcherState.deleteLaunchpadFolder(deleteFolderDialog.folderId)
+                    deleteFolderDialog.close()
+                }
+            }
+        }
+        background: Rectangle {
+            color: launcherPopup.surface
+            border.color: launcherPopup.borderColor
+            radius: Kirigami.Units.smallSpacing
         }
     }
 }

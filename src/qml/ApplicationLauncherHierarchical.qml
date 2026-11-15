@@ -67,10 +67,8 @@ ColumnLayout {
     function openContextMenu(entry, sourceItem) {
         if (!entry || entry.type !== "application") return
         contextEntry = entry
-        const point = sourceItem.mapToItem(launcherPopup.contentItem, 0, sourceItem.height)
-        favoriteMenu.x = Math.max(0, Math.min(launcherPopup.contentItem.width - favoriteMenu.implicitWidth, point.x))
-        favoriteMenu.y = Math.max(0, Math.min(launcherPopup.contentItem.height - favoriteMenu.implicitHeight, point.y))
-        favoriteMenu.open()
+        const point = sourceItem.mapToItem(QQC2.Overlay.overlay, 0, sourceItem.height)
+        favoriteMenu.popup(QQC2.Overlay.overlay, point)
     }
 
     spacing: Kirigami.Units.smallSpacing
@@ -121,6 +119,7 @@ ColumnLayout {
             }
         }
         QQC2.ToolButton {
+            objectName: "hierarchicalCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
             palette.buttonText: down ? launcherPopup.selectedForeground
@@ -211,6 +210,22 @@ ColumnLayout {
     QQC2.Menu {
         id: favoriteMenu
         objectName: "hierarchicalFavoriteContextMenu"
+        modal: false
+        focus: true
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.backgroundColor: launcherPopup.surface
+        Kirigami.Theme.textColor: launcherPopup.foreground
+        Kirigami.Theme.disabledTextColor: launcherPopup.secondaryForeground
+        Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+        Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+        palette.window: launcherPopup.surface
+        palette.base: launcherPopup.surface
+        palette.text: launcherPopup.foreground
+        palette.buttonText: launcherPopup.foreground
+        palette.highlight: launcherPopup.selectedSurface
+        palette.highlightedText: launcherPopup.selectedForeground
         QQC2.MenuItem {
             objectName: "hierarchicalFavoriteToggle"
             text: page.launcherState.isPinned(page.contextEntry.id)

@@ -12,6 +12,7 @@ Item {
 
     QtObject {
         id: popupStub
+        signal closed()
         property int closeCount: 0
         property var catalog: catalogStub
         property color foreground: "#202124"
@@ -32,7 +33,7 @@ Item {
         property var favoriteIds: []
         property var favoritesSourceLoader: null
         property var favoritesSource: null
-        function close() { closeCount++ }
+        function close() { closeCount++; closed() }
     }
 
     QtObject {
@@ -293,6 +294,36 @@ Item {
             }
         }
 
+        function test_windows_start_all_apps_and_close_controls_are_visible_and_actionable() {
+            const page = makePage(start)
+            const allAppsButton = findChild(page, "startAllApplicationsButton")
+            const closeButton = findChild(page, "startCloseButton")
+            verify(allAppsButton && closeButton)
+            tryVerify(() => allAppsButton.visible && allAppsButton.width > 0
+                && allAppsButton.height > 0 && closeButton.visible && closeButton.width > 0)
+            verify(allAppsButton.x >= 0 && allAppsButton.x + allAppsButton.width <= page.width,
+                "all-apps button must fit in the home header")
+            allAppsButton.clicked()
+            compare(page.pageMode, "all", "the visible all-apps button opens the full list")
+            page.destroy()
+        }
+
+        function test_close_button_is_exposed_by_all_launcher_styles() {
+            const cases = [
+                [launchpad, "launchpadCloseButton"],
+                [start, "startCloseButton"],
+                [hierarchical, "hierarchicalCloseButton"],
+            ]
+            for (const [component, objectName] of cases) {
+                const page = makePage(component)
+                const closeButton = findChild(page, objectName)
+                verify(closeButton, `${objectName} must exist`)
+                tryVerify(() => closeButton.visible && closeButton.width > 0
+                    && closeButton.height > 0)
+                page.destroy()
+            }
+        }
+
         function test_launchpad_folder_operations_and_root_order_are_visible() {
             const page = makePage(launchpad)
             const ids = page.rootItems.map(item => item.id)
@@ -317,6 +348,78 @@ Item {
             launcherStateStub.deleteLaunchpadFolder(folderId)
             verify(page.rootItems.some(item => item.id === "org.example.editor.desktop"),
                 "deleting a folder returns its app to the Launchpad root")
+            page.destroy()
+        }
+
+        function test_launchpad_folder_context_actions_and_create_dialog() {
+            const page = makePage(launchpad)
+            const app = page.rootItems[0]
+            verify(page.canCreateFolder(app), "creating the first folder is available at root")
+            verify(!page.canMoveToFolder(app), "moving is unavailable until a user folder exists")
+
+            page.beginCreateFolder("org.example.editor.desktop")
+            const nameField = findChild(page, "launchpadFolderNameField")
+            const nameDialog = findChild(page, "launchpadFolderNameDialog")
+            verify(nameField && nameDialog)
+            nameField.text = "Creative"
+            nameDialog.submit()
+            compare(launcherStateStub.launchpadFolders.length, 1)
+            compare(launcherStateStub.launchpadFolders[0].name, "Creative")
+            compare(launcherStateStub.launchpadFolders[0].applicationIds,
+                ["org.example.editor.desktop"])
+            verify(!page.rootItems.some(item => item.id === "org.example.editor.desktop"),
+                "creating a folder moves its app out of the root grid")
+            page.beginCreateFolder("org.example.browser.desktop")
+            nameField.text = "Creative"
+            verify(nameDialog.duplicateName(), "folder names are checked case-insensitively")
+            nameDialog.submit()
+            compare(launcherStateStub.launchpadFolders.length, 1,
+                "duplicate names must not create another folder")
+            nameDialog.close()
+
+            const folderId = launcherStateStub.launchpadFolders[0].id
+            launcherStateStub.createLaunchpadFolder("Other", ["org.example.browser.desktop"],
+                page.rootItems.map(item => item.id))
+            const folder = page.rootItems.find(item => item.id === folderId)
+            verify(page.isLaunchpadFolder(folder), "Launchpad folders expose Open, Rename and Delete")
+
+            page.currentFolderId = folderId
+            verify(page.canExtractFromFolder(page.visibleItems[0]))
+            verify(page.canMoveToFolder(page.visibleItems[0]),
+                "an app inside a folder can move to another folder")
+            page.destroy()
+        }
+
+        function test_launchpad_page_transition_is_bounded_and_cancellable() {
+            const originalApps = catalogStub.applications
+            catalogStub.applications = Array.from({ length: 48 }, (_, index) => ({
+                id: `org.example.app${index}.desktop`, type: "application",
+                name: `Application ${index}`, icon: "application-x-executable"
+            }))
+            const page = makePage(launchpad)
+            compare(page.pageCount > 1, true)
+            const grid = findChild(page, "launchpadGrid")
+            const incoming = findChild(page, "launchpadIncomingGrid")
+            const region = findChild(page, "launchpadPageRegion")
+            tryVerify(() => grid && incoming && region && region.width > 0 && region.height > 0)
+            verify(grid.contentWidth <= grid.width + 1,
+                "the paged grid must not create horizontal overflow")
+            page.changePage(1)
+            compare(page.pageTransitioning, true)
+            compare(page.transitionDirection, 1)
+            verify(incoming.visible && incoming.count <= page.pageCapacity,
+                "only the target page is instantiated during a transition")
+            page.changePage(1)
+            verify(page.transitionTargetIndex <= page.pageCount - 1,
+                "rapid input must remain within valid pages")
+            tryVerify(() => !page.pageTransitioning, 1000)
+            compare(page.pageIndex, Math.min(2, page.pageCount - 1))
+            page.changePage(-1)
+            compare(page.transitionDirection, -1)
+            popupStub.close()
+            compare(page.pageTransitioning, false)
+            compare(page.slideOffset, 0)
+            catalogStub.applications = originalApps
             page.destroy()
         }
     }

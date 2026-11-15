@@ -128,10 +128,8 @@ ColumnLayout {
     }
     function openContextMenu(app, sourceItem, localPoint) {
         contextMenu.targetApp = app
-        const point = sourceItem.mapToItem(launcherPopup.contentItem, localPoint.x, localPoint.y)
-        contextMenu.x = Math.max(0, Math.min(launcherPopup.contentItem.width - contextMenu.implicitWidth, point.x))
-        contextMenu.y = Math.max(0, Math.min(launcherPopup.contentItem.height - contextMenu.implicitHeight, point.y))
-        contextMenu.open()
+        const point = sourceItem.mapToItem(QQC2.Overlay.overlay, localPoint.x, localPoint.y)
+        contextMenu.popup(QQC2.Overlay.overlay, point)
     }
 
     spacing: Kirigami.Units.smallSpacing
@@ -559,6 +557,22 @@ ColumnLayout {
         id: contextMenu
         objectName: "startApplicationContextMenu"
         property var targetApp: ({})
+        modal: false
+        focus: true
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
+        Kirigami.Theme.backgroundColor: launcherPopup.surface
+        Kirigami.Theme.textColor: launcherPopup.foreground
+        Kirigami.Theme.disabledTextColor: launcherPopup.secondaryForeground
+        Kirigami.Theme.highlightColor: launcherPopup.selectedSurface
+        Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
+        palette.window: launcherPopup.surface
+        palette.base: launcherPopup.surface
+        palette.text: launcherPopup.foreground
+        palette.buttonText: launcherPopup.foreground
+        palette.highlight: launcherPopup.selectedSurface
+        palette.highlightedText: launcherPopup.selectedForeground
         QQC2.MenuItem {
             text: page.launcherState.isPinned(contextMenu.targetApp.id) ? i18n("Unpin") : i18n("Pin")
             palette.text: down ? launcherPopup.selectedForeground

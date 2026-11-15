@@ -181,9 +181,12 @@ Item {
             DockModel.applicationCatalog.ready = true
             DockModel.applicationLauncherState.pinnedApplicationIds = [app.id]
             const cases = [
-                { style: "launchpad", heading: "launchpadHeading", button: "launchpadCloseButton" },
-                { style: "start", heading: "startHomeHeading", button: "startAllApplicationsButton" },
-                { style: "hierarchical", heading: "hierarchicalBreadcrumbs", button: "hierarchicalBackButton" },
+                { style: "launchpad", heading: "launchpadHeading", button: "launchpadCloseButton",
+                    menu: "launchpadContextMenu" },
+                { style: "start", heading: "startHomeHeading", button: "startAllApplicationsButton",
+                    menu: "startApplicationContextMenu" },
+                { style: "hierarchical", heading: "hierarchicalBreadcrumbs", button: "hierarchicalBackButton",
+                    menu: "hierarchicalFavoriteContextMenu" },
             ]
             for (const testCase of cases) {
                 DockModel.applicationLauncherState.style = testCase.style
@@ -198,6 +201,11 @@ Item {
                 verify(button && button.visible, `${testCase.style} navigation action must be visible`)
                 verify(BadgeTextColor.contrastRatio(button.palette.buttonText, popup.surface) >= 4.5,
                     `${testCase.style} button label must use readable foreground`)
+                const contextMenu = findChild(loader.item, testCase.menu)
+                verify(contextMenu, `${testCase.style} context menu must be available`)
+                verify(BadgeTextColor.contrastRatio(contextMenu.palette.buttonText,
+                    contextMenu.background.color) >= 4.5,
+                    `${testCase.style} context menu foreground must contrast with its surface`)
                 popup.close()
                 tryVerify(() => !popup.visible)
             }
@@ -461,8 +469,10 @@ Item {
                     const pageRegion = findChild(page, "launchpadPageRegion")
                     verify(pageRegion && view.height <= pageRegion.height)
                     tryVerify(() => page.pageItems.length === page.pageCapacity)
+                    wait(300)
                     const firstPage = page.pageItems[0].id
                     verify(page.changePage(1))
+                    tryVerify(() => !page.pageTransitioning && page.pageIndex === 1, 1000)
                     verify(page.pageItems[0].id !== firstPage)
                     page.query = "Application 599"
                     tryVerify(() => page.visibleItems.length === 1)
