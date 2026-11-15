@@ -316,19 +316,27 @@ The signed tag and all five release assets were verified on the
   shared KService/KServiceGroup catalog, KApplicationTrader search, KIO launch
   path, persisted launcher/style/pin state, cached incremental catalog loading,
   and single-new-instance rule (existing duplicates are preserved). The three
-  popup views must be functionally and visually distinct: macOS Launchpad is a
-  responsive grid of all applications, with user-owned folders only when a
-  supported folder model exists; Windows Start has
-  a pinned-app grid, a separate alphabetized all-apps page, and a keyboard- and
+  popup views must be functionally and visually distinct: macOS Launchpad uses
+  full-row pages with clickable page indicators and supports persistent,
+  user-created folders with stable IDs, ordered desktop-ID membership and saved
+  root placement; global search still covers every application and foldered
+  apps do not also appear at root. Windows Start has a top-aligned search and
+  pinned-app grid, a separate alphabetized all-apps page, and a keyboard- and
   pointer-accessible letter index that returns to the unfiltered list at the
-  selected section; KDE Hierarchical is a grid of real XDG Menu categories and
-  nested groups, with up to four actual child-app icon previews and breadcrumbs.
+  selected section. KDE Hierarchical is a grid of real XDG Menu categories and
+  nested groups, with up to four actual child-app icon previews and breadcrumbs,
+  and a virtual Favorites folder backed by the same saved favorites used by
+  Windows Start. Favorites do not change dock launcher pins or Plasma favorites.
   All use the user's active KDE icon theme and KDockW/Kirigami theme without
   hard-coded platform palettes. Popup sizes adapt by style, screen, DPR, dock
   edge, and content, remain inside available output geometry, and stay stable
   during in-style navigation. Search, keyboard focus, Escape, outside-click,
   launch dismissal, TaskManager, Folder Stacks, and Spring Magnification remain
-  compatible. The catalog is shared and cached; closed views stay unloaded.
+  compatible. Text and secondary descriptions maintain readable contrast on
+  normal, hover and selected surfaces for light, dark and custom themes. The
+  catalog is shared and cached; Launchpad instantiates only the current page and
+  closed views stay unloaded. Existing system hierarchy and user settings are
+  not rewritten.
   Separator must render a visible theme-derived line perpendicular to the dock,
   distinct from an empty fixed spacer and sized with its saved slot. Automated
   regressions pass; owner visual/functional acceptance in real Plasma/Wayland
@@ -344,10 +352,14 @@ The signed tag and all five release assets were verified on the
   mapping and visual corrections still require owner retest in Plasma/Wayland.
   Local tests exercise native popup-window bounds, icons, and one-time import
   state; they are not visual acceptance.
-  The current backend has no user-owned app-folder model: KService XDG groups
-  are kept in KDE Hierarchical and are not substituted as Launchpad folders.
-  Therefore the Launchpad folder requirement remains unimplemented and this
-  card stays in review; no user-folder editor or sorting feature was added.
+  The new Launchpad model stores user folders, membership and root order in
+  KDockW settings using stable folder IDs; it does not alter XDG entries or
+  system favorites. Automated checks cover persistence, pagination, filtering,
+  and shared favorites. The third owner review accepted 21/22 previously listed
+  visual criteria, including separators/fixed spacers and accepted geometry;
+  moving Launcher among dock icons was explicitly excluded from acceptance.
+  New Launcher work remains in review pending another functional and visual
+  acceptance in Plasma/Wayland.
 
   Follow-up: “Manage Widgets…” is now in the KDockW submenu for application
   icons and the blank dock-area menu; the manager names its add-launcher action

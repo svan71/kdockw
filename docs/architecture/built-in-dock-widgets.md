@@ -91,25 +91,35 @@ extension/plugin API.
   before destroying `QApplication`.
 - Launch applications and desktop actions through
   `KIO::ApplicationLauncherJob`; `Exec` is never parsed or passed to a shell.
-- `ApplicationLauncherState` persists the selected style and ordered Start
-  pins. Pins are stable service IDs and survive temporary removal from the
-  current catalog. On the first Start view, an optional Plasma Kicker favorites
-  model is read once; favorites map to current catalog IDs, invalid or repeated
-  items are skipped, and existing Start pins are never overwritten. The
-  attempted/status marker is persisted, so removing pins later does not import
-  them again. The Kicker QML module is private and optional; an unavailable
-  model leaves Start usable and reports that favorites could not be imported.
-  KDockW does not write to Plasma favorites.
+- `ApplicationLauncherState` persists the selected style, ordered Start pins,
+  user-created Launchpad folder records and the Launchpad root item order.
+  Folder IDs are stable UUIDs; each record stores its name and ordered
+  application service IDs. Membership is unique across folders and a foldered
+  application is not also emitted as a root tile. Removing a member or deleting
+  its folder returns that application to the root order. These records live in
+  KDockW settings and do not change XDG entries or Plasma favorites. Start pins
+  remain stable service IDs and survive temporary removal from the current
+  catalog. On the first Start view, an optional Plasma Kicker favorites model is
+  read once; favorites map to current catalog IDs, invalid or repeated items
+  are skipped, and existing Start pins are never overwritten. The attempted/
+  status marker is persisted, so removing pins later does not import them again.
+  The Kicker QML module is private and optional; an unavailable model leaves
+  Start usable and reports that favorites could not be imported. KDockW does
+  not write to Plasma favorites.
 - A single native popup loads one of three distinct QML layouts. macOS Launchpad
-  shows every application in an adaptive icon grid. The current launcher model
-  has no user-owned application-folder records; XDG menu groups remain exclusive
-  to KDE Hierarchical and are not presented as Launchpad folders. Windows Start
-  uses a pinned-app grid on its home page and a
+  shows every application in an adaptive icon grid paginated by available full
+  rows. Only the active page is bound to the GridView. Dots, wheel and keyboard
+  navigation share the same bounded page-change path. Search covers the full
+  catalog and resets pagination. User folders are separate from KService groups
+  and expose create, move, add/remove, rename and delete actions through app and
+  folder context menus. Windows Start uses a pinned-app grid on its home page and a
   separate all-applications page with locale-sorted letter sections. Activating
   a section heading opens an alphabet grid; choosing a letter returns to the
   full list scrolled to that section, without filtering away other apps. KDE
   Hierarchical presents the original XDG menu order as a grid of category
-  folders with previews made from up to four real child application icons;
+  folders with previews made from up to four real child application icons, and
+  prepends a virtual Favorites folder backed by the same persisted favorites as
+  Windows Start;
   nested groups and app tiles remain navigable with breadcrumbs. Its search
   continues to cover the entire catalog. All views use the same catalog and
   KIO launch path. Application and category icons use the existing

@@ -17,6 +17,12 @@ carried forward from the Krema-based development period.
 - Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
 - Added Spring Magnification support for the Application Launcher dock icon while keeping spacers and separators at their configured size.
 - Added an optional one-time import of KDE Plasma launcher favorites into an empty Windows Start pin list, preserving the source order and KDockW-owned settings afterward.
+- Added paginated Launchpad navigation and persistent user-created application folders.
+- Added a shared launcher favorites list to KDE Hierarchical, using the existing Windows Start favorites.
+
+### Changed
+
+- Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
 
 ### Fixed
 

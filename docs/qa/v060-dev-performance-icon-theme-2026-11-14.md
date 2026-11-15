@@ -444,3 +444,55 @@ restart or replace the active owner candidate.
   functional acceptance still requires the owner to inspect the new candidate.
   The earlier P0 acceptance is preserved above; its exact historical memory
   growth cause remains UNKNOWN. No release, tag or push was created.
+
+## Third Application Launcher refinement cycle — 2026-11-15
+
+The owner reported 21/22 criteria accepted in the preceding manual review.
+Separator and fixed spacer behavior is accepted. Moving the Launcher among dock
+icons is explicitly outside the required acceptance; slot management remains
+available. No new real Plasma/Wayland UI run was performed in this cycle because
+stable `/usr/bin/kdockw` v0.5.1 remained active, and a second dock was not started.
+
+### Changes and implementation findings
+
+- Launcher text and controls now use the popup's resolved surface palette with
+  foreground selection against the actual opaque surface and explicit normal,
+  hover and selected foreground roles. Secondary labels are blended only as far
+  as the 4.5:1 contrast boundary. QML regressions cover light, dark and custom
+  source colors and interaction states.
+- Windows Start home placed its empty-pins state before the grid and the
+  fill-height spacer after the grid. The zero-pins state could push the grid
+  away from the heading. The grid now follows the heading directly, and spare
+  height stays after the grid.
+- Launchpad binds only a dynamically calculated full-row page to its GridView,
+  with page dots and wheel/keyboard controls. Search remains global and resets
+  the page. Persistent user folders store UUID, name, ordered desktop IDs and
+  root order in KDockW settings; moving an app removes its previous membership,
+  and deleting/extracting returns it to root. No XDG entry, desktop file or
+  Plasma favorite is edited.
+- KDE Hierarchical prepends a virtual Favorites folder using the existing
+  persisted Start pins. The existing one-time read-only Plasma favorites import
+  is unchanged; favorite toggles remain KDockW-owned and shared when the view
+  changes style.
+
+### Verification
+
+- Full Production Release CTest: **214/214 passed**.
+- Full Diagnostic Release CTest: **221/221 passed**.
+- Launcher focused QML CTest: **2/2 passed**; Launchpad persistence unit test:
+  **19 assertions / 1 case passed**.
+- `tools/kdockw-v060-dev-start --preflight-only --profile launcher-review`
+  passed and resolved the staged Desktop Entry through a private Sycoca. Stable
+  KDockW remained active and unchanged; no candidate process was started.
+- Source and stage are both `kdockw 0.6.0-dev`, GNU Build ID
+  `f8e23d54c06e995d71d0eedaf2e12b409b90e88d`. Built and staged Russian MO files
+  have matching SHA-256 `ce5299a948c0e1bf8559091dd8d3105e80c2ba72b2f80aeb5672fea2d9a89578`.
+  `msgfmt --check --check-format`, shell syntax, Python observer syntax and
+  `git diff --check` passed; `clang-format` was unavailable in the host.
+- Production config still matches the pre-diagnostic backup at SHA-256
+  `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`. The only
+  running dock is `/usr/bin/kdockw` v0.5.1. No real UI colors, input behavior,
+  multi-page interaction or folder editing have been visually accepted in this
+  cycle; all three cards remain `review` pending owner retest. No performance
+  profiling was repeated; prior P0 owner acceptance and UNKNOWN historical
+  anonymous-PSS attribution remain as previously recorded.
