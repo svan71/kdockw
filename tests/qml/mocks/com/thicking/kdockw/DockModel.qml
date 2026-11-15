@@ -43,9 +43,34 @@ QtObject {
     readonly property QtObject applicationLauncherState: QtObject {
         property string style: "launchpad"
         property var pinnedApplicationIds: []
+        property bool startFavoritesImportAttempted: false
+        property string startFavoritesImportStatus: "notAttempted"
         function isPinned(serviceId) { return pinnedApplicationIds.includes(serviceId) }
         function togglePinned(serviceId) { }
         function movePinned(fromIndex, toIndex) { return false }
+        function importPlasmaFavorites(favoriteIds, availableApplicationIds, sourceAvailable) {
+            if (startFavoritesImportAttempted) return false
+            startFavoritesImportAttempted = true
+            if (!sourceAvailable) {
+                startFavoritesImportStatus = "unavailable"
+                return false
+            }
+            if (pinnedApplicationIds.length) {
+                startFavoritesImportStatus = "existingPinsPreserved"
+                return false
+            }
+            const valid = new Set(availableApplicationIds)
+            const seen = new Set()
+            const imported = []
+            for (let id of favoriteIds) {
+                id = String(id).replace(/^applications:/, "")
+                if (valid.has(id) && !seen.has(id)) { seen.add(id); imported.push(id) }
+            }
+            pinnedApplicationIds = imported
+            startFavoritesImportStatus = imported.length ? "imported"
+                : favoriteIds.length ? "noMatchingApps" : "noFavorites"
+            return imported.length > 0
+        }
     }
     readonly property var dockEntriesModel: ListModel {
         id: entries

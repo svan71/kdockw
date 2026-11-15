@@ -11,13 +11,14 @@ QQC2.ItemDelegate {
     id: tile
 
     property var entry: ({})
+    property var launcherPopup
     property int iconExtent: 56
     property bool compact: false
-    readonly property var previewItems: entry && entry.type === "folder" ? previewApps(entry, []) : []
+    readonly property var previewItems: entry && entry.type === "folder" ? resolvePreviewApps(entry) : []
     signal activated(var entry)
 
-    implicitWidth: 148
-    implicitHeight: compact ? 114 : 142
+    implicitWidth: 124
+    implicitHeight: compact ? 108 : 126
     Accessible.role: Accessible.Button
     Accessible.name: entry.name || ""
     Accessible.description: entry.type === "folder" ? i18n("Folder")
@@ -29,8 +30,21 @@ QQC2.ItemDelegate {
         return "image://icon/" + encodeURIComponent(name) + "?v=" + DockView.iconCacheVersion
     }
 
+    function asList(value) {
+        if (!value || typeof value.length !== "number") return []
+        const items = []
+        for (let index = 0; index < value.length; ++index)
+            items.push(value[index])
+        return items
+    }
+
+    function resolvePreviewApps(folder) {
+        const previews = asList(folder ? folder.previewIcons : null)
+        return previews.length ? previews.slice(0, 4) : previewApps(folder, [])
+    }
+
     function previewApps(folder, output) {
-        const children = folder && Array.isArray(folder.children) ? folder.children : []
+        const children = asList(folder ? folder.children : null)
         for (const child of children) {
             if (output.length >= 4) break
             if (child.type === "folder") previewApps(child, output)
@@ -41,11 +55,11 @@ QQC2.ItemDelegate {
 
     background: Rectangle {
         radius: Kirigami.Units.mediumSpacing
-        color: tile.down ? Qt.alpha(Kirigami.Theme.highlightColor, 0.20)
-            : tile.hovered ? Qt.alpha(Kirigami.Theme.highlightColor, 0.10) : "transparent"
+        color: tile.down ? tile.launcherPopup.selectedSurface
+            : tile.hovered ? tile.launcherPopup.hoverSurface : "transparent"
         border.width: tile.activeFocus ? 2 : 1
-        border.color: tile.activeFocus ? Kirigami.Theme.focusColor
-            : tile.hovered ? Qt.alpha(Kirigami.Theme.textColor, 0.16) : "transparent"
+        border.color: tile.activeFocus ? tile.launcherPopup.foreground
+            : tile.hovered ? tile.launcherPopup.borderColor : "transparent"
     }
 
     contentItem: ColumnLayout {
@@ -76,8 +90,8 @@ QQC2.ItemDelegate {
                 height: width
                 radius: Kirigami.Units.mediumSpacing
                 visible: tile.entry.type === "folder"
-                color: Kirigami.Theme.alternateBackgroundColor
-                border.color: Qt.alpha(Kirigami.Theme.textColor, 0.18)
+                color: tile.launcherPopup.alternateSurface
+                border.color: tile.launcherPopup.borderColor
                 border.width: 1
 
                 Grid {
@@ -92,7 +106,7 @@ QQC2.ItemDelegate {
                             objectName: "applicationLauncherFolderPreviewIcon"
                             width: (tile.iconExtent - Kirigami.Units.smallSpacing) / 2
                             height: width
-                            source: tile.iconSource(tile.previewItems[index] || ({}))
+                            source: tile.iconSource(modelData || ({}))
                             sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
                                                 Math.ceil(height * Screen.devicePixelRatio))
                             fillMode: Image.PreserveAspectFit
@@ -100,6 +114,20 @@ QQC2.ItemDelegate {
                             Accessible.ignored: true
                         }
                     }
+                }
+
+                Image {
+                    objectName: "applicationLauncherEmptyFolderIcon"
+                    anchors.centerIn: parent
+                    width: Math.round(tile.iconExtent * 0.72)
+                    height: width
+                    visible: tile.previewItems.length === 0
+                    source: visible ? tile.iconSource({ icon: "folder" }) : ""
+                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
+                                        Math.ceil(height * Screen.devicePixelRatio))
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    Accessible.ignored: true
                 }
             }
         }
@@ -113,6 +141,7 @@ QQC2.ItemDelegate {
             maximumLineCount: tile.compact ? 1 : 2
             elide: Text.ElideRight
             font: Kirigami.Theme.smallFont
+            color: tile.launcherPopup.foreground
         }
     }
 }

@@ -6,6 +6,7 @@ import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import com.thicking.kdockw 1.0
+import "BadgeTextColor.js" as BadgeTextColor
 
 QQC2.Popup {
     id: popup
@@ -16,15 +17,36 @@ QQC2.Popup {
     property real screenY: 0
     property rect anchorScreenRect: Qt.rect(0, 0, 0, 0)
     property rect screenGeometry: Qt.rect(0, 0, 1, 1)
-    property real maxPopupWidth: 1040
-    property real maxPopupHeight: 720
+    property real maxPopupWidth: 900
+    property real maxPopupHeight: 600
     property real requestedWidth: maxPopupWidth
     property real requestedHeight: maxPopupHeight
+    property bool enablePlasmaFavoritesSource: true
     readonly property var catalog: DockModel.applicationCatalog
     readonly property var launcherState: DockModel.applicationLauncherState
-    readonly property color foreground: Kirigami.Theme.textColor
-    readonly property color surface: Qt.rgba(Kirigami.Theme.backgroundColor.r,
-        Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 1.0)
+    readonly property bool favoritesSourceReady: !enablePlasmaFavoritesSource
+        || favoritesLoader.status === Loader.Ready
+        || favoritesLoader.status === Loader.Error
+    readonly property bool favoritesSourceAvailable: enablePlasmaFavoritesSource
+        && favoritesLoader.status === Loader.Ready
+        && favoritesLoader.item && favoritesLoader.item.available
+    readonly property var favoritesSource: favoritesLoader.item
+    readonly property var favoritesSourceLoader: favoritesLoader
+    readonly property var favoriteIds: favoritesSourceAvailable ? favoritesLoader.item.favoriteIds : []
+    readonly property color surface: DockView.backgroundColor.a > 0
+        ? Qt.rgba(DockView.backgroundColor.r, DockView.backgroundColor.g,
+                  DockView.backgroundColor.b, 1.0)
+        : Qt.rgba(dockRoot.Kirigami.Theme.backgroundColor.r, dockRoot.Kirigami.Theme.backgroundColor.g,
+                  dockRoot.Kirigami.Theme.backgroundColor.b, 1.0)
+    readonly property color foreground: BadgeTextColor.choose(surface, dockRoot.Kirigami.Theme.textColor)
+    readonly property color secondaryForeground: BadgeTextColor.contrastRatio(
+        dockRoot.Kirigami.Theme.disabledTextColor, surface) >= 4.5
+        ? dockRoot.Kirigami.Theme.disabledTextColor : foreground
+    readonly property color alternateSurface: mixSurface(foreground, 0.055)
+    readonly property color hoverSurface: mixSurface(foreground, 0.10)
+    readonly property color selectedSurface: mixSurface(foreground, 0.18)
+    readonly property color borderColor: Qt.alpha(foreground, 0.28)
+    readonly property color focusColor: foreground
     readonly property bool verticalDock: DockView.isVertical
     readonly property int dockEdge: DockView.edge
 
@@ -32,6 +54,13 @@ QQC2.Popup {
     popupType: QQC2.Popup.Window
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
     Kirigami.Theme.inherit: false
+    Kirigami.Theme.backgroundColor: popup.surface
+    Kirigami.Theme.alternateBackgroundColor: popup.alternateSurface
+    Kirigami.Theme.textColor: popup.foreground
+    Kirigami.Theme.disabledTextColor: popup.secondaryForeground
+    Kirigami.Theme.highlightColor: popup.selectedSurface
+    Kirigami.Theme.highlightedTextColor: popup.foreground
+    Kirigami.Theme.focusColor: popup.focusColor
     modal: false
     focus: true
     closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
@@ -47,14 +76,23 @@ QQC2.Popup {
         requestedWidth = preferred.width
         requestedHeight = preferred.height
         catalog.ensureLoaded()
+        // Build the selected page before the first native popup configure so
+        // the compositor never sizes the Window from an empty Loader.
+        contentLoader.active = true
         positionNearDock()
         open()
     }
 
     function preferredSize(style) {
-        if (style === "start") return Qt.size(920, 700)
-        if (style === "hierarchical") return Qt.size(1040, 680)
-        return Qt.size(960, 680)
+        if (style === "start") return Qt.size(680, 600)
+        if (style === "hierarchical") return Qt.size(800, 600)
+        return Qt.size(900, 600)
+    }
+
+    function mixSurface(foregroundColor, amount) {
+        return Qt.rgba(surface.r * (1 - amount) + foregroundColor.r * amount,
+                       surface.g * (1 - amount) + foregroundColor.g * amount,
+                       surface.b * (1 - amount) + foregroundColor.b * amount, 1.0)
     }
 
     function positionNearDock() {
@@ -101,7 +139,7 @@ QQC2.Popup {
             requestedWidth = availableWidth
             screenX = chooseRight ? rootX + anchor.x + anchor.width : rootX + anchor.x - requestedWidth
             screenY = Math.max(screenGeometry.y + inset,
-                Math.min(bottomEdge - height - inset, centerY - height / 2))
+                Math.min(bottomEdge - requestedHeight - inset, centerY - requestedHeight / 2))
         } else {
             const below = bottomEdge - (rootY + anchor.y + anchor.height) - inset
             const above = rootY + anchor.y - screenGeometry.y - inset
@@ -109,13 +147,13 @@ QQC2.Popup {
             const chooseBelow = preferBelow ? below >= above : !(above >= below)
             requestedHeight = Math.max(1, Math.min(requestedHeight, chooseBelow ? below : above))
             screenX = Math.max(screenGeometry.x + inset,
-                Math.min(rightEdge - width - inset, centerX - width / 2))
-            screenY = chooseBelow ? rootY + anchor.y + anchor.height : rootY + anchor.y - height
+                Math.min(rightEdge - requestedWidth - inset, centerX - requestedWidth / 2))
+            screenY = chooseBelow ? rootY + anchor.y + anchor.height : rootY + anchor.y - requestedHeight
         }
         screenX = Math.max(screenGeometry.x + inset,
-            Math.min(rightEdge - width - inset, screenX))
+            Math.min(rightEdge - requestedWidth - inset, screenX))
         screenY = Math.max(screenGeometry.y + inset,
-            Math.min(bottomEdge - height - inset, screenY))
+            Math.min(bottomEdge - requestedHeight - inset, screenY))
         x = screenX - rootX
         y = screenY - rootY
     }
@@ -124,30 +162,62 @@ QQC2.Popup {
         if (contentLoader.item && contentLoader.item.focusSearch)
             contentLoader.item.focusSearch()
     }
+    onClosed: contentLoader.active = false
+
+    Loader {
+        id: favoritesLoader
+        active: popup.visible && popup.enablePlasmaFavoritesSource
+            && popup.launcherState.style === "start"
+        source: "ApplicationLauncherFavoritesSource.qml"
+    }
 
     background: Rectangle {
         radius: DockSettings.cornerRadius
         color: popup.surface
         border.width: 1
-        border.color: Qt.alpha(popup.foreground, 0.2)
+        border.color: popup.borderColor
     }
 
-    contentItem: Loader {
-        id: contentLoader
-        objectName: "applicationLauncherStyleLoader"
-        active: popup.visible
-        sourceComponent: popup.launcherState.style === "start" ? startComponent
-            : popup.launcherState.style === "hierarchical" ? hierarchicalComponent : launchpadComponent
-        onLoaded: {
-            item.catalog = popup.catalog
-            item.launcherState = popup.launcherState
-            item.launcherPopup = popup
+    contentItem: Item {
+        id: contentViewport
+        implicitWidth: Math.max(0, popup.width - popup.leftPadding - popup.rightPadding)
+        implicitHeight: Math.max(0, popup.height - popup.topPadding - popup.bottomPadding)
+
+        Loader {
+            id: contentLoader
+            objectName: "applicationLauncherStyleLoader"
+            anchors.fill: parent
+            sourceComponent: popup.launcherState.style === "start" ? startComponent
+                : popup.launcherState.style === "hierarchical" ? hierarchicalComponent : launchpadComponent
         }
     }
 
-    Component { id: launchpadComponent; ApplicationLauncherLaunchpad {} }
-    Component { id: startComponent; ApplicationLauncherStart {} }
-    Component { id: hierarchicalComponent; ApplicationLauncherHierarchical {} }
+    Component {
+        id: launchpadComponent
+        ApplicationLauncherLaunchpad {
+            catalog: popup.catalog
+            launcherState: popup.launcherState
+            launcherPopup: popup
+        }
+    }
+    Component {
+        id: startComponent
+        ApplicationLauncherStart {
+            catalog: popup.catalog
+            launcherState: popup.launcherState
+            launcherPopup: popup
+            favoriteSourceStatus: popup.favoritesSourceAvailable ? "available"
+                : popup.favoritesSourceReady ? "unavailable" : "loading"
+        }
+    }
+    Component {
+        id: hierarchicalComponent
+        ApplicationLauncherHierarchical {
+            catalog: popup.catalog
+            launcherState: popup.launcherState
+            launcherPopup: popup
+        }
+    }
 
     Connections {
         target: DockView

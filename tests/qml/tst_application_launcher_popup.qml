@@ -34,6 +34,12 @@ Item {
             DockView.edge = 0
             DockVisibility.dockVisible = true
             DockModel.applicationLauncherState.style = "launchpad"
+            DockModel.applicationLauncherState.pinnedApplicationIds = []
+            DockModel.applicationLauncherState.startFavoritesImportAttempted = false
+            DockModel.applicationLauncherState.startFavoritesImportStatus = "notAttempted"
+            popup.enablePlasmaFavoritesSource = false
+            anchor.x = (root.width - anchor.width) / 2
+            anchor.y = 0
             DockModel.applicationCatalog.resetLoading()
             DockModel.applicationCatalog.applications = []
             DockModel.applicationCatalog.menuTree = []
@@ -199,9 +205,15 @@ Item {
                     styles[i] + " Popup.Window content must retain the requested viewport size")
                 verify(popupWindow.width > 0 && popupWindow.height > 0,
                     styles[i] + " must allocate a non-zero native popup surface")
-                const firstEntry = content.itemAtIndex(0)
-                verify(firstEntry && firstEntry.visible && firstEntry.width > 0 && firstEntry.height > 0,
-                    styles[i] + " must render an actual application delegate")
+                verify(Math.abs(popupWindow.width - popup.requestedWidth) <= 1
+                       && Math.abs(popupWindow.height - popup.requestedHeight) <= 1,
+                    styles[i] + " native surface must match the requested popup viewport")
+                verify(popup.surface.a >= 0.99,
+                    styles[i] + " surface must be opaque enough to prevent background bleed-through")
+                tryVerify(() => {
+                    const delegate = content.itemAtIndex(0)
+                    return delegate && delegate.visible && delegate.width > 0 && delegate.height > 0
+                }, 1500, styles[i] + " must render an actual application delegate")
                 popup.close()
                 tryVerify(() => !popup.visible)
             }
@@ -211,16 +223,42 @@ Item {
             const launchpad = popup.preferredSize("launchpad")
             const start = popup.preferredSize("start")
             const hierarchical = popup.preferredSize("hierarchical")
-            verify(launchpad.width > 620 && launchpad.height > 500,
-                "Launchpad must have a grid-sized preferred viewport")
-            verify(start.width > 620 && start.height > 500,
-                "Start must have space for its pinned grid and full list")
-            verify(hierarchical.width > 620 && hierarchical.height > 500,
-                "hierarchical categories need a roomy folder grid")
+            compare(launchpad.width, 900)
+            compare(launchpad.height, 600)
+            compare(start.width, 680)
+            compare(start.height, 600)
+            compare(hierarchical.width, 800)
+            compare(hierarchical.height, 600)
             verify(start.width !== launchpad.width || start.height !== launchpad.height,
                 "Start must have a distinct preferred size")
             verify(hierarchical.width !== launchpad.width || hierarchical.height !== launchpad.height,
                 "hierarchical view must have a distinct preferred size")
+        }
+
+        function test_cpp_variant_list_folderPreviewsResolveRealIcons() {
+            DockModel.applicationCatalog.applications = LauncherVariantListFixture.applications
+            DockModel.applicationCatalog.menuTree = LauncherVariantListFixture.folderTree
+            DockModel.applicationCatalog.ready = true
+            DockModel.applicationLauncherState.style = "hierarchical"
+            popup.openFor(anchor)
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            const grid = findChild(loader.item, "hierarchicalCategoryGrid")
+            tryVerify(() => grid && grid.itemAtIndex(0) !== null)
+            const folderTile = findChild(loader.item, "hierarchicalCategoryTile")
+            verify(folderTile, "category folder delegate must be created")
+            tryVerify(() => grid.count === 1)
+            const previews = findChild(folderTile, "applicationLauncherFolderPreviewIcon")
+            verify(previews, "folder tile must contain a real descendant application icon")
+            tryVerify(() => previews.status === Image.Ready && previews.paintedWidth > 0,
+                3000, "folder preview image must resolve through the system icon provider")
+            loader.item.activate(folderTile.entry)
+            tryVerify(() => findChild(loader.item, "hierarchicalApplicationTile") !== null)
+            const appTile = findChild(loader.item, "hierarchicalApplicationTile")
+            const appIcon = findChild(appTile, "launchpadCatalogIcon")
+            verify(appIcon, "nested application icon must be available after opening the category")
+            tryVerify(() => appIcon.status === Image.Ready && appIcon.paintedWidth > 0,
+                3000, "application icon must resolve through the icon provider")
+            popup.close()
         }
 
         function test_start_alphabet_back_button_returns_to_full_list() {
@@ -271,10 +309,14 @@ Item {
                     const content = findChild(popup, contentNames[index])
                     verify(content, styles[index] + " content view must exist at edge " + edge)
                     tryVerify(() => content.width > 0 && content.height > 80)
+                    const popupWindow = popup.contentItem.Window.window
+                    verify(Math.abs(popupWindow.width - popup.requestedWidth) <= 1)
+                    verify(Math.abs(popupWindow.height - popup.requestedHeight) <= 1)
                     verify(popup.screenX >= 0 && popup.screenY >= 0)
-                    verify(popup.screenX + popup.width <= root.width + 1)
-                    verify(popup.screenY + popup.height <= root.height + 1)
-                    const p = Qt.rect(popup.screenX, popup.screenY, popup.width, popup.height)
+                    verify(popup.screenX + popup.requestedWidth <= root.width + 1)
+                    verify(popup.screenY + popup.requestedHeight <= root.height + 1)
+                    const p = Qt.rect(popup.screenX, popup.screenY,
+                                      popup.requestedWidth, popup.requestedHeight)
                     const a = popup.anchorScreenRect
                     verify(p.x + p.width <= a.x || a.x + a.width <= p.x
                            || p.y + p.height <= a.y || a.y + a.height <= p.y,

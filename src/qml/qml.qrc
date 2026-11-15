@@ -8,6 +8,7 @@
         <file>ApplicationLauncherGridTile.qml</file>
         <file>ApplicationLauncherLaunchpad.qml</file>
         <file>ApplicationLauncherStart.qml</file>
+        <file>ApplicationLauncherFavoritesSource.qml</file>
         <file>ApplicationLauncherHierarchical.qml</file>
         <file>BadgeTextColor.js</file>
         <file>ZoomAnimationProfile.qml</file>

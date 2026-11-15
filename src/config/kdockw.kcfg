@@ -629,5 +629,13 @@
       <label>Windows Start pinned application IDs</label>
       <default></default>
     </entry>
+    <entry name="StartFavoritesImportAttempted" type="Bool">
+      <label>Plasma favorites import attempted</label>
+      <default>false</default>
+    </entry>
+    <entry name="StartFavoritesImportStatus" type="String">
+      <label>Plasma favorites import status</label>
+      <default>notAttempted</default>
+    </entry>
   </group>
 </kcfg>

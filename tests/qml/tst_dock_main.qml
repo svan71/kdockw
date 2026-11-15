@@ -563,7 +563,7 @@ Item {
             const point = item.mapToItem(stage, item.width / 2, item.height / 2)
             mousePress(stage, point.x, point.y, Qt.LeftButton)
             wait(350)
-            verify(!dock._dragPending, "a built-in widget must not start an application reorder drag")
+            verify(dock._dragPending, "built-in widgets must be available as internal dock drag sources")
             mouseRelease(stage, point.x, point.y, Qt.LeftButton)
         }
 
@@ -588,6 +588,9 @@ Item {
             const spacer = T.findFirst(item, o => o.objectName === "builtInSpacer")
             verify(spacer && spacer.visible, "the spacer row should render without an icon")
             fuzzyCompare(DockView.isVertical ? item.height : item.width, 72, 0.01)
+            DockModel.tasksModel.setTaskData(0, "widgetSize", 96)
+            tryVerify(() => Math.abs((DockView.isVertical ? item.height : item.width) - 96) < 0.1,
+                     2000, "changing a widget's configured size must update its dock geometry")
             compare(item.taskIndex, -1)
             compare(DockModel.delegateGeometryRequests.length, 0)
             compare(dock.computeExternalDropIndex(dock._primaryRestSlotStart(item) + 10), -1,
@@ -721,6 +724,36 @@ Item {
             dock._dragSourceIndex = 0
             compare(dock.computeDropIndex(dock._primaryRestSlotStart(spacer) + 8), 0,
                     "the application reorder target should remain the app row, never the spacer")
+        }
+
+        function test_builtInWidgetCanBeDraggedToAnotherPinnedItem() {
+            DockModel.tasksModel.addTask({
+                display: "Separator",
+                entryType: "builtInWidget",
+                widgetKind: "separator",
+                widgetSize: 0,
+                widgetVisible: true,
+                entryId: "widget:separator:drag",
+                taskIndex: -1,
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "App",
+                entryType: "task",
+                entryId: "task:widget-drag-target",
+                taskIndex: 0,
+                IsLauncher: true,
+                isPinned: true,
+            })
+            const dock = makeDock(2)
+            const sourceId = dock.dockEntryIdAt(0)
+            const targetId = dock.dockEntryIdAt(1)
+            compare(dock.entryTypeAtDockIndex(0), "builtInWidget")
+            verify(dock.reorderDockEntries(sourceId, targetId),
+                   "built-in dock widgets should use the persisted pinned entry order")
+            compare(entryOrder()[0], targetId)
+            compare(entryOrder()[1], sourceId)
         }
 
         function test_folderStackPopupFitsAllDockEdges(data) {

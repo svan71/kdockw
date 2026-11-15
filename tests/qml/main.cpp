@@ -189,6 +189,32 @@ private:
   bool m_previewSceneGraphTrace = false;
 };
 
+class LauncherVariantListFixture final : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QVariantList folderTree READ folderTree CONSTANT)
+  Q_PROPERTY(QVariantList applications READ applications CONSTANT)
+
+public:
+  QVariantList applications() const {
+    return {QVariantMap{{QStringLiteral("id"), QStringLiteral("org.example.fixture.desktop")},
+                        {QStringLiteral("type"), QStringLiteral("application")},
+                        {QStringLiteral("name"), QStringLiteral("Fixture App")},
+                        {QStringLiteral("icon"), QStringLiteral("applications-other")}}};
+  }
+  QVariantList folderTree() const {
+    const QVariantMap app{{QStringLiteral("id"), QStringLiteral("org.example.fixture.desktop")},
+                          {QStringLiteral("type"), QStringLiteral("application")},
+                          {QStringLiteral("name"), QStringLiteral("Fixture App")},
+                          {QStringLiteral("icon"), QStringLiteral("applications-other")}};
+    return {QVariantMap{{QStringLiteral("id"), QStringLiteral("group:fixture")},
+                        {QStringLiteral("type"), QStringLiteral("folder")},
+                        {QStringLiteral("name"), QStringLiteral("Fixture Folder")},
+                        {QStringLiteral("icon"), QStringLiteral("folder")},
+                        {QStringLiteral("children"), QVariantList{app}},
+                        {QStringLiteral("previewIcons"), QVariantList{app}}}};
+  }
+};
+
 class KDockWQmlTestSetup : public QObject {
   Q_OBJECT
 
@@ -224,6 +250,8 @@ public Q_SLOTS:
     engine->rootContext()->setContextProperty(
         QStringLiteral("testRussianLocaleAvailable"),
         qEnvironmentVariableIntValue("KDOCKW_TEST_RU_LOCALE_AVAILABLE") == 1);
+    engine->rootContext()->setContextProperty(QStringLiteral("LauncherVariantListFixture"),
+                                              &launcherVariantListFixture);
 
     auto *localizedContext = KLocalization::setupLocalizedContext(engine);
     localizedContext->setTranslationDomain(QStringLiteral("kdockw"));
@@ -231,6 +259,7 @@ public Q_SLOTS:
 
 private:
   MockIconDiagnostics iconDiagnostics;
+  LauncherVariantListFixture launcherVariantListFixture;
   KDockWQmlTest::ZoomLayoutEngine zoomLayoutEngine;
 };
 

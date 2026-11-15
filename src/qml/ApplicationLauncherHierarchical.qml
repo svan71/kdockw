@@ -11,7 +11,7 @@ ColumnLayout {
     id: page
     objectName: "applicationLauncherHierarchical"
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
-    Kirigami.Theme.inherit: false
+    Kirigami.Theme.inherit: true
 
     property var catalog
     property var launcherState
@@ -62,6 +62,16 @@ ColumnLayout {
             placeholderText: i18n("Search applications")
             Accessible.name: i18n("Search applications")
             onTextEdited: searchDebounce.restart()
+            color: launcherPopup.foreground
+            placeholderTextColor: launcherPopup.secondaryForeground
+            selectionColor: launcherPopup.selectedSurface
+            selectedTextColor: launcherPopup.foreground
+            background: Rectangle {
+                radius: Kirigami.Units.smallSpacing
+                color: launcherPopup.alternateSurface
+                border.color: searchField.activeFocus ? launcherPopup.focusColor : launcherPopup.borderColor
+                border.width: searchField.activeFocus ? 2 : 1
+            }
         }
         QQC2.ToolButton {
             text: i18n("Close")
@@ -86,15 +96,6 @@ ColumnLayout {
     }
 
     QQC2.Label {
-        objectName: "hierarchicalCurrentHeading"
-        Layout.fillWidth: true
-        text: page.query.length ? i18n("Search results")
-            : page.path.length ? page.path[page.path.length - 1].name : i18n("Browse KDE menu categories")
-        font.weight: Font.DemiBold
-        elide: Text.ElideRight
-    }
-
-    QQC2.Label {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
         visible: catalog.ready && page.visibleItems.length === 0
@@ -110,8 +111,8 @@ ColumnLayout {
         Layout.minimumHeight: 80
         Layout.preferredHeight: 520
         clip: true
-        cellWidth: width / Math.max(1, Math.floor(width / 176))
-        cellHeight: 148
+        cellWidth: width / Math.max(1, Math.floor(width / 148))
+        cellHeight: 126
         model: page.visibleItems
         keyNavigationEnabled: true
         focus: true
@@ -137,7 +138,8 @@ ColumnLayout {
                     ? "hierarchicalCategoryTile" : "hierarchicalApplicationTile"
                 anchors.fill: parent
                 entry: parent.entry
-                iconExtent: 60
+                launcherPopup: page.launcherPopup
+                iconExtent: 58
                 onActivated: page.activate(entry)
             }
         }

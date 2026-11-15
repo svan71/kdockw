@@ -9,7 +9,10 @@ binary="${build_dir}/stage/bin/kdockw"
 source "${script_dir}/lib/kdockw-stage-build-id.sh"
 source "${script_dir}/lib/kdockw-config-seed.sh"
 metadata_checker="${build_dir}/bin/kdockw_diagnostic_metadata_check"
-diagnostic_root="${repo_root}/diagnostics/v060-dev"
+# Tests may redirect launcher-owned state into a temporary directory. This
+# changes only the isolated diagnostic root; the production/stable guard stays
+# active and all candidate paths remain rooted beneath this directory.
+diagnostic_root="${KDOCKW_TEST_DIAGNOSTIC_ROOT:-${repo_root}/diagnostics/v060-dev}"
 state_dir="${diagnostic_root}/launcher-state"
 desktop_candidate="${state_dir}/candidate.desktop"
 runtime_data_home="${state_dir}/runtime-data"

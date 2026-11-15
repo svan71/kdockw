@@ -5,6 +5,8 @@
 
 #include "kdockw.h"
 
+#include <QSet>
+
 namespace kdockw
 {
 
@@ -26,6 +28,8 @@ ApplicationLauncherState::ApplicationLauncherState(KDockWSettings *settings, QOb
     if (m_settings) {
         m_style = normalizedStyle(m_settings->applicationLauncherStyle());
         m_pinnedApplicationIds = m_settings->startPinnedApplications();
+        m_startFavoritesImportAttempted = m_settings->startFavoritesImportAttempted();
+        m_startFavoritesImportStatus = m_settings->startFavoritesImportStatus();
         connect(m_settings, &KDockWSettings::ApplicationLauncherStyleChanged, this, [this] {
             const QString style = normalizedStyle(m_settings->applicationLauncherStyle());
             if (m_style != style) {
@@ -65,6 +69,69 @@ void ApplicationLauncherState::setStyle(const QString &style)
 QStringList ApplicationLauncherState::pinnedApplicationIds() const
 {
     return m_pinnedApplicationIds;
+}
+
+bool ApplicationLauncherState::startFavoritesImportAttempted() const
+{
+    return m_startFavoritesImportAttempted;
+}
+
+QString ApplicationLauncherState::startFavoritesImportStatus() const
+{
+    return m_startFavoritesImportStatus;
+}
+
+bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favoriteIds,
+                                                      const QStringList &availableApplicationIds,
+                                                      bool sourceAvailable)
+{
+    if (m_startFavoritesImportAttempted) {
+        return false;
+    }
+
+    m_startFavoritesImportAttempted = true;
+    QString status = QStringLiteral("noMatchingApps");
+    if (!sourceAvailable) {
+        status = QStringLiteral("unavailable");
+    } else if (!m_pinnedApplicationIds.isEmpty()) {
+        status = QStringLiteral("existingPinsPreserved");
+    } else {
+        QSet<QString> available;
+        for (const QString &id : availableApplicationIds) {
+            available.insert(id);
+        }
+        QSet<QString> seen;
+        QStringList imported;
+        for (QString id : favoriteIds) {
+            if (id.startsWith(QLatin1String("applications:"))) {
+                id.remove(0, QStringLiteral("applications:").size());
+            }
+            if (id.isEmpty() || !available.contains(id) || seen.contains(id)) {
+                continue;
+            }
+            seen.insert(id);
+            imported.append(id);
+        }
+        if (!imported.isEmpty()) {
+            m_pinnedApplicationIds = imported;
+            status = QStringLiteral("imported");
+            Q_EMIT pinnedApplicationIdsChanged();
+            if (m_settings) {
+                m_settings->setStartPinnedApplications(m_pinnedApplicationIds);
+            }
+        } else if (favoriteIds.isEmpty()) {
+            status = QStringLiteral("noFavorites");
+        }
+    }
+    if (m_startFavoritesImportStatus != status) {
+        m_startFavoritesImportStatus = status;
+        Q_EMIT startFavoritesImportStatusChanged();
+    }
+    if (m_settings) {
+        m_settings->setStartFavoritesImportAttempted(true);
+        m_settings->setStartFavoritesImportStatus(m_startFavoritesImportStatus);
+    }
+    return status == QLatin1String("imported");
 }
 
 bool ApplicationLauncherState::isPinned(const QString &serviceId) const

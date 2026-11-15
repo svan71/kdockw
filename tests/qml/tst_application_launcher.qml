@@ -14,6 +14,18 @@ Item {
         id: popupStub
         property int closeCount: 0
         property var catalog: catalogStub
+        property color foreground: "#202124"
+        property color secondaryForeground: "#666a73"
+        property color alternateSurface: "#e8e9ec"
+        property color hoverSurface: "#dfe1e5"
+        property color selectedSurface: "#d2d6df"
+        property color borderColor: "#777b84"
+        property color focusColor: "#315f9b"
+        property bool favoritesSourceReady: true
+        property bool favoritesSourceAvailable: false
+        property var favoriteIds: []
+        property var favoritesSourceLoader: null
+        property var favoritesSource: null
         function close() { closeCount++ }
     }
 
@@ -40,6 +52,7 @@ Item {
 
     QtObject {
         id: launcherStateStub
+        property bool startFavoritesImportAttempted: true
         property var pinnedApplicationIds: ["org.example.browser.desktop"]
         function isPinned(id) { return pinnedApplicationIds.includes(id) }
         function togglePinned(id) {
@@ -77,15 +90,12 @@ Item {
         Component { id: start; Launcher.ApplicationLauncherStart {} }
         Component { id: hierarchical; Launcher.ApplicationLauncherHierarchical {} }
 
-        function test_launchpad_grid_search_folders_and_launch() {
+        function test_launchpad_keeps_app_grid_separate_from_system_categories() {
             const page = makePage(launchpad)
-            compare(page.visibleItems.length, 3, "all applications remain visible beside navigable system folders")
+            compare(page.visibleItems.length, 2, "Launchpad uses the complete app catalog")
+            verify(page.visibleItems.every(item => item.type === "application"),
+                "KDE XDG menu categories must not be presented as user-created Launchpad folders")
             compare(page.catalog.applications.length, 2)
-            const folder = page.visibleItems.find(item => item.type === "folder")
-            verify(folder, "Launchpad must keep folder navigation without replacing the app grid")
-            page.activate(folder)
-            compare(page.currentFolder.name, "Development")
-            compare(page.visibleItems.length, 1)
             page.activate(page.visibleItems[0])
             compare(catalogStub.launchedIds, ["org.example.editor.desktop"])
             compare(popupStub.closeCount, 1)

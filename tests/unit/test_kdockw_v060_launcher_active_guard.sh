@@ -20,6 +20,7 @@ wayland_display="$(sed -n 's/^WAYLAND_DISPLAY=//p' <<<"$real_manager_env")"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/kdockw-launcher-guard.XXXXXX")"
 trap 'rm -rf -- "$temporary_dir"' EXIT
 mkdir -p "${temporary_dir}/bin" "${temporary_dir}/data" "${temporary_dir}/cache"
+export KDOCKW_TEST_DIAGNOSTIC_ROOT="${temporary_dir}/diagnostics"
 
 cat > "${temporary_dir}/manager-environment" <<EOF
 XDG_RUNTIME_DIR=${runtime_dir}

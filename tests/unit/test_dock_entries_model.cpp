@@ -204,6 +204,7 @@ TEST_CASE("Dock widget management adds edits moves hides and removes persisted e
     CHECK(model.data(model.index(1, 0), kdockw::DockEntriesModel::PlacementSlotRole).toString() == QStringLiteral("end"));
     CHECK(model.moveEntryById(spacerId, separatorId));
     CHECK(model.entries().first().id == spacerId);
+    CHECK(model.entries().first().slot == kdockw::DockWidgetSlot::Start);
     CHECK(model.entryIdAt(0) == spacerId);
     CHECK(model.entryTypeAt(0) == QStringLiteral("builtInWidget"));
     CHECK(model.removeBuiltInWidget(spacerId));

@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QImage>
 #include <QIcon>
 #include <QTemporaryDir>
 #include <QTest>
@@ -270,6 +271,23 @@ TEST_CASE("Application and KDE category icons resolve through the active icon th
                  checked, themeMisses);
 }
 
+TEST_CASE("Application launcher icon provider accepts absolute icon file paths", "[application-launcher][catalog][icons]")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("custom-app-icon.png"));
+    QImage image(32, 32, QImage::Format_ARGB32_Premultiplied);
+    image.fill(QColor(QStringLiteral("#2f80ed")));
+    REQUIRE(image.save(path, "PNG"));
+
+    kdockw::TaskIconProvider provider(false);
+    QSize resolvedSize;
+    const QPixmap pixmap = provider.requestPixmap(path, &resolvedSize, QSize(48, 48));
+    CHECK_FALSE(pixmap.isNull());
+    CHECK(resolvedSize.width() > 0);
+    CHECK(resolvedSize.height() > 0);
+}
+
 TEST_CASE("Application launcher style and Windows Start pin order persist", "[application-launcher][state]")
 {
     const ScopedConfigHome home;
@@ -291,4 +309,62 @@ TEST_CASE("Application launcher style and Windows Start pin order persist", "[ap
         QStringLiteral("org.example.two.desktop"), QStringLiteral("org.example.one.desktop")});
     CHECK(restored.isPinned(QStringLiteral("org.example.two.desktop")));
     CHECK(restored.pinnedApplicationIds().contains(QStringLiteral("org.example.two.desktop")));
+}
+
+TEST_CASE("Windows Start imports valid Plasma favorites once without overwriting user pins", "[application-launcher][state][favorites]")
+{
+    const ScopedConfigHome home;
+    const QStringList favorites{
+        QStringLiteral("applications:org.example.two.desktop"),
+        QStringLiteral("applications:missing.desktop"),
+        QStringLiteral("applications:org.example.one.desktop"),
+        QStringLiteral("applications:org.example.two.desktop"),
+        QStringLiteral("suspend"),
+    };
+    const QStringList available{
+        QStringLiteral("org.example.one.desktop"),
+        QStringLiteral("org.example.two.desktop"),
+    };
+    {
+        KDockWSettings settings;
+        settings.load();
+        kdockw::ApplicationLauncherState state(&settings);
+        CHECK(state.importPlasmaFavorites(favorites, available, true));
+        CHECK(state.pinnedApplicationIds() == QStringList{
+            QStringLiteral("org.example.two.desktop"), QStringLiteral("org.example.one.desktop")});
+        CHECK(state.startFavoritesImportAttempted());
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("imported"));
+        settings.save();
+    }
+    KDockWSettings restoredSettings;
+    restoredSettings.load();
+    kdockw::ApplicationLauncherState restored(&restoredSettings);
+    restored.togglePinned(QStringLiteral("org.example.two.desktop"));
+    CHECK(restored.pinnedApplicationIds() == QStringList{QStringLiteral("org.example.one.desktop")});
+    CHECK_FALSE(restored.importPlasmaFavorites(favorites, available, true));
+    CHECK(restored.pinnedApplicationIds() == QStringList{QStringLiteral("org.example.one.desktop")});
+}
+
+TEST_CASE("Windows Start records unavailable Plasma favorites and preserves existing pins", "[application-launcher][state][favorites]")
+{
+    {
+        const ScopedConfigHome home;
+        KDockWSettings settings;
+        settings.load();
+        kdockw::ApplicationLauncherState state(&settings);
+        CHECK_FALSE(state.importPlasmaFavorites({}, {}, false));
+        CHECK(state.startFavoritesImportAttempted());
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("unavailable"));
+    }
+    {
+        const ScopedConfigHome home;
+        KDockWSettings settings;
+        settings.load();
+        settings.setStartPinnedApplications({QStringLiteral("existing.desktop")});
+        kdockw::ApplicationLauncherState state(&settings);
+        CHECK_FALSE(state.importPlasmaFavorites({QStringLiteral("applications:new.desktop")},
+                                                 {QStringLiteral("new.desktop")}, true));
+        CHECK(state.pinnedApplicationIds() == QStringList{QStringLiteral("existing.desktop")});
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("existingPinsPreserved"));
+    }
 }

@@ -199,7 +199,9 @@ Item {
 
     function entryTypeAtDockIndex(dockIndex) {
         const item = dockRepeater.itemAt(dockIndex)
-        return item && item.isFolderStack ? "folderStack" : "task"
+        if (!item) return "task"
+        if (item.isBuiltInWidget) return "builtInWidget"
+        return item.isFolderStack ? "folderStack" : "task"
     }
 
     function dockEntryIdAt(dockIndex) {
@@ -252,6 +254,11 @@ Item {
             return false
         const sourcePinned = isPinnedDockIndex(fromDockIndex)
         const targetPinned = isPinnedDockIndex(toDockIndex)
+        const sourceWidget = entryTypeAtDockIndex(fromDockIndex) === "builtInWidget"
+        const targetWidget = entryTypeAtDockIndex(toDockIndex) === "builtInWidget"
+        if ((sourceWidget || targetWidget) && sourcePinned && targetPinned) {
+            return DockModel.moveDockEntry(sourceEntryId, targetEntryId)
+        }
         if (!DockSettings.separateLaunchers
                 && entryTypeAtDockIndex(fromDockIndex) === "task"
                 && entryTypeAtDockIndex(toDockIndex) === "task") {
@@ -614,14 +621,16 @@ Item {
     // that dropping near the original position keeps the item in place).
     function computeDropIndex(globalMousePos) {
         const separate = DockSettings.separateLaunchers
-        const sourcePinned = separate && isPinnedDockIndex(root._dragSourceIndex)
+        const sourceWidget = entryTypeAtDockIndex(root._dragSourceIndex) === "builtInWidget"
+        const sourcePinned = isPinnedDockIndex(root._dragSourceIndex)
         if (DockView.isVertical) {
             let panelRelY = globalMousePos - dockPanel.y
             let items = []
             for (let i = 0; i < dockRepeater.count; i++) {
                 let item = dockRepeater.itemAt(i)
                 if (!item) continue
-                if (item.isBuiltInWidget) continue
+                if (item.isBuiltInWidget && !sourceWidget) continue
+                if (sourceWidget && !isPinnedDockIndex(i)) continue
                 if (separate && isPinnedDockIndex(i) !== sourcePinned) continue
                 items.push({ idx: i, cx: _primaryRestSlotStart(item) + item.height / 2 })
             }
@@ -639,7 +648,8 @@ Item {
             for (let i = 0; i < dockRepeater.count; i++) {
                 let item = dockRepeater.itemAt(i)
                 if (!item) continue
-                if (item.isBuiltInWidget) continue
+                if (item.isBuiltInWidget && !sourceWidget) continue
+                if (sourceWidget && !isPinnedDockIndex(i)) continue
                 if (separate && isPinnedDockIndex(i) !== sourcePinned) continue
                 items.push({ idx: i, cx: _primaryRestSlotStart(item) + item.width / 2 })
             }
@@ -1160,7 +1170,7 @@ Item {
                 root.trackPointer(mouse.x, mouse.y)
             if (mouse.button === Qt.LeftButton && root.hoveredIndex >= 0) {
                 const item = dockRepeater.itemAt(root.hoveredIndex)
-                if (item && !item.isBuiltInWidget) {
+                if (item) {
                     root._dragStartX = mouse.x
                     root._dragStartY = mouse.y
                     root._dragStartEntryId = root.dockEntryIdAt(root.hoveredIndex)

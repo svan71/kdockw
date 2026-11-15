@@ -1898,6 +1898,14 @@ msgid "No pinned applications"
 msgstr "Нет закреплённых приложений"
 
 #: src/qml/ApplicationLauncherStart.qml
+msgid "Plasma favorites are unavailable; pin apps from the catalog."
+msgstr "Избранное Plasma недоступно; закрепите приложения из каталога."
+
+#: src/qml/ApplicationLauncherStart.qml
+msgid "No Plasma favorites found; pin apps from the catalog."
+msgstr "Избранные приложения Plasma не найдены; закрепите приложения из каталога."
+
+#: src/qml/ApplicationLauncherStart.qml
 msgid "Choose a letter"
 msgstr "Выберите букву"
 

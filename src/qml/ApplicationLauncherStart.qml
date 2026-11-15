@@ -11,20 +11,36 @@ ColumnLayout {
     id: page
     objectName: "applicationLauncherStart"
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
-    Kirigami.Theme.inherit: false
+    Kirigami.Theme.inherit: true
     property var catalog
     property var launcherState
     property var launcherPopup
+    property string favoriteSourceStatus: "loading"
     property string query: ""
     property string pageMode: "home" // home, all, alphabet
     property string scrollToLetter: ""
     readonly property var visibleItems: query.length ? catalog.search(query) : catalog.applications
-    readonly property var pinnedItems: launcherState.pinnedApplicationIds
+    readonly property var pinnedItems: toArray(launcherState.pinnedApplicationIds)
         .map(id => catalog.application(id)).filter(app => app && app.id)
-    readonly property var allRows: buildAllRows(catalog.applications)
+    readonly property var allRows: buildAllRows(toArray(catalog.applications))
     readonly property var alphabetEntries: buildAlphabetEntries()
 
     function focusSearch() { searchField.forceActiveFocus() }
+    function importInitialFavorites() {
+        if (!catalog.ready || !launcherPopup.favoritesSourceReady
+                || launcherState.startFavoritesImportAttempted)
+            return
+        const applicationIds = toArray(catalog.applications)
+            .map(app => app && app.id ? String(app.id) : "").filter(id => id.length > 0)
+        launcherState.importPlasmaFavorites(launcherPopup.favoriteIds,
+            applicationIds, launcherPopup.favoritesSourceAvailable)
+    }
+    function toArray(value) {
+        if (!value || typeof value.length !== "number") return []
+        const result = []
+        for (let index = 0; index < value.length; ++index) result.push(value[index])
+        return result
+    }
     function iconSource(app) {
         const name = app.icon || "application-x-executable"
         return "image://icon/" + encodeURIComponent(name) + "?v=" + DockView.iconCacheVersion
@@ -110,6 +126,21 @@ ColumnLayout {
 
     spacing: Kirigami.Units.smallSpacing
 
+    Component.onCompleted: page.importInitialFavorites()
+
+    Connections {
+        target: page.catalog
+        function onCatalogChanged() { page.importInitialFavorites() }
+    }
+    Connections {
+        target: page.launcherPopup.favoritesSourceLoader
+        function onStatusChanged() { page.importInitialFavorites() }
+    }
+    Connections {
+        target: page.launcherPopup.favoritesSource
+        function onFavoriteIdsChanged() { page.importInitialFavorites() }
+    }
+
     RowLayout {
         Layout.fillWidth: true
         QQC2.TextField {
@@ -118,6 +149,16 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: i18n("Search applications")
             Accessible.name: i18n("Search applications")
+            color: launcherPopup.foreground
+            placeholderTextColor: launcherPopup.secondaryForeground
+            selectionColor: launcherPopup.selectedSurface
+            selectedTextColor: launcherPopup.foreground
+            background: Rectangle {
+                radius: Kirigami.Units.smallSpacing
+                color: launcherPopup.alternateSurface
+                border.color: searchField.activeFocus ? launcherPopup.focusColor : launcherPopup.borderColor
+                border.width: searchField.activeFocus ? 2 : 1
+            }
             onTextEdited: searchDebounce.restart()
         }
         QQC2.ToolButton {
@@ -171,7 +212,11 @@ ColumnLayout {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
         visible: page.pageMode === "home" && !page.query.length && page.pinnedItems.length === 0
-        text: i18n("No pinned applications")
+        text: page.favoriteSourceStatus === "unavailable"
+            ? i18n("Plasma favorites are unavailable; pin apps from the catalog.")
+            : page.launcherState.startFavoritesImportStatus === "noFavorites"
+                ? i18n("No Plasma favorites found; pin apps from the catalog.")
+                : i18n("No pinned applications")
         color: Kirigami.Theme.disabledTextColor
     }
 
@@ -183,7 +228,7 @@ ColumnLayout {
         Layout.preferredHeight: visible ? Math.min(contentHeight, 360) : 0
         Layout.minimumHeight: 0
         clip: true
-        cellWidth: width / Math.max(1, Math.floor(width / 150))
+        cellWidth: width / Math.max(1, Math.floor(width / 104))
         cellHeight: 124
         model: page.pinnedItems
         keyNavigationEnabled: true
@@ -195,6 +240,7 @@ ColumnLayout {
                 id: pinnedTile
                 anchors.fill: parent
                 entry: parent.app
+                launcherPopup: page.launcherPopup
                 iconExtent: 50
                 compact: true
                 onActivated: page.launch(entry)
@@ -309,7 +355,7 @@ ColumnLayout {
         Layout.preferredHeight: visible ? 480 : 0
         Layout.minimumHeight: visible ? 100 : 0
         clip: true
-        cellWidth: width / Math.max(1, Math.floor(width / 92))
+        cellWidth: width / Math.max(1, Math.floor(width / 80))
         cellHeight: 64
         model: visible ? page.alphabetEntries : []
         keyNavigationEnabled: true

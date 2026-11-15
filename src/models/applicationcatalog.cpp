@@ -18,6 +18,7 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <functional>
 
 namespace kdockw
 {
@@ -26,6 +27,46 @@ namespace
 QString iconNameOrFallback(const QString &requested, const QString &fallback)
 {
     return requested.isEmpty() ? fallback : requested;
+}
+
+QVariantList previewApplications(const QVariantList &items, qsizetype maximum = 4)
+{
+    QVariantList previews;
+    previews.reserve(maximum);
+    std::function<void(const QVariantList &)> append = [&](const QVariantList &entries) {
+        for (const QVariant &value : entries) {
+            if (previews.size() >= maximum) {
+                return;
+            }
+            const QVariantMap item = value.toMap();
+            if (item.value(QStringLiteral("type")).toString() == QLatin1String("folder")) {
+                append(item.value(QStringLiteral("children")).toList());
+            } else if (!item.value(QStringLiteral("id")).toString().isEmpty()) {
+                previews.append(QVariantMap{
+                    {QStringLiteral("id"), item.value(QStringLiteral("id"))},
+                    {QStringLiteral("name"), item.value(QStringLiteral("name"))},
+                    {QStringLiteral("icon"), item.value(QStringLiteral("icon"))},
+                });
+            }
+            if (previews.size() >= maximum) {
+                return;
+            }
+        }
+    };
+    append(items);
+    return previews;
+}
+
+QVariantMap folderRecord(const KServiceGroup *group, const QVariantList &children)
+{
+    return {
+        {QStringLiteral("id"), QStringLiteral("group:%1").arg(group->relPath())},
+        {QStringLiteral("type"), QStringLiteral("folder")},
+        {QStringLiteral("name"), group->caption()},
+        {QStringLiteral("icon"), iconNameOrFallback(group->icon(), QStringLiteral("folder"))},
+        {QStringLiteral("children"), children},
+        {QStringLiteral("previewIcons"), previewApplications(children)},
+    };
 }
 }
 
@@ -117,13 +158,7 @@ void ApplicationCatalog::processRootEntry(const KServiceGroup::SPtr &entry)
         if (nested.isEmpty() && !childGroup->showEmptyMenu()) {
             return;
         }
-        m_menuTree.append(QVariantMap{
-            {QStringLiteral("id"), QStringLiteral("group:%1").arg(childGroup->relPath())},
-            {QStringLiteral("type"), QStringLiteral("folder")},
-            {QStringLiteral("name"), childGroup->caption()},
-            {QStringLiteral("icon"), iconNameOrFallback(childGroup->icon(), QStringLiteral("folder"))},
-            {QStringLiteral("children"), nested},
-        });
+        m_menuTree.append(folderRecord(childGroup, nested));
         return;
     }
     if (!entry->isType(KST_KService)) {
@@ -202,13 +237,7 @@ QVariantList ApplicationCatalog::readGroup(const KServiceGroup::Ptr &group, QSet
             if (nested.isEmpty() && !childGroup->showEmptyMenu()) {
                 continue;
             }
-            children.append(QVariantMap{
-                {QStringLiteral("id"), QStringLiteral("group:%1").arg(childGroup->relPath())},
-                {QStringLiteral("type"), QStringLiteral("folder")},
-                {QStringLiteral("name"), childGroup->caption()},
-                {QStringLiteral("icon"), iconNameOrFallback(childGroup->icon(), QStringLiteral("folder"))},
-                {QStringLiteral("children"), nested},
-            });
+            children.append(folderRecord(childGroup, nested));
         } else if (entry->isType(KST_KService)) {
             auto *rawService = static_cast<KService *>(entry.data());
             const KService::Ptr service(rawService);

@@ -350,12 +350,21 @@ bool DockEntriesModel::moveEntry(int fromIndex, int toIndex)
     if (fromIndex < 0 || fromIndex >= m_entries.size() || toIndex < 0 || toIndex >= m_entries.size() || fromIndex == toIndex) {
         return false;
     }
+    const DockWidgetSlot targetSlot = m_entries.at(toIndex).slot;
+    const bool movingWidget = m_entries.at(fromIndex).type == DockEntryType::BuiltInWidget;
     const int destinationChild = toIndex > fromIndex ? toIndex + 1 : toIndex;
     if (!beginMoveRows({}, fromIndex, fromIndex, {}, destinationChild)) {
         return false;
     }
     m_entries.move(fromIndex, toIndex);
     endMoveRows();
+    if (movingWidget) {
+        DockEntry &moved = m_entries[toIndex];
+        if (moved.slot != targetSlot) {
+            moved.slot = targetSlot;
+            Q_EMIT dataChanged(index(toIndex, 0), index(toIndex, 0), {PlacementSlotRole});
+        }
+    }
     Q_EMIT entriesChanged();
     return true;
 }

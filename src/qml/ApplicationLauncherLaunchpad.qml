@@ -11,28 +11,25 @@ ColumnLayout {
     id: page
     objectName: "applicationLauncherLaunchpad"
     Kirigami.Theme.colorSet: Kirigami.Theme.Window
-    Kirigami.Theme.inherit: false
+    Kirigami.Theme.inherit: true
     property var catalog
     property var launcherState
     property var launcherPopup
-    property var currentFolder: null
     property string query: ""
-    readonly property var folderItems: catalog.menuTree.filter(item => item.type === "folder")
-    readonly property var visibleItems: query.length ? catalog.search(query)
-        : currentFolder ? currentFolder.children : catalog.applications.concat(folderItems)
+    readonly property var visibleItems: query.length ? catalog.search(query) : toArray(catalog.applications)
 
     function focusSearch() { searchField.forceActiveFocus() }
+    function toArray(value) {
+        if (!value || typeof value.length !== "number") return []
+        const result = []
+        for (let index = 0; index < value.length; ++index) result.push(value[index])
+        return result
+    }
     function activate(item) {
-        if (item.type === "folder") {
-            currentFolder = item
-            searchField.text = ""
-            query = ""
-            grid.currentIndex = 0
-        } else if (catalog.launch(item.id)) {
+        if (catalog.launch(item.id)) {
             launcherPopup.close()
         }
     }
-    function goBack() { currentFolder = null }
 
     spacing: Kirigami.Units.smallSpacing
 
@@ -42,8 +39,7 @@ ColumnLayout {
             objectName: "launchpadBackButton"
             text: i18n("Back")
             icon.name: "go-previous"
-            visible: page.currentFolder !== null && page.query.length === 0
-            onClicked: page.goBack()
+            visible: false
         }
         QQC2.TextField {
             id: searchField
@@ -51,6 +47,16 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: i18n("Search applications")
             Accessible.name: i18n("Search applications")
+            color: launcherPopup.foreground
+            placeholderTextColor: launcherPopup.secondaryForeground
+            selectionColor: launcherPopup.selectedSurface
+            selectedTextColor: launcherPopup.foreground
+            background: Rectangle {
+                radius: Kirigami.Units.smallSpacing
+                color: launcherPopup.alternateSurface
+                border.color: searchField.activeFocus ? launcherPopup.focusColor : launcherPopup.borderColor
+                border.width: searchField.activeFocus ? 2 : 1
+            }
             onTextEdited: searchDebounce.restart()
         }
         QQC2.ToolButton {
@@ -72,8 +78,7 @@ ColumnLayout {
         QQC2.Label {
             objectName: "launchpadHeading"
             Layout.fillWidth: true
-            text: page.query.length ? i18n("Search results")
-                : page.currentFolder ? page.currentFolder.name : i18n("Applications")
+            text: page.query.length ? i18n("Search results") : i18n("Applications")
             font.bold: true
             elide: Text.ElideRight
         }
@@ -103,8 +108,8 @@ ColumnLayout {
         Layout.minimumHeight: 80
         Layout.preferredHeight: 520
         clip: true
-        cellWidth: width / Math.max(1, Math.floor(width / 148))
-        cellHeight: 142
+        cellWidth: width / Math.max(1, Math.floor(width / 120))
+        cellHeight: 126
         model: page.visibleItems
         keyNavigationEnabled: true
         focus: true
@@ -119,16 +124,17 @@ ColumnLayout {
             event.accepted = true
         }
         Keys.onEscapePressed: launcherPopup.close()
-        Keys.onBackPressed: if (page.currentFolder) page.goBack()
         QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
         delegate: Item {
             property var entry: page.visibleItems[index] || ({})
             width: grid.cellWidth
             height: grid.cellHeight
             ApplicationLauncherGridTile {
+                objectName: entry.type === "folder" ? "launchpadFolderTile" : "launchpadApplicationTile"
                 anchors.fill: parent
                 entry: parent.entry
-                iconExtent: 62
+                launcherPopup: page.launcherPopup
+                iconExtent: 64
                 onActivated: page.activate(entry)
             }
         }
