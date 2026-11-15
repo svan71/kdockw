@@ -13,6 +13,10 @@
 #include <QMetaObject>
 #include <QLoggingCategory>
 #include <QSet>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+#include <QTimer>
+#endif
 #include <algorithm>
 
 Q_LOGGING_CATEGORY(lcDockPresentation, "kdockw.presentation")
@@ -27,6 +31,57 @@ DockPresentationModel::DockPresentationModel(QAbstractItemModel *tasksModel, Doc
     , m_entriesModel(entriesModel)
     , m_diagnosticsEnabled(diagnosticsEnabled)
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    m_performanceDiagnosticsEnabled = qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
+    if (m_performanceDiagnosticsEnabled) {
+        m_performanceClock.start();
+        m_performanceReportTimer = new QTimer(this);
+        m_performanceReportTimer->setInterval(5000);
+        connect(m_performanceReportTimer, &QTimer::timeout, this, [this] {
+            const qint64 elapsedMs = m_performanceClock.restart();
+            qCInfo(lcDockPresentation).noquote()
+                << "[KDOCKW_PERF_DOCK_PRESENTATION]"
+                << "intervalMs=" << elapsedMs
+                << "taskDataChanged=" << m_sourceDataChanges
+                << "rowsInserted=" << m_sourceRowsInserted
+                << "rowsRemoved=" << m_sourceRowsRemoved
+                << "rowsMoved=" << m_sourceRowsMoved
+                << "layoutChanged=" << m_sourceLayoutChanges
+                << "modelReset=" << m_sourceModelResets
+                << "rebuilds=" << m_rebuilds
+                << "rebuildTotalMs=" << (m_rebuildNanos / 1000000.0)
+                << "rebuildMaxMs=" << (m_rebuildMaxNanos / 1000000.0)
+                << "dataHandlerTotalMs=" << (m_dataHandlerNanos / 1000000.0)
+                << "dataHandlerMaxMs=" << (m_dataHandlerMaxNanos / 1000000.0)
+                << "forwardedRows=" << m_forwardedRows
+                << "launcherRoleChanges=" << m_launcherRoleChanges
+                << "identityRoleChanges=" << m_identityRoleChanges
+                << "decorationRoleChanges=" << m_decorationRoleChanges
+                << "attentionRoleChanges=" << m_attentionRoleChanges
+                << "otherRoleChanges=" << m_otherRoleChanges
+                << "visibleRows=" << m_rows.size()
+                << "taskRows=" << (m_tasksModel ? m_tasksModel->rowCount() : 0);
+            m_sourceDataChanges = 0;
+            m_sourceRowsInserted = 0;
+            m_sourceRowsRemoved = 0;
+            m_sourceRowsMoved = 0;
+            m_sourceLayoutChanges = 0;
+            m_sourceModelResets = 0;
+            m_rebuilds = 0;
+            m_rebuildNanos = 0;
+            m_rebuildMaxNanos = 0;
+            m_forwardedRows = 0;
+            m_dataHandlerNanos = 0;
+            m_dataHandlerMaxNanos = 0;
+            m_launcherRoleChanges = 0;
+            m_identityRoleChanges = 0;
+            m_decorationRoleChanges = 0;
+            m_attentionRoleChanges = 0;
+            m_otherRoleChanges = 0;
+        });
+        m_performanceReportTimer->start();
+    }
+#endif
     connect(m_entriesModel, &DockEntriesModel::entriesChanged, this, &DockPresentationModel::scheduleRebuild);
     // Structural TaskManager signals are emitted after its row indices have
     // changed. Reconcile immediately so delegates never read an old taskIndex
@@ -34,18 +89,77 @@ DockPresentationModel::DockPresentationModel(QAbstractItemModel *tasksModel, Doc
     // names and icons until the event loop reached the rebuild).
     connect(m_tasksModel, &QAbstractItemModel::rowsInserted, this,
             [this](const QModelIndex &parent, int first, int last) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+                if (m_performanceDiagnosticsEnabled) ++m_sourceRowsInserted;
+#endif
                 rebuild();
                 forwardTaskRowsChanged(parent, first, last);
             });
     connect(m_tasksModel, &QAbstractItemModel::rowsRemoved, this,
             [this](const QModelIndex &parent, int first, int last) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+                if (m_performanceDiagnosticsEnabled) ++m_sourceRowsRemoved;
+#endif
                 rebuild();
                 forwardTaskRowsChanged(parent, first, last);
             });
-    connect(m_tasksModel, &QAbstractItemModel::rowsMoved, this, [this] { rebuild(); });
-    connect(m_tasksModel, &QAbstractItemModel::modelReset, this, [this] { rebuild(); });
-    connect(m_tasksModel, &QAbstractItemModel::layoutChanged, this, [this] { rebuild(); });
-    connect(m_tasksModel, &QAbstractItemModel::dataChanged, this, &DockPresentationModel::forwardTaskDataChanged);
+    connect(m_tasksModel, &QAbstractItemModel::rowsMoved, this, [this] {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        if (m_performanceDiagnosticsEnabled) ++m_sourceRowsMoved;
+#endif
+        rebuild();
+    });
+    connect(m_tasksModel, &QAbstractItemModel::modelReset, this, [this] {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        if (m_performanceDiagnosticsEnabled) ++m_sourceModelResets;
+#endif
+        rebuild();
+    });
+    connect(m_tasksModel, &QAbstractItemModel::layoutChanged, this, [this] {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        if (m_performanceDiagnosticsEnabled) ++m_sourceLayoutChanges;
+#endif
+        rebuild();
+    });
+    connect(m_tasksModel, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        QElapsedTimer timer;
+        if (m_performanceDiagnosticsEnabled) {
+            timer.start();
+            m_sourceDataChanges += static_cast<quint64>(std::max(1, bottomRight.row() - topLeft.row() + 1));
+            if (roles.isEmpty()) {
+                ++m_otherRoleChanges;
+            } else {
+                for (const int role : roles) {
+                    if (role == TaskManager::AbstractTasksModel::LauncherUrlWithoutIcon
+                        || role == TaskManager::AbstractTasksModel::LauncherUrl) {
+                        ++m_launcherRoleChanges;
+                    } else if (role == TaskManager::AbstractTasksModel::AppId
+                               || role == TaskManager::AbstractTasksModel::IsLauncher
+                               || role == TaskManager::AbstractTasksModel::IsWindow
+                               || role == TaskManager::AbstractTasksModel::IsGroupParent
+                               || role == TaskManager::AbstractTasksModel::WinIdList) {
+                        ++m_identityRoleChanges;
+                    } else if (role == Qt::DecorationRole) {
+                        ++m_decorationRoleChanges;
+                    } else if (role == TaskManager::AbstractTasksModel::IsDemandingAttention) {
+                        ++m_attentionRoleChanges;
+                    } else {
+                        ++m_otherRoleChanges;
+                    }
+                }
+            }
+        }
+#endif
+        forwardTaskDataChanged(topLeft, bottomRight, roles);
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        if (m_performanceDiagnosticsEnabled) {
+            const quint64 nanos = static_cast<quint64>(timer.nsecsElapsed());
+            m_dataHandlerNanos += nanos;
+            m_dataHandlerMaxNanos = std::max(m_dataHandlerMaxNanos, nanos);
+        }
+#endif
+    });
     scheduleRebuild();
 }
 
@@ -184,9 +298,10 @@ QVariantList DockPresentationModel::zoomLayoutSpecs(int iconSize) const
     specs.reserve(m_rows.size());
     for (const Row &row : m_rows) {
         const bool widget = row.entryType == QLatin1String("builtInWidget");
+        const bool launcher = widget && row.widgetKind == QLatin1String("applicationLauncher");
         const double size = widget && row.widgetSize > 0
             ? std::max(4, row.widgetSize) : std::max(1, iconSize);
-        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget}});
+        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget || launcher}});
     }
     return specs;
 }
@@ -429,6 +544,10 @@ void DockPresentationModel::scheduleRebuild()
 
 void DockPresentationModel::rebuild()
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    QElapsedTimer perfTimer;
+    if (m_performanceDiagnosticsEnabled) perfTimer.start();
+#endif
     const QList<Row> desired = desiredRows();
     QSet<QString> wantedKeys;
     for (const Row &row : desired) {
@@ -507,6 +626,14 @@ void DockPresentationModel::rebuild()
                 << "taskDataPresent=" << hasTask;
         }
     }
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        const quint64 nanos = static_cast<quint64>(perfTimer.nsecsElapsed());
+        ++m_rebuilds;
+        m_rebuildNanos += nanos;
+        m_rebuildMaxNanos = std::max(m_rebuildMaxNanos, nanos);
+    }
+#endif
 }
 
 void DockPresentationModel::forwardTaskRowsChanged(const QModelIndex &parent, int first, int last)
@@ -520,6 +647,9 @@ void DockPresentationModel::forwardTaskRowsChanged(const QModelIndex &parent, in
     if (parent.isValid()) {
         const int dockRow = rowForTaskIndex(parent.row());
         if (dockRow >= 0) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            if (m_performanceDiagnosticsEnabled) ++m_forwardedRows;
+#endif
             Q_EMIT dataChanged(index(dockRow, 0), index(dockRow, 0));
         }
         return;
@@ -534,6 +664,9 @@ void DockPresentationModel::forwardTaskRowsChanged(const QModelIndex &parent, in
     for (int taskRow = firstAffected; taskRow <= lastAffected; ++taskRow) {
         const int dockRow = rowForTaskIndex(taskRow);
         if (dockRow >= 0) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            if (m_performanceDiagnosticsEnabled) ++m_forwardedRows;
+#endif
             Q_EMIT dataChanged(index(dockRow, 0), index(dockRow, 0));
         }
     }
@@ -541,6 +674,11 @@ void DockPresentationModel::forwardTaskRowsChanged(const QModelIndex &parent, in
 
 void DockPresentationModel::forwardTaskDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles)
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (qEnvironmentVariable("KDOCKW_EXPERIMENT_SUPPRESS_TASK_MODEL_FORWARDING") == QLatin1String("1")) {
+        return;
+    }
+#endif
     if (!topLeft.isValid() || !bottomRight.isValid() || topLeft.parent() != bottomRight.parent()) {
         return;
     }
@@ -584,6 +722,9 @@ void DockPresentationModel::forwardTaskDataChanged(const QModelIndex &topLeft, c
                                       : QStringLiteral("<invalid>"));
         }
         if (dockIndex >= 0) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            if (m_performanceDiagnosticsEnabled) ++m_forwardedRows;
+#endif
             Q_EMIT dataChanged(index(dockIndex, 0), index(dockIndex, 0), forwardedRoles);
         }
     }

@@ -46,6 +46,8 @@ struct ContextMenuData
     QString closeText;
     std::function<void()> closeApplication;
     QList<ContextMenuWindowAction> windows;
+    QString manageWidgetsText;
+    std::function<void()> manageWidgets;
     std::function<void()> settings;
     std::function<void()> about;
     std::function<void()> quit;
@@ -75,12 +77,14 @@ public:
 
     /// Show the native context menu for the task at @p index.
     Q_INVOKABLE void showForTask(int index);
+    Q_INVOKABLE void showForDock();
 
     [[nodiscard]] bool isOpen() const;
 
 Q_SIGNALS:
     void settingsRequested();
     void aboutRequested();
+    void manageWidgetsRequested();
     void openChanged();
 
 private:
@@ -90,6 +94,7 @@ private:
     bool m_open = false;
 
     void setOpen(bool open);
+    void showMenu(QMenu *menu);
 };
 
 } // namespace kdockw

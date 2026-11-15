@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QSet>
 
+#include <algorithm>
 #include <utility>
 
 namespace kdockw
@@ -19,6 +20,14 @@ DockEntriesModel::DockEntriesModel(QObject *parent)
 int DockEntriesModel::count() const
 {
     return m_entries.size();
+}
+
+bool DockEntriesModel::hasApplicationLauncher() const
+{
+    return std::any_of(m_entries.cbegin(), m_entries.cend(), [](const DockEntry &entry) {
+        return entry.type == DockEntryType::BuiltInWidget
+            && entry.widgetKind == QLatin1String("applicationLauncher");
+    });
 }
 
 int DockEntriesModel::rowCount(const QModelIndex &parent) const
@@ -183,6 +192,9 @@ QString DockEntriesModel::appendSpacer(int size, const QString &slotName)
 
 QString DockEntriesModel::appendApplicationLauncher(const QString &slotName)
 {
+    if (hasApplicationLauncher()) {
+        return {};
+    }
     DockWidgetSlot slot = DockWidgetSlot::Center;
     if (slotName == QLatin1String("start")) slot = DockWidgetSlot::Start;
     else if (slotName == QLatin1String("end")) slot = DockWidgetSlot::End;

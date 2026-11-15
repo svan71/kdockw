@@ -135,6 +135,57 @@ TEST_CASE("Application Launcher entry persists its icon and can be configured", 
     CHECK_FALSE(decoded.entries.first().widgetVisible);
 }
 
+TEST_CASE("Dock entries allow adding one launcher without deleting existing duplicates", "[dock-entries][application-launcher]")
+{
+    kdockw::DockEntriesModel model;
+    const QString firstId = model.appendApplicationLauncher(QStringLiteral("center"));
+    REQUIRE_FALSE(firstId.isEmpty());
+    CHECK(model.hasApplicationLauncher());
+    CHECK(model.appendApplicationLauncher(QStringLiteral("end")).isEmpty());
+    REQUIRE(model.count() == 1);
+
+    const auto existingFirst = kdockw::DockEntry::applicationLauncher(kdockw::DockWidgetSlot::Start);
+    const auto existingSecond = kdockw::DockEntry::applicationLauncher(kdockw::DockWidgetSlot::End);
+    model.setEntries({existingFirst, existingSecond});
+    REQUIRE(model.count() == 2);
+    CHECK(model.hasApplicationLauncher());
+    CHECK(model.entries().at(0).id == existingFirst.id);
+    CHECK(model.entries().at(1).id == existingSecond.id);
+    CHECK(model.appendApplicationLauncher(QStringLiteral("center")).isEmpty());
+    CHECK(model.count() == 2);
+}
+
+TEST_CASE("Pinned launchers and built-in widgets survive a mixed dock save and restore", "[dock-entries][dock-widgets]")
+{
+    kdockw::DockEntriesModel model;
+    const auto firstTask = kdockw::DockEntry::task(QUrl(QStringLiteral("applications:org.example.Editor")));
+    const QString spacerId = model.appendSpacer(36, QStringLiteral("center"));
+    const QString launcherId = model.appendApplicationLauncher(QStringLiteral("end"));
+    REQUIRE_FALSE(spacerId.isEmpty());
+    REQUIRE_FALSE(launcherId.isEmpty());
+    const auto separator = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Start);
+    model.setEntries({firstTask, separator, model.entries().at(0), model.entries().at(1)});
+
+    const auto encoded = kdockw::DockEntriesCodec::encode(model.entries());
+    const auto decoded = kdockw::DockEntriesCodec::decode(encoded);
+    REQUIRE(decoded.validDocument);
+    REQUIRE(decoded.entries.size() == 4);
+
+    kdockw::DockEntriesModel restored;
+    restored.setEntries(decoded.entries);
+    restored.syncTaskOrder({QStringLiteral("applications:org.example.Editor"),
+                            QStringLiteral("applications:org.example.Browser")});
+    const auto entries = restored.entries();
+    REQUIRE(entries.size() == 5);
+    CHECK(entries.at(0).type == kdockw::DockEntryType::Task);
+    CHECK(entries.at(1).type == kdockw::DockEntryType::BuiltInWidget);
+    CHECK(entries.at(1).id == separator.id);
+    CHECK(entries.at(2).id == spacerId);
+    CHECK(entries.at(3).id == launcherId);
+    CHECK(entries.at(4).type == kdockw::DockEntryType::Task);
+    CHECK(entries.at(4).url.toString() == QStringLiteral("applications:org.example.Browser"));
+}
+
 TEST_CASE("Dock widget management adds edits moves hides and removes persisted entries", "[dock-entries][dock-widgets]")
 {
     kdockw::DockEntriesModel model;

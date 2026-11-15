@@ -82,6 +82,12 @@ QMenu *createContextMenu(const ContextMenuData &data, QObject *context)
 
     menu->addSeparator();
     QMenu *dockMenu = menu->addMenu(QIcon::fromTheme(QStringLiteral("application-x-plasma")), i18nc("@action:inmenu", "KDockW"));
+    if (!data.manageWidgetsText.isEmpty() && data.manageWidgets) {
+        QAction *manageWidgets = dockMenu->addAction(QIcon::fromTheme(QStringLiteral("preferences-system-windows")),
+                                                     data.manageWidgetsText);
+        QObject::connect(manageWidgets, &QAction::triggered, context, data.manageWidgets);
+        dockMenu->addSeparator();
+    }
     QAction *settings = dockMenu->addAction(QIcon::fromTheme(QStringLiteral("configure")), i18nc("@action:inmenu", "Settings..."));
     settings->setEnabled(static_cast<bool>(data.settings));
     if (data.settings) {
@@ -210,16 +216,30 @@ void DockContextMenu::showForTask(int index)
     data.settings = [this]() { Q_EMIT settingsRequested(); };
     data.about = [this]() { Q_EMIT aboutRequested(); };
     data.quit = []() { qApp->quit(); };
-    auto *menu = createContextMenu(data, this);
+    data.manageWidgetsText = i18nc("@action:inmenu", "Manage Widgets...");
+    data.manageWidgets = [this]() { Q_EMIT manageWidgetsRequested(); };
+    showMenu(createContextMenu(data, this));
+}
 
+void DockContextMenu::showForDock()
+{
+    ContextMenuData data;
+    data.title = i18nc("@title:menu", "Dock");
+    data.manageWidgetsText = i18nc("@action:inmenu", "Manage Widgets...");
+    data.manageWidgets = [this]() { Q_EMIT manageWidgetsRequested(); };
+    data.settings = [this]() { Q_EMIT settingsRequested(); };
+    data.about = [this]() { Q_EMIT aboutRequested(); };
+    data.quit = []() { qApp->quit(); };
+    showMenu(createContextMenu(data, this));
+}
+
+void DockContextMenu::showMenu(QMenu *menu)
+{
     // Open before popup(): the popup grab makes QtWayland send the dock a
     // synthetic leave, which QML must already see as part of the menu hold.
     // Also drives the interaction lock (dock stays visible while menu is open).
     setOpen(true);
-    connect(menu, &QMenu::aboutToHide, this, [this]() {
-        setOpen(false);
-    });
-
+    connect(menu, &QMenu::aboutToHide, this, [this]() { setOpen(false); });
     menu->popup(QCursor::pos());
 }
 

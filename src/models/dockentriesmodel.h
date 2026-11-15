@@ -15,6 +15,7 @@ class DockEntriesModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(bool hasApplicationLauncher READ hasApplicationLauncher NOTIFY entriesChanged)
 
 public:
     enum Role {
@@ -33,6 +34,7 @@ public:
     explicit DockEntriesModel(QObject *parent = nullptr);
 
     [[nodiscard]] int count() const;
+    [[nodiscard]] bool hasApplicationLauncher() const;
     [[nodiscard]] int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     [[nodiscard]] QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;

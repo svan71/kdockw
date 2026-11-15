@@ -16,8 +16,19 @@
 #include <QDir>
 #include <QStringList>
 
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <sys/prctl.h>
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    // Allow a same-UID, explicitly requested GDB sampler to attach to this
+    // isolated diagnostic process. Never enabled in production builds.
+    if (qEnvironmentVariable("KDOCKW_GDB_ATTACH") == QLatin1String("1")) {
+        (void)::prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0);
+    }
+#endif
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kdockw"));
 
     // QApplication cannot be created before headless --help/--version checks.

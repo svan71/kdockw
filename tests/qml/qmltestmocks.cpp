@@ -46,6 +46,7 @@ MockTasksModel::MockTasksModel(QObject *parent)
     : QStandardItemModel(parent)
 {
     m_roleNames.insert(Qt::DisplayRole, QByteArrayLiteral("display"));
+    m_roleNames.insert(Qt::DecorationRole, QByteArrayLiteral("decoration"));
     const QMetaEnum roles = QMetaEnum::fromType<MockAbstractTasksModel::AdditionalRoles>();
     for (int i = 0; i < roles.keyCount(); ++i) {
         m_roleNames.insert(roles.value(i), QByteArray(roles.key(i)));

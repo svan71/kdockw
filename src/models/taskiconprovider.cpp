@@ -5,17 +5,22 @@
 #include "icondiag.h"
 
 #include <QImage>
+#include <QLoggingCategory>
 #include <QMutexLocker>
 #include <QPainter>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QStringList>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+#endif
 
 #include <algorithm>
 #include <cmath>
 
 namespace kdockw
 {
+Q_LOGGING_CATEGORY(lcTaskIcon, "kdockw.taskicon")
 
 QMutex TaskIconProvider::s_rawIconsMutex;
 QCache<QString, QIcon> TaskIconProvider::s_rawIcons{TaskIconProvider::kRawIconCacheCapacity};
@@ -25,6 +30,9 @@ TaskIconProvider::TaskIconProvider(bool normalizationEnabled, IconDiagnostics *d
     , m_normalizationEnabled(normalizationEnabled)
     , m_diagnostics(diagnostics)
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    m_performanceDiagnosticsEnabled = qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
+#endif
 }
 
 void TaskIconProvider::registerRawIcon(const QString &key, const QIcon &icon)
@@ -47,6 +55,12 @@ void TaskIconProvider::clearRawIcons()
 
 QPixmap TaskIconProvider::requestPixmap(const QString &id, QSize *size, const QSize &requestedSize)
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    QElapsedTimer requestTimer;
+    if (m_performanceDiagnosticsEnabled) {
+        requestTimer.start();
+    }
+#endif
     // Parse "org.kde.dolphin?v=0" → iconName = "org.kde.dolphin"
     const int queryIdx = id.indexOf(QLatin1Char('?'));
     const QString iconName = (queryIdx >= 0) ? id.left(queryIdx) : id;
@@ -177,8 +191,63 @@ QPixmap TaskIconProvider::requestPixmap(const QString &id, QSize *size, const QS
                                        normalizationEnabled,
                                        normalizationEnabled ? (normalizationCacheHit ? QStringLiteral("hit") : QStringLiteral("miss")) : QStringLiteral("disabled"));
     }
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        const qint64 requestNanos = requestTimer.nsecsElapsed();
+        const QMutexLocker locker(&m_performanceMutex);
+        ++m_intervalRequests;
+        if (m_intervalImageUrls.size() < 4096) {
+            m_intervalImageUrls.insert(id);
+        } else {
+            m_intervalUrlSetSaturated = true;
+        }
+        if (m_lifetimeImageUrls.size() < 8192) {
+            m_lifetimeImageUrls.insert(id);
+        } else if (!m_lifetimeImageUrls.contains(id)) {
+            m_lifetimeUrlSetSaturated = true;
+        }
+        m_intervalNormalizationHits += normalizationEnabled && normalizationCacheHit;
+        m_intervalNormalizationMisses += normalizationEnabled && !normalizationCacheHit;
+        m_intervalOutputBytes += static_cast<quint64>(result.width()) * result.height() * result.depth() / 8;
+        m_intervalRequestedBytes += static_cast<quint64>(targetPixels) * targetPixels * 4;
+        m_intervalRequestNanos += static_cast<quint64>(requestNanos);
+        m_intervalMaxRequestNanos = std::max(m_intervalMaxRequestNanos, requestNanos);
+    }
+#endif
     return result;
 }
+
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+void TaskIconProvider::reportPerformanceInterval()
+{
+    if (!m_performanceDiagnosticsEnabled) {
+        return;
+    }
+    QMutexLocker locker(&m_performanceMutex);
+    qCInfo(lcTaskIcon).noquote()
+        << "[KDOCKW_PERF_TASK_ICON]"
+        << "requestPixmap=" << m_intervalRequests
+        << "uniqueImageUrls=" << m_intervalImageUrls.size()
+        << "uniqueUrlSetSaturated=" << m_intervalUrlSetSaturated
+        << "lifetimeUniqueImageUrls=" << m_lifetimeImageUrls.size()
+        << "lifetimeUrlSetSaturated=" << m_lifetimeUrlSetSaturated
+        << "estimatedOutputBytes=" << m_intervalOutputBytes
+        << "requestedRasterBytes=" << m_intervalRequestedBytes
+        << "normalizationHits=" << m_intervalNormalizationHits
+        << "normalizationMisses=" << m_intervalNormalizationMisses
+        << "requestTotalMs=" << (m_intervalRequestNanos / 1000000.0)
+        << "requestMaxMs=" << (m_intervalMaxRequestNanos / 1000000.0);
+    m_intervalRequests = 0;
+    m_intervalImageUrls.clear();
+    m_intervalUrlSetSaturated = false;
+    m_intervalNormalizationHits = 0;
+    m_intervalNormalizationMisses = 0;
+    m_intervalOutputBytes = 0;
+    m_intervalRequestedBytes = 0;
+    m_intervalRequestNanos = 0;
+    m_intervalMaxRequestNanos = 0;
+}
+#endif
 
 void TaskIconProvider::setNormalizationEnabled(bool enabled)
 {

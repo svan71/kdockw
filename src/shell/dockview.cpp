@@ -22,10 +22,17 @@
 #include <KLocalizedQmlContext>
 
 #include <QQmlEngine>
+#include <QMap>
+#include <QQuickItem>
 #include <QScreen>
 #include <QtQml>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+#include <QTimer>
+#endif
 
 #include <utility>
+#include <functional>
 
 Q_LOGGING_CATEGORY(lcDockView, "kdockw.shell.dockview")
 
@@ -101,12 +108,10 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
     });
     connect(m_iconDiagnostics, &IconDiagnostics::iconDprChanged, this, &DockView::bumpIconCacheVersion);
 
-    // Refresh provider URLs when task artwork arrives or changes.
-    connect(tasksModel, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
-        if (roles.isEmpty() || roles.contains(Qt::DecorationRole)) {
-            bumpIconCacheVersion();
-        }
-    });
+    // Task icons bind directly to model.decoration and DockModel::iconName()
+    // per row. Do not invalidate the shared icon URL cache for every task
+    // decoration update: TaskManager emits these continuously, and changing
+    // this global version reloads every dock icon on each notification.
 
     // Enable i18n() in QML (required for Accessible.name/description strings)
     KLocalization::setupLocalizedContext(engine());
@@ -169,6 +174,102 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
                                           SLOT(handleScreenLockChanged(bool)));
 
     show();
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    m_performanceDiagnosticsEnabled = qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
+    if (m_performanceDiagnosticsEnabled) {
+        qCInfo(lcDockView).noquote()
+            << "[KDOCKW_PERF_START]"
+            << "binary=" << QCoreApplication::applicationFilePath()
+            << "screen=" << (m_dockScreen ? m_dockScreen->name() : QStringLiteral("unknown"))
+            << "screenGeometry=" << (m_dockScreen ? m_dockScreen->geometry() : QRect())
+            << "surfaceGeometry=" << geometry()
+            << "edge=" << static_cast<int>(m_edge)
+            << "renderer=" << static_cast<int>(rendererInterface()->graphicsApi())
+            << "qmlImportPaths=" << engine()->importPathList()
+            << "qmlPluginPaths=" << engine()->pluginPathList();
+        m_performanceClock.start();
+        m_eventLoopClock.start();
+        m_frameClock.start();
+        m_eventLoopProbeTimer = new QTimer(this);
+        m_eventLoopProbeTimer->setTimerType(Qt::PreciseTimer);
+        m_eventLoopProbeTimer->setInterval(50);
+        connect(m_eventLoopProbeTimer, &QTimer::timeout, this, [this] {
+            const qint64 elapsed = m_eventLoopClock.restart();
+            ++m_eventLoopSamples;
+            m_eventLoopOver66Ms += elapsed > 66;
+            m_eventLoopOver100Ms += elapsed > 100;
+            m_eventLoopOver150Ms += elapsed > 150;
+            m_eventLoopMaxLatenessMs = std::max(m_eventLoopMaxLatenessMs, std::max<qint64>(0, elapsed - 50));
+        });
+        m_eventLoopProbeTimer->start();
+        connect(this, &QQuickWindow::frameSwapped, this, [this] {
+            const qint64 elapsed = m_frameClock.restart();
+            ++m_frameSamples;
+            m_frameOver25Ms += elapsed > 25;
+            m_frameMaxIntervalMs = std::max(m_frameMaxIntervalMs, elapsed);
+        });
+        m_performanceReportTimer = new QTimer(this);
+        m_performanceReportTimer->setInterval(5000);
+        connect(m_performanceReportTimer, &QTimer::timeout, this, [this] {
+            const qint64 elapsed = m_performanceClock.restart();
+            if (m_iconProvider) {
+                m_iconProvider->reportPerformanceInterval();
+            }
+            qCInfo(lcDockView).noquote()
+                << "[KDOCKW_PERF_EVENT_LOOP]"
+                << "intervalMs=" << elapsed
+                << "probeSamples=" << m_eventLoopSamples
+                << "probeOver66ms=" << m_eventLoopOver66Ms
+                << "probeOver100ms=" << m_eventLoopOver100Ms
+                << "probeOver150ms=" << m_eventLoopOver150Ms
+                << "maxLatenessMs=" << m_eventLoopMaxLatenessMs
+                << "frames=" << m_frameSamples
+                << "framesOver25ms=" << m_frameOver25Ms
+                << "maxFrameIntervalMs=" << m_frameMaxIntervalMs
+                << "visible=" << isVisible();
+            m_eventLoopSamples = 0;
+            m_eventLoopOver66Ms = 0;
+            m_eventLoopOver100Ms = 0;
+            m_eventLoopOver150Ms = 0;
+            m_eventLoopMaxLatenessMs = 0;
+            m_frameSamples = 0;
+            m_frameOver25Ms = 0;
+            m_frameMaxIntervalMs = 0;
+        });
+        m_performanceReportTimer->start();
+
+        if (qEnvironmentVariable("KDOCKW_OBJECT_CENSUS") == QLatin1String("1")) {
+            auto *censusTimer = new QTimer(this);
+            censusTimer->setInterval(10000);
+            connect(censusTimer, &QTimer::timeout, this, [this] {
+                QMap<QString, int> types;
+                int objectCount = 0;
+                int quickItemCount = 0;
+                std::function<void(const QObject *)> visit = [&](const QObject *object) {
+                    if (!object) {
+                        return;
+                    }
+                    ++objectCount;
+                    ++types[QString::fromLatin1(object->metaObject()->className())];
+                    quickItemCount += qobject_cast<const QQuickItem *>(object) != nullptr;
+                    for (const QObject *child : object->children()) {
+                        visit(child);
+                    }
+                };
+                visit(rootObject());
+                QStringList typeCounts;
+                for (auto it = types.cbegin(); it != types.cend(); ++it) {
+                    typeCounts.append(QStringLiteral("%1:%2").arg(it.key()).arg(it.value()));
+                }
+                qCInfo(lcDockView).noquote() << "[KDOCKW_OBJECT_CENSUS]"
+                                              << "objects=" << objectCount
+                                              << "quickItems=" << quickItemCount
+                                              << "types=" << typeCounts.join(QLatin1Char(','));
+            });
+            censusTimer->start();
+        }
+    }
+#endif
     if (m_geometryTraceEnabled) {
         traceLayerGeometry(QStringLiteral("initial-show"));
         m_geometryTraceAfterFrame = QStringLiteral("initial-show");
@@ -187,6 +288,15 @@ QColor DockView::backgroundColor() const
 bool DockView::isPointerInside() const
 {
     return m_pointerFocusTracker && m_pointerFocusTracker->isPointerInside();
+}
+
+bool DockView::performanceDiagnosticsEnabled() const
+{
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    return qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
+#else
+    return false;
+#endif
 }
 
 int DockView::backgroundStyleType() const

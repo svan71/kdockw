@@ -54,7 +54,8 @@ public:
 
   QPixmap requestPixmap(const QString &, QSize *size,
                         const QSize &requestedSize) override {
-    const QSize pixmapSize = requestedSize.isValid() ? requestedSize : QSize(32, 32);
+    const QSize pixmapSize = requestedSize.width() > 0 && requestedSize.height() > 0
+        ? requestedSize : QSize(32, 32);
     if (size)
       *size = pixmapSize;
     QPixmap pixmap(pixmapSize);

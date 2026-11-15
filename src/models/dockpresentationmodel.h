@@ -7,6 +7,10 @@
 
 #include <QAbstractListModel>
 #include <QVariantList>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+class QTimer;
+#endif
 
 namespace kdockw
 {
@@ -94,6 +98,28 @@ private:
     QVector<int> m_taskToDock;
     int m_pinnedEntryCount = 0;
     bool m_rebuildScheduled = false;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    bool m_performanceDiagnosticsEnabled = false;
+    QTimer *m_performanceReportTimer = nullptr;
+    QElapsedTimer m_performanceClock;
+    quint64 m_sourceDataChanges = 0;
+    quint64 m_sourceRowsInserted = 0;
+    quint64 m_sourceRowsRemoved = 0;
+    quint64 m_sourceRowsMoved = 0;
+    quint64 m_sourceLayoutChanges = 0;
+    quint64 m_sourceModelResets = 0;
+    quint64 m_rebuilds = 0;
+    quint64 m_rebuildNanos = 0;
+    quint64 m_rebuildMaxNanos = 0;
+    quint64 m_forwardedRows = 0;
+    quint64 m_dataHandlerNanos = 0;
+    quint64 m_dataHandlerMaxNanos = 0;
+    quint64 m_launcherRoleChanges = 0;
+    quint64 m_identityRoleChanges = 0;
+    quint64 m_decorationRoleChanges = 0;
+    quint64 m_attentionRoleChanges = 0;
+    quint64 m_otherRoleChanges = 0;
+#endif
 };
 
 } // namespace kdockw

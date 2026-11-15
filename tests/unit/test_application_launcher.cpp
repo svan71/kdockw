@@ -4,14 +4,21 @@
 #include "kdockw.h"
 #include "models/applicationcatalog.h"
 #include "models/applicationlauncherstate.h"
+#include "models/taskiconprovider.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QIcon>
 #include <QTemporaryDir>
+#include <QTest>
+
+#include <cstdio>
+#include <functional>
 
 namespace
 {
@@ -138,6 +145,7 @@ TEST_CASE("Refreshing the application catalog replaces data without growing its 
     QObject owner;
     kdockw::ApplicationCatalog catalog(&owner);
     catalog.ensureLoaded();
+    QTRY_VERIFY_WITH_TIMEOUT(catalog.ready(), 5000);
     REQUIRE(catalog.ready());
 
     const QVariantList initialApplications = catalog.applications();
@@ -152,6 +160,114 @@ TEST_CASE("Refreshing the application catalog replaces data without growing its 
         CHECK(catalog.menuTree() == initialMenuTree);
         CHECK(owner.children().size() == 1);
     }
+}
+
+TEST_CASE("Synchronous catalog refresh cancels a pending asynchronous first load", "[application-launcher][catalog][refresh]")
+{
+    kdockw::ApplicationCatalog catalog;
+    int catalogChanges = 0;
+    QObject::connect(&catalog, &kdockw::ApplicationCatalog::catalogChanged, &catalog, [&catalogChanges] {
+        ++catalogChanges;
+    });
+
+    catalog.ensureLoaded();
+    REQUIRE(catalog.loading());
+    catalog.refresh();
+    REQUIRE(catalog.ready());
+    REQUIRE_FALSE(catalog.loading());
+    REQUIRE(catalogChanges == 1);
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    CHECK(catalogChanges == 1);
+}
+
+TEST_CASE("Application catalog warm-open and search cost is measurable", "[application-launcher][catalog][performance]")
+{
+    kdockw::ApplicationCatalog catalog;
+    int catalogChanges = 0;
+    QObject::connect(&catalog, &kdockw::ApplicationCatalog::catalogChanged, &catalog, [&catalogChanges] {
+        ++catalogChanges;
+    });
+
+    QElapsedTimer timer;
+    timer.start();
+    catalog.ensureLoaded();
+    const qint64 initialRequestMs = timer.elapsed();
+    for (int i = 0; i < 40; ++i) {
+        catalog.ensureLoaded();
+    }
+    CHECK(catalog.loading());
+    CHECK(catalogChanges == 0);
+    QTRY_VERIFY_WITH_TIMEOUT(catalog.ready(), 5000);
+    const qint64 initialReadyMs = timer.elapsed();
+    REQUIRE(catalog.ready());
+    const int applicationCount = catalog.applications().size();
+    REQUIRE(applicationCount > 0);
+    REQUIRE(catalogChanges >= 1);
+    const int stableChangeCount = catalogChanges;
+
+    timer.restart();
+    for (int i = 0; i < 40; ++i) {
+        catalog.ensureLoaded();
+    }
+    const qint64 repeatedOpenMs = timer.elapsed();
+    CHECK(catalogChanges == stableChangeCount);
+
+    const QStringList queries{QStringLiteral("browser"), QStringLiteral("system"), QStringLiteral("editor"), QStringLiteral("settings")};
+    timer.restart();
+    int resultCount = 0;
+    for (int i = 0; i < 80; ++i) {
+        resultCount += catalog.search(queries.at(i % queries.size())).size();
+    }
+    const qint64 searchMs = timer.elapsed();
+    CHECK(resultCount >= 0);
+
+    std::fprintf(stderr,
+                 "[launcher-perf] applications=%d initial-request-ms=%lld initial-ready-ms=%lld ensure-loaded-40-ms=%lld search-80-ms=%lld\n",
+                 applicationCount,
+                 static_cast<long long>(initialRequestMs),
+                 static_cast<long long>(initialReadyMs),
+                 static_cast<long long>(repeatedOpenMs),
+                 static_cast<long long>(searchMs));
+}
+
+TEST_CASE("Application and KDE category icons resolve through the active icon theme", "[application-launcher][catalog][icons]")
+{
+    kdockw::ApplicationCatalog catalog;
+    catalog.ensureLoaded();
+    QTRY_VERIFY_WITH_TIMEOUT(catalog.ready(), 5000);
+    REQUIRE(catalog.ready());
+
+    kdockw::TaskIconProvider provider(false);
+    int checked = 0;
+    int themeMisses = 0;
+    const auto verifyIcon = [&checked, &themeMisses, &provider](const QString &iconName) {
+        REQUIRE_FALSE(iconName.isEmpty());
+        if (QIcon::fromTheme(iconName).isNull() && QIcon(iconName).isNull()) {
+            ++themeMisses;
+        }
+        QSize resolvedSize;
+        const QPixmap pixmap = provider.requestPixmap(iconName, &resolvedSize, QSize(48, 48));
+        REQUIRE_FALSE(pixmap.isNull());
+        ++checked;
+    };
+    std::function<void(const QVariantList &)> verifyTree = [&](const QVariantList &items) {
+        for (const QVariant &value : items) {
+            const QVariantMap item = value.toMap();
+            verifyIcon(item.value(QStringLiteral("icon")).toString());
+            if (item.value(QStringLiteral("type")).toString() == QLatin1String("folder")) {
+                verifyTree(item.value(QStringLiteral("children")).toList());
+            }
+        }
+    };
+
+    verifyTree(catalog.menuTree());
+    for (const QVariant &value : catalog.applications()) {
+        verifyIcon(value.toMap().value(QStringLiteral("icon")).toString());
+    }
+    CHECK(checked >= catalog.applications().size());
+    std::fprintf(stderr, "[launcher-icons] rendered=%d themed-or-file-misses=%d via-fallback-provider\n",
+                 checked, themeMisses);
 }
 
 TEST_CASE("Application launcher style and Windows Start pin order persist", "[application-launcher][state]")

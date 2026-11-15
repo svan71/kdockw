@@ -10,6 +10,8 @@ import com.thicking.kdockw 1.0
 ColumnLayout {
     id: page
     objectName: "applicationLauncherLaunchpad"
+    Kirigami.Theme.colorSet: Kirigami.Theme.Window
+    Kirigami.Theme.inherit: false
     property var catalog
     property var launcherState
     property var launcherPopup
@@ -19,6 +21,10 @@ ColumnLayout {
         : currentFolder ? currentFolder.children : catalog.menuTree
 
     function focusSearch() { searchField.forceActiveFocus() }
+    function iconSource(item) {
+        const name = item.icon || (item.type === "folder" ? "folder" : "application-x-executable")
+        return "image://icon/" + encodeURIComponent(name) + "?v=" + DockView.iconCacheVersion
+    }
     function activate(item) {
         if (item.type === "folder") {
             currentFolder = item
@@ -65,6 +71,14 @@ ColumnLayout {
     }
 
     QQC2.Label {
+        objectName: "launchpadLoadingIndicator"
+        Layout.fillWidth: true
+        horizontalAlignment: Text.AlignHCenter
+        visible: !page.catalog.ready
+        text: i18n("Loading applications…")
+    }
+
+    QQC2.Label {
         Layout.fillWidth: true
         text: page.query.length ? i18n("Search results")
             : page.currentFolder ? page.currentFolder.name : i18n("Applications")
@@ -83,6 +97,9 @@ ColumnLayout {
         objectName: "launchpadGrid"
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.minimumWidth: 1
+        Layout.minimumHeight: 80
+        Layout.preferredHeight: 480
         clip: true
         cellWidth: Math.max(96, Math.floor(width / Math.max(1, Math.floor(width / 116))))
         cellHeight: 116
@@ -112,11 +129,17 @@ ColumnLayout {
             onClicked: page.activate(modelData)
             contentItem: ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
-                Kirigami.Icon {
+                Image {
+                    objectName: "launchpadCatalogIcon"
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: 48
                     Layout.preferredHeight: 48
-                    source: modelData.icon || "application-x-executable"
+                    sourceSize: Qt.size(Math.ceil(width * Screen.devicePixelRatio),
+                                        Math.ceil(height * Screen.devicePixelRatio))
+                    source: page.iconSource(modelData)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    Accessible.ignored: true
                 }
                 QQC2.Label {
                     Layout.fillWidth: true

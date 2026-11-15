@@ -6,6 +6,7 @@
 #include <taskmanager/abstracttasksmodel.h>
 
 #include <QFileInfo>
+#include <QCoreApplication>
 #include <QStandardItemModel>
 #include <QSignalSpy>
 #include <QSignalBlocker>
@@ -37,6 +38,32 @@ std::unique_ptr<QStandardItem> makeTask(const QString &name, const QUrl &launche
                   TaskManager::AbstractTasksModel::WinIdList);
     return item;
 }
+}
+
+TEST_CASE("Dock presentation forwards one task notification without entering an update loop",
+          "[dock-presentation][dock-widgets][stability]")
+{
+    const QUrl launcherUrl(QStringLiteral("applications:org.example.Editor"));
+    QStandardItemModel tasks;
+    const int taskRow = appendTask(tasks, QStringLiteral("Editor"), launcherUrl);
+    kdockw::DockEntriesModel entries;
+    entries.setEntries({kdockw::DockEntry::task(launcherUrl)});
+    kdockw::DockPresentationModel presentation(&tasks, &entries);
+    QTRY_COMPARE_WITH_TIMEOUT(presentation.rowCount(), 1, 2000);
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    QSignalSpy changed(&presentation, &QAbstractItemModel::dataChanged);
+    tasks.item(taskRow)->setText(QStringLiteral("Editor — document"));
+    CHECK(changed.count() == 1);
+
+    // Drain queued rebuild work and ensure it settles rather than feeding a
+    // new task-model notification back into the presentation model.
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+    CHECK(changed.count() == 1);
+    CHECK(presentation.data(presentation.index(0, 0), Qt::DisplayRole).toString()
+          == QStringLiteral("Editor — document"));
 }
 
 TEST_CASE("Dock presentation model merges pinned entries in stable order and leaves running tasks after them", "[dock-presentation]")
@@ -141,6 +168,29 @@ TEST_CASE("Dock presentation model places built-in widgets in slots without task
     CHECK(model.isPinnedDockIndex(0));
     CHECK_FALSE(model.isPinnedDockIndex(3));
     CHECK(entries.moveEntryById(start.id, center.id));
+}
+
+TEST_CASE("Only the Application Launcher participates in dock magnification", "[dock-presentation][dock-widgets][zoom]")
+{
+    QStandardItemModel tasks;
+    kdockw::DockEntriesModel entries;
+    const auto separator = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Start);
+    const auto spacer = kdockw::DockEntry::spacer(kdockw::DockWidgetSlot::Center, 32);
+    const auto launcher = kdockw::DockEntry::applicationLauncher(kdockw::DockWidgetSlot::End);
+    entries.setEntries({separator, spacer, launcher});
+
+    kdockw::DockPresentationModel model(&tasks, &entries);
+    QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 3, 2000);
+    const QVariantList specs = model.zoomLayoutSpecs(48);
+    REQUIRE(specs.size() == 3);
+    for (int row = 0; row < model.rowCount(); ++row) {
+        const auto kind = model.data(model.index(row, 0), kdockw::DockPresentationModel::WidgetKindRole).toString();
+        const auto spec = specs.at(row).toMap();
+        const double expectedSize = kind == QLatin1String("spacer") ? 32.0 : 48.0;
+        CHECK(spec.value(QStringLiteral("size")).toDouble() == expectedSize);
+        CHECK(spec.value(QStringLiteral("canMagnify")).toBool()
+              == (kind == QLatin1String("applicationLauncher")));
+    }
 }
 
 TEST_CASE("Dock presentation follows TaskManager order when pinned and running zones are combined", "[dock-presentation][taskmanager-regression]")

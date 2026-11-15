@@ -21,9 +21,12 @@ extensions can share the persisted item and presentation path.
 - `DockItem` renders separators and spacers inside the existing dock surface.
   Separator marks adapt to dock orientation; fixed spacer extents use logical
   pixels on the primary axis for all four edges and HiDPI scale factors.
-- A small QML manager operates directly on `DockEntriesModel`: add/remove,
-  reorder, resize, change slot, and toggle visibility. Model changes use the
-  existing `entriesChanged` persistence path.
+- A QML manager operates directly on `DockEntriesModel`: add/remove, reorder,
+  resize, change slot, and toggle visibility. Its persistent entry point is a
+  dock-level right-click menu and does not depend on a built-in widget being
+  present. The manager is an adaptive, scrollable card list; left-clicking
+  empty dock space has no manager side effect. Model changes use the existing
+  `entriesChanged` persistence path.
 - `DockView` and Layer Shell continue to own output selection, surface
   geometry, exclusive zones, and input regions. Widgets create no surfaces.
 
@@ -34,7 +37,9 @@ editing an entry emits the existing save signal. TaskManager launcher
 synchronization replaces only Task records and retains widgets and Folder
 Stacks. Hidden widgets stay in the saved model and manager but are omitted from
 live presentation rows. Presentation rows have no window geometry publication
-or TaskManager launcher identity.
+or TaskManager launcher identity. The Application Launcher currently supports
+one newly added row because style and Start pins are global settings; loading
+does not remove or rewrite pre-existing duplicate rows.
 
 The v3 separator migrates to visible with automatic size (`size=0`). Version 4
 stores explicit size and visibility. Fixed spacers accept 4–512 logical
@@ -45,8 +50,9 @@ Slot placement is independent of screen orientation: `start` and `end` refer
 to the dock's primary axis. Application and Folder Stack Drag & Drop remains
 unchanged; built-in widgets are excluded as drag sources and targets. Explicit
 reordering is available through the widget manager. Spring zoom receives a
-per-row primary extent. Widgets do not magnify, but their real extent is used
-when calculating neighboring icon centres, offsets, and background growth.
+per-row primary extent. The Application Launcher icon can magnify; separators
+and spacers retain configured extents. Real extents feed neighboring icon
+centres, offsets, and background growth.
 
 The current content-wrapping `Flow` has no free-space allocator. A stretching
 spacer is therefore not enabled: allocating remaining screen space would
@@ -61,17 +67,19 @@ extension/plugin API.
 
 - Build the hierarchy from `KServiceGroup::root()` and recursively consume
   `entries(false, true, true)` in XDG Menu order. Groups become categories or
-  folders; application rows keep their `KService::Ptr` identity.
-- Search the KDE service catalog with `KApplicationTrader::query()` and KDE's
-  subsequence matching/filter facilities. Use `KService` metadata for
+  folders; application rows keep their `KService::Ptr` identity. Initial root
+  traversal is scheduled in short event-loop batches so popup creation does
+  not synchronously walk the full service tree.
+- Use KDE service catalog APIs and `KService` metadata for
   localized name, generic name, keywords, categories, icon, menu ID, and storage
   ID. Cache service objects in memory; persist stable service references and
   user-owned pins/folder choices only.
 - Filter `NoDisplay`, `Hidden`, `OnlyShowIn`/`NotShowIn`, and unavailable
   `TryExec` entries. Desktop entry identity de-duplicates alternate paths.
 - Keep the current `KService` objects and catalog records in memory only.
-  Search uses `KApplicationTrader::query()` and matches localized service
-  metadata; KSycoca database changes coalesce into a catalog refresh.
+  Search filters those existing localized metadata records; KSycoca database
+  changes coalesce into a catalog refresh. This avoids reparsing desktop
+  metadata on every debounced keystroke.
 - `ApplicationCatalog` is owned by the dock model and replaces its in-memory
   application and menu records on refresh. Launcher QML views are owned by the
   popup `Loader`; switching styles or closing the popup releases the loaded
@@ -82,26 +90,38 @@ extension/plugin API.
 - `ApplicationLauncherState` persists the selected style and ordered Start
   pins. Pins are stable service IDs and survive temporary removal from the
   current catalog.
-- A single native popup loads one of three QML views: Launchpad presents the
-  menu tree as a searchable app/folder grid; Start shows ordered pins, search,
-  and the alphabetized catalog; KDE Hierarchical navigates the original nested
-  XDG menu tree and searches across the same catalog. All views use the same
-  catalog and KIO launch path.
+- A single native popup loads one of three distinct QML layouts: Launchpad
+  presents apps and folders in a searchable grid; Start shows ordered pins,
+  search, and a full application list; KDE Hierarchical browses the original
+  nested XDG menu as category rows with breadcrumbs. All views use the same
+  catalog and KIO launch path. Application and category icons use the existing
+  `image://icon/` provider, which resolves KDE theme/file icons and falls back
+  to an application icon.
+- The popup uses an opaque Kirigami Window-theme surface independent of dock
+  background opacity. Text and controls inherit the same KDE theme for light
+  and dark palettes.
 - The popup chooses the available screen space along either axis for all four
-  dock edges, closes on outside click, Escape, dock hide, output change, and
-  after a successful launch, and reloads its view when the style changes.
-  Actual Wayland popup placement, fractional scaling, and lock/unlock remain
-  visual review items.
+  dock edges. Its content root has explicit implicit dimensions matching the
+  requested viewport, and each fill-height catalog view has a useful minimum
+  size before the first native Wayland surface commit. It closes on outside
+  click, Escape, dock hide, output change, and after a successful launch, and
+  reloads its view when the style changes. Actual Wayland popup placement,
+  fractional scaling, and lock/unlock remain visual review items.
 
 ## Verification status
 
 Automated model, catalog-filtering, metadata, persistence, three-style QML,
-settings, and four-edge popup-bound checks pass in the current v0.6.0-dev
-builds. A prior full Production CTest run aborted after all integration
-assertions passed because its process-lifetime fixture outlived `QApplication`;
-the fixture now destroys its QObject graph before application teardown. Two
-full Production CTest runs and one full Diagnostic CTest run passed after this
-change. Real Plasma/Wayland visual acceptance, including
-popup placement at fractional scaling, keyboard and pointer interaction,
-catalog refresh after install/removal, and DnD/Spring behavior around widgets,
-remains in `review`; this work is not marked accepted.
+settings, icon-provider, magnification, and four-edge popup-bound checks pass
+in the current v0.6.0-dev builds. The measurable catalog test observed 112
+applications on this host, a 0 ms first-load request, 52 ms until the initial
+catalog was ready, 0 ms for 40 warm `ensureLoaded()` calls, and 28 ms for 80
+in-memory searches. This does not measure interactive frame pacing or CPU/GPU
+load during real popup rendering.
+
+Full Production Release CTest passed 209/209 and full Diagnostic Release CTest
+passed 214/214 after the asynchronous refresh-cancellation regression was
+added. The earlier integration teardown failure is fixed by destroying the
+fixture QObject graph before `QApplication` teardown. Real Plasma/Wayland
+visual acceptance, including app/category icon rendering, light/dark popup
+contrast, Spring hover on the Launcher icon, CPU/GPU load, and frame pacing,
+remains open; these tasks stay in `review`.

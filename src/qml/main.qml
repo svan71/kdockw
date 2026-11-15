@@ -85,6 +85,9 @@ Item {
     // space trackPointer() takes. Not updated while hover is held.
     property real _pointerRootX: -1
     property real _pointerRootY: -1
+    property int _perfPointerEnters: 0
+    property int _perfPointerMoves: 0
+    property int _perfPointerLeaves: 0
     function scheduleHoverRehit() {
         if (hoveredIndex < 0) return
         _hoverRehitPending = true
@@ -138,6 +141,34 @@ Item {
                     item.publishDelegateGeometry()
             }
             root._runHoverRehit()
+        }
+    }
+
+    Timer {
+        id: performanceStateTimer
+        interval: 5000
+        repeat: true
+        running: DockView.performanceDiagnosticsEnabled
+        onTriggered: {
+            console.info("[KDOCKW_PERF_QML] " + JSON.stringify({
+                dockVisible: DockVisibility.dockVisible,
+                dockSurface: [root.width, root.height],
+                dockEdge: DockView.edge,
+                dockRows: dockRepeater.count,
+                pointerInside: DockView.pointerInside,
+                pointerOnDock: root._pointerOnDock,
+                pointerLocal: [root._pointerRootX, root._pointerRootY],
+                pointerEvents: [root._perfPointerEnters,
+                    root._perfPointerMoves, root._perfPointerLeaves],
+                hoveredIndex: root.hoveredIndex,
+                zoomActive: root._zoomActive,
+                launcherPopupVisible: appLauncherPopup.visible,
+                launcherPopupGeometry: [appLauncherPopup.x, appLauncherPopup.y,
+                    appLauncherPopup.width, appLauncherPopup.height]
+            }))
+            root._perfPointerEnters = 0
+            root._perfPointerMoves = 0
+            root._perfPointerLeaves = 0
         }
     }
 
@@ -1028,6 +1059,7 @@ Item {
     // with the compositor's pointer focus since Qt's hover is stale.
     Connections {
         target: DockContextMenu
+        function onManageWidgetsRequested() { widgetManager.open() }
         function onOpenChanged() {
             if (DockContextMenu.open) {
                 root._hoverReconciling = false
@@ -1096,10 +1128,14 @@ Item {
         // Track hover state for visibility controller. Ignored while the
         // context menu holds hover; real input ends a pending reconcile.
         onEntered: {
+            if (DockView.performanceDiagnosticsEnabled)
+                root._perfPointerEnters++
             root._handleDockPointerEntered(mouseX, mouseY)
         }
         onExited: {
             if (root._menuHeld) return
+            if (DockView.performanceDiagnosticsEnabled)
+                root._perfPointerLeaves++
             root._pointerLeft()
         }
 
@@ -1172,7 +1208,7 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 const item = root.hoveredIndex >= 0 ? dockRepeater.itemAt(root.hoveredIndex) : null
                 if (!item || item.isBuiltInWidget) {
-                    widgetManager.open()
+                    DockContextMenu.showForDock()
                     return
                 }
             }
@@ -1253,6 +1289,8 @@ Item {
         // Track mouse position for parabolic zoom + drag handling
         onPositionChanged: function(mouse) {
             if (root._menuHeld) return
+            if (DockView.performanceDiagnosticsEnabled)
+                root._perfPointerMoves++
             root._pointerOnDock = true
             root._pointerRootX = mouse.x
             root._pointerRootY = mouse.y
@@ -1841,7 +1879,8 @@ Item {
                         ? taskZoneGap : 0
                     restOffsetAnimationEnabled: dockPanel.animationsReady
                         && !dockPanel.mouseInside
-                    zoomScale: isBuiltInWidget ? 1.0 : (dockPanel.zoomLayout.scales?.[index] ?? 1.0)
+                    zoomScale: isBuiltInWidget && !isApplicationLauncher
+                        ? 1.0 : (dockPanel.zoomLayout.scales?.[index] ?? 1.0)
                     zoomOffset: dockPanel.zoomLayout.offsets?.[index] ?? 0.0
                     itemCenterX: DockView.isVertical
                         ? root._primaryRestSlotStart(taskDelegate) + height / 2
@@ -2537,119 +2576,236 @@ Item {
     QQC2.Dialog {
         id: widgetManager
         objectName: "builtInWidgetManager"
-        title: i18n("Dock widgets")
+        title: i18n("Manage Dock Widgets")
         modal: false
         popupType: QQC2.Popup.Window
         closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
         standardButtons: QQC2.Dialog.Close
-        width: Math.min(560, root.width - Kirigami.Units.largeSpacing * 2)
+        readonly property bool showsEmptyState: DockModel.dockEntriesModel.count === 0
+        readonly property bool hasApplicationLauncher: DockModel.dockEntriesModel.hasApplicationLauncher
+        readonly property real screenWidth: DockView.screenGeometry.width > 0
+            ? DockView.screenGeometry.width : root.width
+        readonly property real screenHeight: DockView.screenGeometry.height > 0
+            ? DockView.screenGeometry.height : root.height
+        readonly property real usableScreenWidth: Math.max(1,
+            screenWidth - Kirigami.Units.largeSpacing * 4)
+        readonly property real usableScreenHeight: Math.max(1,
+            screenHeight - Kirigami.Units.largeSpacing * 4)
+        width: Math.min(720, usableScreenWidth)
+        height: Math.min(usableScreenHeight, implicitHeight)
+        padding: Kirigami.Units.largeSpacing
 
-        ColumnLayout {
-            width: parent.width
-            spacing: Kirigami.Units.smallSpacing
+        contentItem: QQC2.ScrollView {
+            id: widgetManagerScroll
+            objectName: "widgetManagerScroll"
+            implicitWidth: Math.max(1, widgetManager.width - widgetManager.leftPadding - widgetManager.rightPadding)
+            implicitHeight: Math.min(widgetManagerContent.implicitHeight,
+                                     widgetManager.usableScreenHeight * 0.78)
+            clip: true
+            QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
 
-            RowLayout {
-                Layout.fillWidth: true
-                QQC2.Button {
-                    text: i18n("Add separator")
-                    onClicked: DockModel.dockEntriesModel.appendSeparator("center")
+            ColumnLayout {
+                id: widgetManagerContent
+                width: widgetManagerScroll.availableWidth
+                spacing: Kirigami.Units.largeSpacing
+
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: i18n("Add, arrange, and configure the items shown in your dock.")
                 }
-                QQC2.Button {
-                    text: i18n("Add spacer")
-                    onClicked: DockModel.dockEntriesModel.appendSpacer(24, "center")
-                }
-                QQC2.Button {
-                    text: i18n("Add Application Launcher")
-                    onClicked: DockModel.dockEntriesModel.appendApplicationLauncher("center")
-                }
-            }
 
-            QQC2.ComboBox {
-                objectName: "widgetManagerLauncherStyle"
-                Layout.fillWidth: true
-                model: [i18n("macOS Launchpad"), i18n("Windows Start"), i18n("KDE Hierarchical")]
-                currentIndex: DockModel.applicationLauncherState.style === "start" ? 1
-                    : DockModel.applicationLauncherState.style === "hierarchical" ? 2 : 0
-                onActivated: index => DockModel.applicationLauncherState.style =
-                    ["launchpad", "start", "hierarchical"][index]
-                Accessible.name: i18n("Application Launcher style")
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                text: i18n("Widgets are ordered with the dock entries. Drag and drop remains reserved for applications and folders.")
-            }
-
-            ListView {
-                id: widgetEntries
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(contentHeight, Kirigami.Units.gridUnit * 17)
-                clip: true
-                model: DockModel.dockEntriesModel
-                delegate: RowLayout {
-                    required property int index
-                    required property string entryType
-                    required property string entryId
-                    required property string widgetKind
-                    required property int widgetSize
-                    required property bool widgetVisible
-                    required property string placementSlot
-                    width: ListView.view.width
-                    height: entryType === "builtInWidget" ? implicitHeight : 0
-                    visible: entryType === "builtInWidget"
+                Flow {
+                    objectName: "widgetManagerAddActions"
+                    Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
-
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        text: widgetKind === "spacer" ? i18n("Spacer")
-                            : widgetKind === "applicationLauncher" ? i18n("Application Launcher")
-                            : i18n("Separator")
+                    QQC2.Button {
+                        text: i18n("Add separator")
+                        icon.name: "insert-horizontal-rule"
+                        onClicked: DockModel.dockEntriesModel.appendSeparator("center")
                     }
                     QQC2.Button {
-                        visible: widgetKind === "applicationLauncher"
-                        text: i18n("Choose icon…")
-                        onClicked: DockModel.chooseBuiltInWidgetIcon(entryId, Window.window)
+                        text: i18n("Add spacer")
+                        icon.name: "go-next-view-page"
+                        onClicked: DockModel.dockEntriesModel.appendSpacer(24, "center")
+                    }
+                    QQC2.Button {
+                        objectName: "addApplicationLauncherButton"
+                        text: widgetManager.hasApplicationLauncher
+                            ? i18n("Application menu already added") : i18n("Add Application Menu")
+                        icon.name: "start-here-kde"
+                        enabled: !widgetManager.hasApplicationLauncher
+                        Accessible.description: widgetManager.hasApplicationLauncher
+                            ? i18n("The dock already has an Application Launcher.")
+                            : i18n("Add an application menu to the dock.")
+                        onClicked: DockModel.dockEntriesModel.appendApplicationLauncher("center")
+                    }
+                }
+
+                QQC2.Label {
+                    objectName: "applicationLauncherLimitNotice"
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    visible: widgetManager.hasApplicationLauncher
+                    text: i18n("Only one Application Launcher is supported because its style and pinned applications are shared. Remove extra entries manually if this dock already has several.")
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+                    QQC2.Label {
+                        text: i18n("Application Launcher style")
+                        font.weight: Font.DemiBold
                     }
                     QQC2.ComboBox {
-                        model: [i18n("Start"), i18n("Center"), i18n("End")]
-                        currentIndex: placementSlot === "start" ? 0 : placementSlot === "end" ? 2 : 1
-                        onActivated: DockModel.dockEntriesModel.setBuiltInWidgetSlot(
-                            entryId, ["start", "center", "end"][currentIndex])
-                        Accessible.name: i18n("Dock position")
+                        objectName: "widgetManagerLauncherStyle"
+                        Layout.fillWidth: true
+                        model: [i18n("macOS Launchpad"), i18n("Windows Start"), i18n("KDE Hierarchical")]
+                        currentIndex: DockModel.applicationLauncherState.style === "start" ? 1
+                            : DockModel.applicationLauncherState.style === "hierarchical" ? 2 : 0
+                        onActivated: index => DockModel.applicationLauncherState.style =
+                            ["launchpad", "start", "hierarchical"][index]
                     }
-                    QQC2.SpinBox {
-                        visible: widgetKind !== "applicationLauncher"
-                        from: 4
-                        to: 512
-                        value: Math.max(4, widgetSize || DockSettings.iconSize)
-                        onValueModified: DockModel.dockEntriesModel.setBuiltInWidgetSize(entryId, value)
-                        Accessible.name: i18n("Widget size")
+                }
+
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: i18n("Widgets follow the dock order. Drag and drop remains reserved for applications and folders.")
+                }
+
+                Repeater {
+                    id: widgetEntries
+                    objectName: "widgetManagerEntries"
+                    model: DockModel.dockEntriesModel
+                    delegate: QQC2.Frame {
+                        required property int index
+                        required property string entryType
+                        required property string entryId
+                        required property string widgetKind
+                        required property int widgetSize
+                        required property bool widgetVisible
+                        required property string placementSlot
+                        Layout.fillWidth: true
+                        visible: entryType === "builtInWidget"
+                        padding: Kirigami.Units.smallSpacing
+                        background: Rectangle {
+                            color: Kirigami.Theme.backgroundColor
+                            border.color: Kirigami.Theme.disabledTextColor
+                            radius: Kirigami.Units.smallSpacing
+                        }
+
+                        ColumnLayout {
+                            width: parent.width
+                            spacing: Kirigami.Units.smallSpacing
+                            RowLayout {
+                                Layout.fillWidth: true
+                                QQC2.Label {
+                                    Layout.fillWidth: true
+                                    text: widgetKind === "spacer" ? i18n("Spacer")
+                                        : widgetKind === "applicationLauncher" ? i18n("Application Launcher")
+                                        : i18n("Separator")
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                QQC2.Label {
+                                    objectName: "widgetManagerOrderLabel"
+                                    text: i18n("Order")
+                                }
+                                QQC2.ToolButton {
+                                    text: "↑"
+                                    enabled: index > 0
+                                    Accessible.name: i18n("Move up")
+                                    onClicked: DockModel.dockEntriesModel.moveEntry(index, index - 1)
+                                }
+                                QQC2.ToolButton {
+                                    text: "↓"
+                                    enabled: index + 1 < DockModel.dockEntriesModel.count
+                                    Accessible.name: i18n("Move down")
+                                    onClicked: DockModel.dockEntriesModel.moveEntry(index, index + 1)
+                                }
+                                Item { Layout.fillWidth: true }
+                                QQC2.ToolButton {
+                                    objectName: "widgetManagerRemove"
+                                    icon.name: "edit-delete"
+                                    text: i18n("Remove")
+                                    Accessible.name: i18n("Remove %1", widgetKind === "spacer"
+                                        ? i18n("Spacer") : widgetKind === "applicationLauncher"
+                                        ? i18n("Application Launcher") : i18n("Separator"))
+                                    onClicked: DockModel.dockEntriesModel.removeBuiltInWidget(entryId)
+                                }
+                                }
+
+                            GridLayout {
+                                    id: widgetControls
+                                objectName: "widgetManagerControls"
+                                    Layout.fillWidth: true
+                                    columns: width >= 520 ? 2 : 1
+                                    columnSpacing: Kirigami.Units.largeSpacing
+                                    rowSpacing: Kirigami.Units.smallSpacing
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing / 2
+                                        QQC2.Label { text: i18n("Position along dock") }
+                                        QQC2.ComboBox {
+                                            objectName: "widgetManagerSlot"
+                                            Layout.fillWidth: true
+                                            model: [i18n("Start"), i18n("Center"), i18n("End")]
+                                            currentIndex: placementSlot === "start" ? 0 : placementSlot === "end" ? 2 : 1
+                                            onActivated: DockModel.dockEntriesModel.setBuiltInWidgetSlot(
+                                                entryId, ["start", "center", "end"][currentIndex])
+                                        }
+                                    }
+                                    ColumnLayout {
+                                        visible: widgetKind !== "applicationLauncher"
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing / 2
+                                        QQC2.Label { text: i18n("Size") }
+                                        QQC2.SpinBox {
+                                            objectName: "widgetManagerSize"
+                                            Layout.fillWidth: true
+                                            from: 4
+                                            to: 512
+                                            value: Math.max(4, widgetSize || DockSettings.iconSize)
+                                            onValueModified: DockModel.dockEntriesModel.setBuiltInWidgetSize(entryId, value)
+                                            Accessible.name: i18n("Widget size in pixels")
+                                        }
+                                    }
+                                    QQC2.CheckBox {
+                                        objectName: "widgetManagerVisibility"
+                                        Layout.columnSpan: widgetControls.columns
+                                        text: i18n("Show this widget")
+                                        checked: widgetVisible
+                                        onToggled: DockModel.dockEntriesModel.setBuiltInWidgetVisible(entryId, checked)
+                                    }
+                                    QQC2.Button {
+                                        visible: widgetKind === "applicationLauncher"
+                                        Layout.columnSpan: widgetControls.columns
+                                        text: i18n("Choose icon…")
+                                        icon.name: "preferences-desktop-icons"
+                                        onClicked: DockModel.chooseBuiltInWidgetIcon(entryId, Window.window)
+                                    }
+                            }
+                        }
                     }
-                    QQC2.CheckBox {
-                        text: i18n("Visible")
-                        checked: widgetVisible
-                        onToggled: DockModel.dockEntriesModel.setBuiltInWidgetVisible(entryId, checked)
-                    }
-                    QQC2.Button {
-                        text: "↑"
-                        enabled: index > 0
-                        onClicked: DockModel.dockEntriesModel.moveEntry(index, index - 1)
-                        Accessible.name: i18n("Move up")
-                    }
-                    QQC2.Button {
-                        text: "↓"
-                        enabled: index + 1 < DockModel.dockEntriesModel.count
-                        onClicked: DockModel.dockEntriesModel.moveEntry(index, index + 1)
-                        Accessible.name: i18n("Move down")
-                    }
-                    QQC2.Button {
-                        text: i18n("Remove")
-                        onClicked: DockModel.dockEntriesModel.removeBuiltInWidget(entryId)
-                    }
+                }
+
+                QQC2.Label {
+                    objectName: "widgetManagerEmptyState"
+                    visible: widgetManager.showsEmptyState
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: i18n("No built-in widgets. Use the buttons above to add one.")
                 }
             }
         }
+
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+        Kirigami.Theme.inherit: false
     }
 
 }

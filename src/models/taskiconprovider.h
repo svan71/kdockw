@@ -10,6 +10,9 @@
 #include <QPixmap>
 #include <QQuickImageProvider>
 #include <QRect>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QSet>
+#endif
 
 namespace kdockw { class IconDiagnostics; }
 
@@ -48,6 +51,9 @@ public:
     void setNormalizationEnabled(bool enabled);
     void setIconScale(qreal scale);
     void clearCache();
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    void reportPerformanceInterval();
+#endif
 
     /// Register a nameless QIcon under an opaque source key. Registrations
     /// replace an existing key and are retained in a bounded process cache so
@@ -79,6 +85,21 @@ private:
     bool m_normalizationEnabled = true;
     qreal m_iconScale = 1.0;
     IconDiagnostics *m_diagnostics = nullptr;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    bool m_performanceDiagnosticsEnabled = false;
+    QMutex m_performanceMutex;
+    QSet<QString> m_intervalImageUrls;
+    QSet<QString> m_lifetimeImageUrls;
+    quint64 m_intervalRequests = 0;
+    quint64 m_intervalNormalizationHits = 0;
+    quint64 m_intervalNormalizationMisses = 0;
+    quint64 m_intervalOutputBytes = 0;
+    quint64 m_intervalRequestedBytes = 0;
+    quint64 m_intervalRequestNanos = 0;
+    qint64 m_intervalMaxRequestNanos = 0;
+    bool m_intervalUrlSetSaturated = false;
+    bool m_lifetimeUrlSetSaturated = false;
+#endif
 
     // QML image providers are created per DockView, while DockModel is shared.
     // Keep only a bounded number of opaque raw sources for all providers and

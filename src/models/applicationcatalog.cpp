@@ -13,6 +13,7 @@
 #include <KSycoca>
 
 #include <QCollator>
+#include <QElapsedTimer>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -20,6 +21,13 @@
 
 namespace kdockw
 {
+namespace
+{
+QString iconNameOrFallback(const QString &requested, const QString &fallback)
+{
+    return requested.isEmpty() ? fallback : requested;
+}
+}
 
 ApplicationCatalog::ApplicationCatalog(QObject *parent)
     : QObject(parent)
@@ -41,6 +49,11 @@ bool ApplicationCatalog::ready() const
     return m_ready;
 }
 
+bool ApplicationCatalog::loading() const
+{
+    return m_loading;
+}
+
 QVariantList ApplicationCatalog::applications() const
 {
     return m_applications;
@@ -53,26 +66,89 @@ QVariantList ApplicationCatalog::menuTree() const
 
 void ApplicationCatalog::ensureLoaded()
 {
-    if (!m_ready) {
-        refresh();
+    if (!m_ready && !m_loading) {
+        prepareRefresh();
+        m_loading = true;
+        Q_EMIT loadingChanged();
+        QTimer::singleShot(0, this, &ApplicationCatalog::processAsyncRefreshBatch);
     }
 }
 
 void ApplicationCatalog::refresh()
 {
-    KSycoca::self()->ensureCacheValid();
     const bool wasReady = m_ready;
+    const bool wasLoading = m_loading;
+    prepareRefresh();
+    m_loading = false;
+    if (wasLoading) {
+        Q_EMIT loadingChanged();
+    }
+    while (m_refreshEntryIndex < m_refreshEntries.size()) {
+        processRootEntry(m_refreshEntries.at(m_refreshEntryIndex++));
+    }
+    finishRefresh(wasReady);
+}
+
+void ApplicationCatalog::prepareRefresh()
+{
+    KSycoca::self()->ensureCacheValid();
     m_services.clear();
     m_records.clear();
     m_applications.clear();
     m_menuTree.clear();
+    m_refreshSeen.clear();
+    m_refreshEntryIndex = 0;
+    m_refreshEntries.clear();
 
     const KServiceGroup::Ptr root = KServiceGroup::root();
     if (root && root->isValid()) {
-        QSet<QString> seen;
-        m_menuTree = readGroup(root, seen);
+        m_refreshEntries = root->entries(false, true, true);
+    }
+}
+
+void ApplicationCatalog::processRootEntry(const KServiceGroup::SPtr &entry)
+{
+    if (!entry) {
+        return;
+    }
+    if (entry->isType(KST_KServiceGroup)) {
+        auto *childGroup = static_cast<KServiceGroup *>(entry.data());
+        const QVariantList nested = readGroup(KServiceGroup::Ptr(childGroup), m_refreshSeen);
+        if (nested.isEmpty() && !childGroup->showEmptyMenu()) {
+            return;
+        }
+        m_menuTree.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("group:%1").arg(childGroup->relPath())},
+            {QStringLiteral("type"), QStringLiteral("folder")},
+            {QStringLiteral("name"), childGroup->caption()},
+            {QStringLiteral("icon"), iconNameOrFallback(childGroup->icon(), QStringLiteral("folder"))},
+            {QStringLiteral("children"), nested},
+        });
+        return;
+    }
+    if (!entry->isType(KST_KService)) {
+        return;
     }
 
+    auto *rawService = static_cast<KService *>(entry.data());
+    const KService::Ptr service(rawService);
+    if (!isDisplayable(service)) {
+        return;
+    }
+    const QString id = stableId(service);
+    if (id.isEmpty() || m_refreshSeen.contains(id)) {
+        return;
+    }
+    m_refreshSeen.insert(id);
+    const QVariantMap app = recordForService(service);
+    m_services.insert(id, service);
+    m_records.insert(id, app);
+    m_applications.append(app);
+    m_menuTree.append(app);
+}
+
+void ApplicationCatalog::finishRefresh(bool wasReady)
+{
     QCollator collator;
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::stable_sort(m_applications.begin(), m_applications.end(), [&collator](const QVariant &left, const QVariant &right) {
@@ -81,10 +157,31 @@ void ApplicationCatalog::refresh()
     });
 
     m_ready = true;
+    m_loading = false;
     if (!wasReady) {
         Q_EMIT readyChanged();
     }
+    Q_EMIT loadingChanged();
     Q_EMIT catalogChanged();
+}
+
+void ApplicationCatalog::processAsyncRefreshBatch()
+{
+    if (!m_loading) {
+        return;
+    }
+    QElapsedTimer batchTimer;
+    batchTimer.start();
+    int processed = 0;
+    while (m_refreshEntryIndex < m_refreshEntries.size() && processed < 2 && batchTimer.elapsed() < 4) {
+        processRootEntry(m_refreshEntries.at(m_refreshEntryIndex++));
+        ++processed;
+    }
+    if (m_refreshEntryIndex < m_refreshEntries.size()) {
+        QTimer::singleShot(0, this, &ApplicationCatalog::processAsyncRefreshBatch);
+        return;
+    }
+    finishRefresh(false);
 }
 
 QVariantList ApplicationCatalog::readGroup(const KServiceGroup::Ptr &group, QSet<QString> &seen)
@@ -109,7 +206,7 @@ QVariantList ApplicationCatalog::readGroup(const KServiceGroup::Ptr &group, QSet
                 {QStringLiteral("id"), QStringLiteral("group:%1").arg(childGroup->relPath())},
                 {QStringLiteral("type"), QStringLiteral("folder")},
                 {QStringLiteral("name"), childGroup->caption()},
-                {QStringLiteral("icon"), childGroup->icon().isEmpty() ? QStringLiteral("folder") : childGroup->icon()},
+                {QStringLiteral("icon"), iconNameOrFallback(childGroup->icon(), QStringLiteral("folder"))},
                 {QStringLiteral("children"), nested},
             });
         } else if (entry->isType(KST_KService)) {
@@ -152,7 +249,7 @@ QVariantMap ApplicationCatalog::recordForService(const KService::Ptr &service)
         {QStringLiteral("name"), service->name()},
         {QStringLiteral("genericName"), service->genericName()},
         {QStringLiteral("comment"), service->comment()},
-        {QStringLiteral("icon"), service->icon().isEmpty() ? QStringLiteral("application-x-executable") : service->icon()},
+        {QStringLiteral("icon"), iconNameOrFallback(service->icon(), QStringLiteral("application-x-executable"))},
         {QStringLiteral("menuId"), service->menuId()},
         {QStringLiteral("storageId"), service->storageId()},
         {QStringLiteral("categories"), service->categories()},
@@ -218,32 +315,26 @@ bool ApplicationCatalog::matchesQuery(const QString &query, const QVariantMap &a
 
 QVariantList ApplicationCatalog::search(const QString &query) const
 {
-    if (query.trimmed().isEmpty()) {
-        return m_applications;
-    }
+    const QString normalizedQuery = query.trimmed();
     if (!m_ready) {
         return {};
     }
 
-    const KService::List services = KApplicationTrader::query([this, &query](const KService::Ptr &service) {
-        const QString id = stableId(service);
-        return m_records.contains(id) && matchesQuery(query, m_records.value(id));
-    });
+    if (normalizedQuery.isEmpty()) {
+        return m_applications;
+    }
+
+    // The catalog was already read from KService/KServiceGroup. Re-querying
+    // KApplicationTrader for every debounced keystroke reparses the same
+    // desktop metadata; filter the stable in-memory records instead.
     QVariantList results;
-    QSet<QString> seen;
-    for (const KService::Ptr &service : services) {
-        const QString id = stableId(service);
-        if (!id.isEmpty() && !seen.contains(id) && m_records.contains(id)) {
-            seen.insert(id);
-            results.append(m_records.value(id));
+    results.reserve(m_applications.size());
+    for (const QVariant &record : m_applications) {
+        const QVariantMap app = record.toMap();
+        if (matchesQuery(normalizedQuery, app)) {
+            results.append(record);
         }
     }
-    QCollator collator;
-    collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::stable_sort(results.begin(), results.end(), [&collator](const QVariant &left, const QVariant &right) {
-        return collator.compare(left.toMap().value(QStringLiteral("name")).toString(),
-                                right.toMap().value(QStringLiteral("name")).toString()) < 0;
-    });
     return results;
 }
 

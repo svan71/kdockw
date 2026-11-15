@@ -225,6 +225,29 @@ Item {
             verify(Math.round(label.font.pixelSize) === label.font.pixelSize)
         }
 
+        function test_taskDecorationRefreshesOnlyItsIconBinding() {
+            DockModel.tasksModel.addTask({
+                display: "Decoration update",
+                AppId: "org.example.decoration-update",
+                IconName: "first-task-icon",
+                decoration: "first-decoration-revision",
+                IsWindow: true,
+            })
+            const dock = makeDock(1)
+            const icon = T.iconImage(items(dock)[0])
+            verify(icon)
+            tryVerify(() => icon.source.toString().indexOf("first-task-icon") >= 0)
+            const firstSource = icon.source.toString()
+
+            // LibTaskManager can asynchronously replace DecorationRole after
+            // the row exists. The delegate's role dependency must refresh its
+            // own icon URL without invalidating the shared cache for all rows.
+            DockModel.tasksModel.setTaskData(0, "decoration", "resolved-decoration")
+            tryVerify(() => icon.source.toString() !== firstSource)
+            verify(icon.source.toString().indexOf("first-task-icon") >= 0,
+                   "a pixel revision must refresh a task icon even when its icon name stays the same")
+        }
+
         function test_badgeColorsUseSavedValuesAndKeepQtTextRendering() {
             compare(DockSettings.badgeBackgroundColor.toString(), "#ff3b30")
             compare(DockSettings.badgeTextColor.toString(), "#ffffff")
@@ -567,6 +590,7 @@ Item {
         }
 
         function test_widgetManagerMutatesPersistedModelAndDockDragIgnoresWidgets() {
+            DockView.screenGeometry = Qt.rect(0, 0, 1000, 700)
             const id = DockModel.dockEntriesModel.appendSpacer(56, "center")
             verify(id.length > 0)
             const dock = makeDock(0)
@@ -574,6 +598,14 @@ Item {
             verify(manager, "the built-in widget management dialog must be part of the dock UI")
             manager.open()
             tryVerify(() => manager.opened)
+            verify(manager.width >= 360 && manager.width <= 720)
+            verify(manager.height > 160 && manager.height <= 700)
+            const managerScroll = manager.contentItem
+            const slotControl = T.findFirst(manager.contentItem, o => o.objectName === "widgetManagerSlot")
+            const visibilityControl = T.findFirst(manager.contentItem, o => o.objectName === "widgetManagerVisibility")
+            verify(managerScroll && managerScroll.height > 0)
+            verify(slotControl && slotControl.width > 0)
+            verify(visibilityControl && visibilityControl.width > 0)
             verify(DockModel.dockEntriesModel.setBuiltInWidgetSize(id, 88))
             verify(DockModel.dockEntriesModel.setBuiltInWidgetVisible(id, false))
             compare(DockModel.dockEntriesModel.get(0).widgetSize, 88)
@@ -581,6 +613,84 @@ Item {
             verify(DockModel.dockEntriesModel.setBuiltInWidgetSlot(id, "end"))
             compare(DockModel.dockEntriesModel.get(0).placementSlot, "end")
             verify(DockModel.dockEntriesModel.removeBuiltInWidget(id))
+            manager.close()
+        }
+
+        function test_freeDockRightClickOpensContextMenuAndLeftClickDoesNotOpenManager() {
+            const dock = makeDock(0)
+            const manager = dock.builtInWidgetManager
+            verify(manager)
+            mouseClick(dock, 400, 120, Qt.LeftButton)
+            compare(DockContextMenu.callsTo("showForDock").length, 0,
+                    "left-clicking empty dock space must not open the widget manager")
+            verify(!manager.opened)
+
+            mouseClick(dock, 400, 120, Qt.RightButton)
+            compare(DockContextMenu.callsTo("showForDock").length, 1,
+                    "right-clicking empty dock space must show the normal dock context menu")
+            verify(!manager.opened, "the manager opens only after its menu action is selected")
+        }
+
+        function test_widgetManagerRemainsReachableAfterRemovingEveryWidget() {
+            const first = DockModel.dockEntriesModel.appendSeparator("center")
+            const second = DockModel.dockEntriesModel.appendSpacer(32, "center")
+            const third = DockModel.dockEntriesModel.appendApplicationLauncher("end")
+            verify(first && second && third)
+            const dock = makeDock(0)
+            for (const id of [first, second, third])
+                verify(DockModel.dockEntriesModel.removeBuiltInWidget(id))
+            compare(DockModel.dockEntriesModel.count, 0)
+
+            const manager = dock.builtInWidgetManager
+            verify(manager, "the manager must not be hosted by a removable widget")
+            mouseClick(dock, 400, 120, Qt.RightButton)
+            compare(DockContextMenu.callsTo("showForDock").length, 1)
+            DockContextMenu.triggerManageWidgets()
+            tryVerify(() => manager.opened)
+            verify(manager.showsEmptyState,
+                   "the empty manager must explain how to add a widget")
+            manager.close()
+        }
+
+        function test_widgetManagerExplainsSingleLauncherAndPreservesExistingEntries() {
+            const first = DockModel.dockEntriesModel.appendApplicationLauncher("center")
+            verify(first)
+            compare(DockModel.dockEntriesModel.appendApplicationLauncher("end"), "")
+            compare(DockModel.dockEntriesModel.count, 1)
+            const dock = makeDock(0)
+            const manager = dock.builtInWidgetManager
+            manager.open()
+            tryVerify(() => manager.opened)
+            const addLauncher = findChild(manager, "addApplicationLauncherButton")
+            const notice = findChild(manager, "applicationLauncherLimitNotice")
+            verify(addLauncher)
+            verify(notice)
+            verify(!addLauncher.enabled)
+            compare(addLauncher.text, "Application menu already added")
+            verify(notice.visible)
+            compare(DockModel.dockEntriesModel.count, 1,
+                    "opening the manager must not delete or rewrite the existing Launcher")
+            verify(DockModel.dockEntriesModel.removeBuiltInWidget(first))
+            tryVerify(() => addLauncher.enabled && !notice.visible)
+            compare(addLauncher.text, "Add Application Menu")
+            manager.close()
+        }
+
+        function test_widgetManagerReflowsOnNarrowOutputWithoutLosingControls() {
+            DockView.screenGeometry = Qt.rect(0, 0, 380, 720)
+            DockModel.dockEntriesModel.appendSpacer(48, "center")
+            const dock = makeDock(0)
+            const manager = dock.builtInWidgetManager
+            manager.open()
+            tryVerify(() => manager.opened)
+            verify(manager.width <= 348, "manager width must stay inside the narrow output")
+            verify(manager.height < 550, "one widget must not leave a large empty manager window")
+            const controls = T.findFirst(manager.contentItem, o => o.objectName === "widgetManagerControls")
+            const orderLabel = T.findFirst(manager.contentItem, o => o.objectName === "widgetManagerOrderLabel")
+            const removeButton = T.findFirst(manager.contentItem, o => o.objectName === "widgetManagerRemove")
+            verify(controls && controls.columns === 1, "widget parameters must stack in a narrow window")
+            verify(orderLabel && orderLabel.visible, "reorder controls must have a readable label")
+            verify(removeButton && removeButton.width > 0, "remove must remain reachable without clipping")
             manager.close()
         }
 

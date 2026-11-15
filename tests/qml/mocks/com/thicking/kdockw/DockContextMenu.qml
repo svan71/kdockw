@@ -6,11 +6,14 @@ pragma Singleton
 import QtQuick
 
 QtObject {
+    signal manageWidgetsRequested()
     // Recorded calls: [{ name, args }]. Reassigned (not mutated) so bindings notify.
     property var calls: []
     function _record(name, args) { calls = calls.concat([{ name: name, args: Array.from(args) }]) }
     function callsTo(name) { return calls.filter(c => c.name === name) }
     function showForTask(i) { _record("showForTask", arguments) }
+    function showForDock() { _record("showForDock", arguments) }
+    function triggerManageWidgets() { manageWidgetsRequested() }
     // Production: true while the native menu is open. Tests set it directly.
     property bool open: false
 

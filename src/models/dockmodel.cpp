@@ -34,12 +34,14 @@
 #endif
 
 #include <utility>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+#endif
 
 Q_LOGGING_CATEGORY(lcModel, "kdockw.model")
 
 namespace kdockw
 {
-
 namespace
 {
 // launcherList() serializes activity-scoped launchers as "[ids]\n<url>", so a
@@ -104,6 +106,54 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
     , m_virtualDesktopInfo(std::make_shared<TaskManager::VirtualDesktopInfo>(this))
     , m_activityInfo(std::make_shared<TaskManager::ActivityInfo>(this))
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    m_performanceDiagnosticsEnabled = qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
+    if (m_performanceDiagnosticsEnabled) {
+        m_performanceClock.start();
+        m_performanceReportTimer = new QTimer(this);
+        m_performanceReportTimer->setInterval(5000);
+        connect(m_performanceReportTimer, &QTimer::timeout, this, [this] {
+            const qint64 elapsedMs = m_performanceClock.restart();
+            qCInfo(lcModel).noquote()
+                << "[KDOCKW_PERF_TASK_MANAGER]"
+                << "intervalMs=" << elapsedMs
+                << "partitionRequests=" << m_partitionRequests
+                << "partitionCoalesced=" << m_partitionCoalesced
+                << "partitionRuns=" << m_partitionRuns
+                << "partitionTotalMs=" << (m_partitionNanos / 1000000.0)
+                << "partitionMaxMs=" << (m_partitionMaxNanos / 1000000.0)
+                << "taskStructuralSignals=" << m_taskSignals
+                << "dataChangedRanges=" << m_taskDataChangedRanges
+                << "dataChangedRows=" << m_taskDataChangedRows
+                << "dataChangedRoles=" << [&] {
+                    QStringList values;
+                    for (auto it = m_taskDataChangedRoleCounts.cbegin(); it != m_taskDataChangedRoleCounts.cend(); ++it) {
+                        values.append(QStringLiteral("%1:%2").arg(it.key()).arg(it.value()));
+                    }
+                    values.sort();
+                    return values.join(QLatin1Char(','));
+                }()
+                << "iconRevisionChangesObserved=" << m_iconRevisionChangesObserved
+                << "delegatesCreated=" << m_delegateCreated
+                << "delegatesDestroyed=" << m_delegateDestroyed
+                << "delegatesLive=" << m_delegateLive
+                << "taskRows=" << m_tasksModel->rowCount();
+            m_partitionRequests = 0;
+            m_partitionCoalesced = 0;
+            m_partitionRuns = 0;
+            m_partitionNanos = 0;
+            m_partitionMaxNanos = 0;
+            m_taskSignals = 0;
+            m_taskDataChangedRows = 0;
+            m_taskDataChangedRanges = 0;
+            m_taskDataChangedRoleCounts.clear();
+            m_delegateCreated = 0;
+            m_delegateDestroyed = 0;
+            m_iconRevisionChangesObserved = 0;
+        });
+        m_performanceReportTimer->start();
+    }
+#endif
     // TasksModel implements QQmlParserStatus. When created from C++ (not QML),
     // classBegin/componentComplete are not called by the QML engine.
     // We must call them manually to trigger internal model initialization.
@@ -267,6 +317,30 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
             scheduleTaskPartition();
         }
     });
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        const auto countSignal = [this] { ++m_taskSignals; };
+        connect(m_tasksModel.get(), &QAbstractItemModel::rowsInserted, this, countSignal);
+        connect(m_tasksModel.get(), &QAbstractItemModel::rowsRemoved, this, countSignal);
+        connect(m_tasksModel.get(), &QAbstractItemModel::rowsMoved, this, countSignal);
+        connect(m_tasksModel.get(), &QAbstractItemModel::layoutChanged, this, countSignal);
+        connect(m_tasksModel.get(), &QAbstractItemModel::modelReset, this, countSignal);
+        connect(m_tasksModel.get(), &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles) {
+                ++m_taskDataChangedRanges;
+                m_taskDataChangedRows += static_cast<quint64>(std::max(1, bottomRight.row() - topLeft.row() + 1));
+                if (roles.isEmpty()) {
+                    ++m_taskDataChangedRoleCounts[QStringLiteral("all")];
+                    return;
+                }
+                const auto names = m_tasksModel->roleNames();
+                for (const int role : roles) {
+                    const auto name = names.value(role);
+                    ++m_taskDataChangedRoleCounts[name.isEmpty() ? QString::number(role) : QString::fromLatin1(name)];
+                }
+            });
+    }
+#endif
     scheduleTaskPartition();
 
     // Debug logging for model membership and lifecycle changes. This keeps
@@ -441,7 +515,13 @@ bool DockModel::moveDockEntry(const QString &entryId, const QString &targetEntry
 
 void DockModel::scheduleTaskPartition()
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) ++m_partitionRequests;
+#endif
     if (m_partitionPending || m_reconcilingPartition) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        if (m_performanceDiagnosticsEnabled) ++m_partitionCoalesced;
+#endif
         return;
     }
     m_partitionPending = true;
@@ -456,6 +536,10 @@ void DockModel::scheduleTaskPartition()
 
 void DockModel::reconcileTaskPartition()
 {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    QElapsedTimer perfTimer;
+    if (m_performanceDiagnosticsEnabled) perfTimer.start();
+#endif
     m_reconcilingPartition = true;
     bool moved = placeStartedTasksInLauncherSlots();
 
@@ -489,6 +573,14 @@ void DockModel::reconcileTaskPartition()
         m_pinnedTaskCount = pinnedCount;
         Q_EMIT pinnedTaskCountChanged();
     }
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        const quint64 nanos = static_cast<quint64>(perfTimer.nsecsElapsed());
+        ++m_partitionRuns;
+        m_partitionNanos += nanos;
+        m_partitionMaxNanos = std::max(m_partitionMaxNanos, nanos);
+    }
+#endif
 }
 
 bool DockModel::placeStartedTasksInLauncherSlots()
@@ -667,6 +759,40 @@ QString DockModel::iconName(int index) const
     return name;
 }
 
+QString DockModel::iconRevision(int index) const
+{
+    const QModelIndex idx = m_tasksModel->index(index, 0);
+    if (!idx.isValid()) {
+        return {};
+    }
+    const QIcon icon = idx.data(Qt::DecorationRole).value<QIcon>();
+    const QString revision = QString::number(static_cast<qulonglong>(icon.cacheKey()), 16);
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        QString identity;
+        QStringList ids = windowIdStrings(idx);
+        std::sort(ids.begin(), ids.end());
+        if (!ids.isEmpty()) {
+            identity = QStringLiteral("windows:%1").arg(ids.join(QLatin1Char(',')));
+        } else {
+            const QUrl launcher = idx.data(TaskManager::AbstractTasksModel::LauncherUrlWithoutIcon).toUrl();
+            identity = launcher.isValid() ? QStringLiteral("launcher:%1").arg(launcher.toString(QUrl::RemoveQuery))
+                                          : QStringLiteral("row:%1").arg(index);
+        }
+        auto *self = const_cast<DockModel *>(this);
+        const auto previous = self->m_lastObservedIconRevisions.constFind(identity);
+        if (previous != self->m_lastObservedIconRevisions.cend() && previous.value() != revision) {
+            ++self->m_iconRevisionChangesObserved;
+        }
+        if (previous != self->m_lastObservedIconRevisions.cend()
+            || self->m_lastObservedIconRevisions.size() < 1024) {
+            self->m_lastObservedIconRevisions.insert(identity, revision);
+        }
+    }
+#endif
+    return revision;
+}
+
 bool DockModel::chooseFolderStackThemeIcon(const QString &entryId, QObject *transientParent)
 {
     KIconDialog dialog(QApplication::activeWindow());
@@ -795,6 +921,26 @@ void DockModel::publishDelegateGeometry(int index, QObject *delegate)
     }
 
     m_tasksModel->requestPublishDelegateGeometry(idx, QRect{}, delegate);
+}
+
+void DockModel::noteDockDelegateCreated()
+{
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        ++m_delegateCreated;
+        ++m_delegateLive;
+    }
+#endif
+}
+
+void DockModel::noteDockDelegateDestroyed()
+{
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (m_performanceDiagnosticsEnabled) {
+        ++m_delegateDestroyed;
+        m_delegateLive = std::max<quint64>(0, m_delegateLive - 1);
+    }
+#endif
 }
 
 QString DockModel::appId(int index) const

@@ -12,6 +12,10 @@
 #include <QVariant>
 
 #include <memory>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+class QTimer;
+#endif
 
 namespace TaskManager
 {
@@ -55,6 +59,7 @@ class DockView : public QQuickView
     /// Qt's hover state this ignores the leave QtWayland fakes for a popup
     /// grab (see PointerFocusTracker). False without a Wayland pointer.
     Q_PROPERTY(bool pointerInside READ isPointerInside NOTIFY pointerInsideChanged)
+    Q_PROPERTY(bool performanceDiagnosticsEnabled READ performanceDiagnosticsEnabled CONSTANT)
 
 public:
     explicit DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *settings, QWindow *parent = nullptr);
@@ -142,6 +147,7 @@ public:
 
     /// See the pointerInside property.
     [[nodiscard]] bool isPointerInside() const;
+    [[nodiscard]] bool performanceDiagnosticsEnabled() const;
 
 public Q_SLOTS:
     void applyBackgroundStyle();
@@ -183,6 +189,22 @@ private:
     int m_tooltipReserve = 0;
     bool m_geometryTraceEnabled = false;
     QString m_geometryTraceAfterFrame;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    bool m_performanceDiagnosticsEnabled = false;
+    QTimer *m_performanceReportTimer = nullptr;
+    QTimer *m_eventLoopProbeTimer = nullptr;
+    QElapsedTimer m_performanceClock;
+    QElapsedTimer m_eventLoopClock;
+    QElapsedTimer m_frameClock;
+    quint64 m_eventLoopSamples = 0;
+    quint64 m_eventLoopOver66Ms = 0;
+    quint64 m_eventLoopOver100Ms = 0;
+    quint64 m_eventLoopOver150Ms = 0;
+    qint64 m_eventLoopMaxLatenessMs = 0;
+    quint64 m_frameSamples = 0;
+    quint64 m_frameOver25Ms = 0;
+    qint64 m_frameMaxIntervalMs = 0;
+#endif
     DockPlatform::Edge m_edge = DockPlatform::Edge::Bottom;
     QMetaObject::Connection m_screenGeometryConnection;
     UnlockRecoveryPolicy m_unlockRecoveryPolicy;

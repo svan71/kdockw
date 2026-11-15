@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QUrl>
 
 #include "dockentriesmodel.h"
@@ -14,6 +15,10 @@
 #include <taskmanager/virtualdesktopinfo.h>
 
 #include <memory>
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+#include <QElapsedTimer>
+class QTimer;
+#endif
 
 class KDockWSettings;
 
@@ -88,6 +93,8 @@ public:
 
     /// Return the theme name or opaque raw source key for the task icon at @p index.
     Q_INVOKABLE QString iconName(int index) const;
+    /// Return the task decoration revision for per-row image URL invalidation.
+    Q_INVOKABLE QString iconRevision(int index) const;
 
     /// Show KDE's installed icon chooser and store the result on this stack ID.
     Q_INVOKABLE bool chooseFolderStackThemeIcon(const QString &entryId, QObject *transientParent = nullptr);
@@ -119,6 +126,8 @@ public:
 
     /// Publish the delegate geometry for a window task to KWin.
     Q_INVOKABLE void publishDelegateGeometry(int index, QObject *delegate);
+    Q_INVOKABLE void noteDockDelegateCreated();
+    Q_INVOKABLE void noteDockDelegateDestroyed();
 
     /// Return the TaskManager/KService desktop-entry or executable identity for
     /// the task at @p index (not necessarily the raw Wayland app_id).
@@ -170,6 +179,25 @@ private:
     std::unique_ptr<DockPresentationModel> m_dockPresentationModel;
     std::shared_ptr<TaskManager::VirtualDesktopInfo> m_virtualDesktopInfo;
     std::shared_ptr<TaskManager::ActivityInfo> m_activityInfo;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    bool m_performanceDiagnosticsEnabled = false;
+    QTimer *m_performanceReportTimer = nullptr;
+    QElapsedTimer m_performanceClock;
+    quint64 m_partitionRequests = 0;
+    quint64 m_partitionCoalesced = 0;
+    quint64 m_partitionRuns = 0;
+    quint64 m_partitionNanos = 0;
+    quint64 m_partitionMaxNanos = 0;
+    quint64 m_taskSignals = 0;
+    quint64 m_taskDataChangedRows = 0;
+    quint64 m_taskDataChangedRanges = 0;
+    QHash<QString, quint64> m_taskDataChangedRoleCounts;
+    quint64 m_delegateCreated = 0;
+    quint64 m_delegateDestroyed = 0;
+    quint64 m_delegateLive = 0;
+    quint64 m_iconRevisionChangesObserved = 0;
+    QHash<QString, QString> m_lastObservedIconRevisions;
+#endif
 };
 
 } // namespace kdockw

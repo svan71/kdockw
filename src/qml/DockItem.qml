@@ -17,6 +17,8 @@ import "BadgeTextColor.js" as BadgeTextColor
 Item {
     id: dockItem
 
+    Component.onDestruction: DockModel.noteDockDelegateDestroyed()
+
     // Properties set by the Repeater delegate
     required property int index
     required property var model
@@ -780,6 +782,7 @@ Item {
     readonly property real primaryTranslate: currentOffset + restOffset
 
     Component.onCompleted: {
+        DockModel.noteDockDelegateCreated()
         _prevChildCount = _childCount
         _delegateGeometryReady = true
         scheduleDelegateGeometryPublication()
@@ -880,6 +883,12 @@ Item {
             let name = DockModel.iconName(dockItem.taskIndex)
             if (name && name.length > 0) {
                 let source = "image://icon/" + name + "?v=" + iconCacheVersion
+                // DecorationRole can replace pixels while retaining the same
+                // theme name. Put its revision in this row's URL so only this
+                // image is refreshed, not every icon in the dock.
+                const iconRevision = DockModel.iconRevision(dockItem.taskIndex)
+                if (iconRevision.length > 0)
+                    source += "&decoration=" + encodeURIComponent(iconRevision)
                 if (dockItem._iconDiagEnabled)
                     source += "&diag-app=" + encodeURIComponent(dockItem._appId)
                              + "&diag-launcher=" + encodeURIComponent(dockItem._launcherUrl.toString())
@@ -887,7 +896,8 @@ Item {
             }
             return ""
         }
-        sourceSize: Qt.size(Math.ceil(iconSize * maxZoomFactor), Math.ceil(iconSize * maxZoomFactor))
+        sourceSize: Qt.size(Math.ceil(iconSize * maxZoomFactor * Screen.devicePixelRatio),
+                             Math.ceil(iconSize * maxZoomFactor * Screen.devicePixelRatio))
         smooth: true
 
         onSourceChanged: dockItem._iconDiagLogImage("source-changed")

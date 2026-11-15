@@ -9,17 +9,34 @@ import QtQuick
 import kdockw.test
 
 QtObject {
+    function noteDockDelegateCreated() { }
+    function noteDockDelegateDestroyed() { }
     readonly property MockTasksModel tasksModel: MockTasksModel {}
     readonly property var dockPresentationModel: tasksModel
     readonly property QtObject applicationCatalog: QtObject {
         signal catalogChanged()
         property bool ready: false
+        property bool loading: false
+        property int _loadGeneration: 0
         property var applications: []
         property var menuTree: []
-        function ensureLoaded() { ready = true; catalogChanged() }
-        function refresh() { ready = true; catalogChanged() }
+        function ensureLoaded() {
+            if (ready || loading) return
+            loading = true
+            const generation = ++_loadGeneration
+            Qt.callLater(function() {
+                if (generation !== _loadGeneration) return
+                ready = true
+                loading = false
+                catalogChanged()
+            })
+        }
+        function resetLoading() { ++_loadGeneration; ready = false; loading = false }
+        function refresh() { ++_loadGeneration; ready = true; loading = false; catalogChanged() }
         function search(query) { return [] }
-        function application(serviceId) { return ({}) }
+        function application(serviceId) {
+            return applications.find(app => app.id === serviceId) || ({})
+        }
         function launch(serviceId) { return false }
         function launchAction(serviceId, actionName) { return false }
     }
@@ -33,6 +50,11 @@ QtObject {
     readonly property var dockEntriesModel: ListModel {
         id: entries
         property int _nextWidgetId: 0
+        readonly property bool hasApplicationLauncher: {
+            for (let row = 0; row < count; ++row)
+                if (get(row).widgetKind === "applicationLauncher") return true
+            return false
+        }
         function entryIdAt(row) { return row >= 0 && row < count ? get(row).entryId : "" }
         function entryTypeAt(row) { return row >= 0 && row < count ? get(row).entryType : "" }
         function appendSeparator(slot) {
@@ -45,6 +67,13 @@ QtObject {
             const id = "widget:spacer:mock-" + (++_nextWidgetId)
             append({ entryId: id, entryType: "builtInWidget", widgetKind: "spacer",
                      placementSlot: slot || "center", widgetSize: size, widgetVisible: true })
+            return id
+        }
+        function appendApplicationLauncher(slot) {
+            if (hasApplicationLauncher) return ""
+            const id = "widget:application-launcher:mock-" + (++_nextWidgetId)
+            append({ entryId: id, entryType: "builtInWidget", widgetKind: "applicationLauncher",
+                     placementSlot: slot || "center", widgetSize: 0, widgetVisible: true })
             return id
         }
         function removeBuiltInWidget(entryId) {
@@ -96,6 +125,7 @@ QtObject {
     function isPinned(i) { return !!_role(i, "IsLauncher") }
     function appId(i) { return _role(i, "AppId") || "" }
     function iconName(i) { return _role(i, "IconName") || "" }
+    function iconRevision(i) { const v = _role(i, "decoration"); return v === undefined ? "" : String(v) }
     function launcherUrl(i) { return _role(i, "LauncherUrl") || "" }
     function isOnCurrentDesktop(i) { let v = _role(i, "IsOnCurrentDesktop"); return v === undefined ? true : !!v }
     function childCount(i) { return tasksModel.rowCount(tasksModel.index(i, 0)) }

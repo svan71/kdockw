@@ -1715,6 +1715,20 @@ msgid "Dock widgets"
 msgstr "Виджеты дока"
 
 #: src/qml/main.qml
+msgid "Manage Dock Widgets"
+msgstr "Управление виджетами дока"
+
+#: src/models/dockcontextmenu.cpp
+msgctxt "@title:menu"
+msgid "Dock"
+msgstr "Док"
+
+#: src/models/dockcontextmenu.cpp
+msgctxt "@action:inmenu"
+msgid "Manage Widgets..."
+msgstr "Управление виджетами…"
+
+#: src/qml/main.qml
 msgid "Add separator"
 msgstr "Добавить разделитель"
 
@@ -1725,6 +1739,42 @@ msgstr "Добавить промежуток"
 #: src/qml/main.qml
 msgid "Widgets are ordered with the dock entries. Drag and drop remains reserved for applications and folders."
 msgstr "Порядок виджетов сохраняется вместе с элементами дока. Перетаскивание используется для приложений и папок."
+
+#: src/qml/main.qml
+msgid "Add, arrange, and configure the items shown in your dock."
+msgstr "Добавляйте элементы дока, меняйте их порядок и параметры."
+
+#: src/qml/main.qml
+msgid "Widgets follow the dock order. Drag and drop remains reserved for applications and folders."
+msgstr "Виджеты следуют порядку элементов дока. Перетаскивание используется для приложений и папок."
+
+#: src/qml/main.qml
+msgid "Position along dock"
+msgstr "Положение на доке"
+
+#: src/qml/main.qml
+msgid "Size"
+msgstr "Размер"
+
+#: src/qml/main.qml
+msgid "Order"
+msgstr "Порядок"
+
+#: src/qml/main.qml
+msgid "Show this widget"
+msgstr "Показывать этот виджет"
+
+#: src/qml/main.qml
+msgid "Widget size in pixels"
+msgstr "Размер виджета в пикселях"
+
+#: src/qml/main.qml
+msgid "No built-in widgets. Use the buttons above to add one."
+msgstr "Встроенных виджетов нет. Добавьте виджет кнопками выше."
+
+#: src/qml/main.qml
+msgid "Remove %1"
+msgstr "Удалить: %1"
 
 #: src/qml/main.qml
 msgid "Spacer"
@@ -1808,12 +1858,40 @@ msgstr "Откройте виджет меню приложений и испо�
 
 #: src/qml/ApplicationLauncherPopup.qml
 #: src/qml/main.qml
+msgid "Add Application Menu"
+msgstr "Добавить меню приложений"
+
+#: src/qml/main.qml
+msgid "Application menu already added"
+msgstr "Меню приложений уже добавлено"
+
+#: src/qml/main.qml
+msgid "The dock already has an Application Launcher."
+msgstr "В доке уже есть меню приложений."
+
+#: src/qml/main.qml
+msgid "Add an application menu to the dock."
+msgstr "Добавить меню приложений в док."
+
+#: src/qml/ApplicationLauncherPopup.qml src/qml/main.qml
 msgid "Add Application Launcher"
 msgstr "Добавить меню приложений"
+
+#: src/qml/main.qml
+msgid "Only one Application Launcher can be added because its style and pins are shared."
+msgstr "Можно добавить только одно меню приложений: его стиль и закрепления общие."
+
+#: src/qml/main.qml
+msgid "Only one Application Launcher is supported because its style and pinned applications are shared. Remove extra entries manually if this dock already has several."
+msgstr "Поддерживается только одно меню приложений, поскольку стиль и закреплённые приложения общие. Если в доке уже несколько таких пунктов, удалите лишние вручную."
 
 #: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
 msgid "Search applications"
 msgstr "Поиск приложений"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherStart.qml src/qml/ApplicationLauncherHierarchical.qml
+msgid "Loading applications…"
+msgstr "Загрузка приложений…"
 
 #: src/qml/ApplicationLauncherLaunchpad.qml src/qml/ApplicationLauncherHierarchical.qml
 msgid "Back"
@@ -1842,6 +1920,10 @@ msgstr "Нет доступных приложений"
 #: src/qml/ApplicationLauncherHierarchical.qml
 msgid "Category"
 msgstr "Категория"
+
+#: src/qml/ApplicationLauncherHierarchical.qml
+msgid "Browse KDE menu categories"
+msgstr "Просмотр категорий меню KDE"
 
 #: src/qml/ApplicationLauncherHierarchical.qml
 msgid "This category is empty"

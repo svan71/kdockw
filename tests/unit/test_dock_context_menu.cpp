@@ -42,6 +42,8 @@ kdockw::ContextMenuData baseData()
     data.settings = []() {};
     data.about = []() {};
     data.quit = []() {};
+    data.manageWidgetsText = QStringLiteral("Manage Widgets...");
+    data.manageWidgets = []() {};
     return data;
 }
 
@@ -79,10 +81,12 @@ TEST_CASE("context menu preserves desktop action order and routes dock commands 
 
     QMenu *dockMenu = submenuWithText(menu, QStringLiteral("KDockW"));
     REQUIRE(dockMenu != nullptr);
-    REQUIRE(dockMenu->actions().size() == 3);
-    REQUIRE(dockMenu->actions().at(0)->text() == QStringLiteral("Settings..."));
-    REQUIRE(dockMenu->actions().at(1)->text() == QStringLiteral("About KDockW"));
-    REQUIRE(dockMenu->actions().at(2)->text() == QStringLiteral("Quit KDockW"));
+    REQUIRE(dockMenu->actions().size() == 5);
+    REQUIRE(dockMenu->actions().at(0)->text() == QStringLiteral("Manage Widgets..."));
+    REQUIRE(dockMenu->actions().at(1)->isSeparator());
+    REQUIRE(dockMenu->actions().at(2)->text() == QStringLiteral("Settings..."));
+    REQUIRE(dockMenu->actions().at(3)->text() == QStringLiteral("About KDockW"));
+    REQUIRE(dockMenu->actions().at(4)->text() == QStringLiteral("Quit KDockW"));
     REQUIRE(actionWithText(menu, QStringLiteral("Quit")) == nullptr);
     delete menu;
 }
@@ -165,12 +169,30 @@ TEST_CASE("context menu settings and about handlers do not quit KDockW", "[conte
     QMenu *menu = kdockw::createContextMenu(data, QCoreApplication::instance());
     QMenu *dockMenu = submenuWithText(menu, QStringLiteral("KDockW"));
     REQUIRE(dockMenu != nullptr);
-    dockMenu->actions().at(0)->trigger();
-    dockMenu->actions().at(1)->trigger();
+    dockMenu->actions().at(2)->trigger();
+    dockMenu->actions().at(3)->trigger();
     REQUIRE(settingsCalls == 1);
     REQUIRE(aboutCalls == 1);
     REQUIRE(quitCalls == 0);
-    dockMenu->actions().at(2)->trigger();
+    dockMenu->actions().at(4)->trigger();
     REQUIRE(quitCalls == 1);
+    delete menu;
+}
+
+TEST_CASE("dock context menu exposes a persistent widget manager command", "[contextmenu]")
+{
+    int managerCalls = 0;
+    auto data = baseData();
+    data.manageWidgetsText = QStringLiteral("Manage Widgets...");
+    data.manageWidgets = [&managerCalls]() { ++managerCalls; };
+
+    QMenu *menu = kdockw::createContextMenu(data, QCoreApplication::instance());
+    QMenu *dockMenu = submenuWithText(menu, QStringLiteral("KDockW"));
+    REQUIRE(dockMenu != nullptr);
+    QAction *manage = actionWithText(dockMenu, QStringLiteral("Manage Widgets..."));
+    REQUIRE(manage != nullptr);
+    REQUIRE(manage->isEnabled());
+    manage->trigger();
+    REQUIRE(managerCalls == 1);
     delete menu;
 }
