@@ -549,9 +549,14 @@ Item {
             const item = items(dock)[0]
             const rule = T.findFirst(item, o => o.objectName === "builtInSeparator")
             verify(rule && rule.visible, "the persisted built-in separator must render in the dock slot")
+            const placeholder = T.findFirst(item, o => o.objectName === "iconPlaceholder")
+            verify(placeholder && !placeholder.visible,
+                   "built-in separator must not be covered by the normal missing-icon placeholder")
             fuzzyCompare(DockView.isVertical ? item.height : item.width, 32, 0.01)
             compare(rule.width > rule.height, DockView.isVertical,
                     "the separator's short axis must follow the dock orientation")
+            verify(Math.max(rule.width, rule.height) > 2,
+                   "the separator line must have a visible length inside its configured slot")
             compare(item.taskIndex, -1, "a built-in widget must not resolve to a TaskManager row")
             compare(DockModel.delegateGeometryRequests.length, 0,
                     "a built-in widget must not publish TaskManager window geometry")

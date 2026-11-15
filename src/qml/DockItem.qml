@@ -938,11 +938,13 @@ Item {
         // Fallback placeholder when icon is not available
         Rectangle {
             id: iconPlaceholder
+            objectName: "iconPlaceholder"
             anchors.fill: parent
             radius: Kirigami.Units.largeSpacing
             color: Kirigami.Theme.highlightColor
             visible: iconImage.status !== Image.Ready
                      && !dockItem.isFolderStack
+                     && !dockItem.isBuiltInWidget
             Accessible.ignored: true
 
             QQC2.Label {
@@ -1035,8 +1037,11 @@ Item {
         color: Kirigami.Theme.textColor
         opacity: 0.45
         radius: width / 2
-        width: DockView.isVertical ? dockItem.iconSize * 0.42 : 1
-        height: DockView.isVertical ? 1 : dockItem.iconSize * 0.42
+        readonly property real lineExtent: Math.max(2,
+            Math.min(dockItem._primaryExtent - Kirigami.Units.largeSpacing * 2,
+                     dockItem.iconSize * 0.62))
+        width: DockView.isVertical ? lineExtent : 2
+        height: DockView.isVertical ? 2 : lineExtent
         anchors.centerIn: parent
         Accessible.ignored: true
     }
