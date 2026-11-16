@@ -983,9 +983,15 @@ TEST_CASE("Parabolic zoom in a settings preview matches the computed panel edge"
     // the 180 ms zoom transition between positions. Keep the production layout
     // algorithm active while removing animation lag from the measurement.
     app().settings->setZoomAnimationPreset(3); // Instant
+    app().settings->setMaxZoomFactor(1.9);
     openSettingsFrom(app().manager->primaryShell());
     QPointer<QQuickWindow> dialog = settingsWindow();
     REQUIRE(dialog);
+    REQUIRE(QTest::qWaitFor(
+        [dialog] {
+            return dialog->isExposed();
+        },
+        kTimeoutMs));
     auto *loader = dialog->findChild<QQuickItem *>(QStringLiteral("settingsPageLoader"));
     REQUIRE(loader);
     QMetaObject::invokeMethod(dialog, "openModule", Q_ARG(QVariant, QStringLiteral("icons")));
@@ -994,7 +1000,6 @@ TEST_CASE("Parabolic zoom in a settings preview matches the computed panel edge"
             return loader->property("status").toInt() == 1 /* Loader.Ready */ && loader->property("item").value<QQuickItem *>();
         },
         kTimeoutMs));
-    QTest::qWait(300);
 
     // The page's hero miniature: the largest visible MiniDock in the page's
     // visual tree.
@@ -1013,6 +1018,25 @@ TEST_CASE("Parabolic zoom in a settings preview matches the computed panel edge"
     REQUIRE(panel);
     auto *hoverArea = dock->findChild<QQuickItem *>(QStringLiteral("miniDockHoverArea"));
     REQUIRE(hoverArea);
+    REQUIRE(QTest::qWaitFor(
+        [dock, hoverArea] {
+            return dock->isVisible() && hoverArea->isVisible() && hoverArea->width() > 0 && hoverArea->height() > 0;
+        },
+        kTimeoutMs));
+    // FormCard's Flickable can report Loader.Ready before its initial
+    // horizontal offset is normalized. On the no-horizontal-scroll preview,
+    // require the content origin before deriving pointer coordinates.
+    auto *flickable = dock;
+    while (flickable && flickable->metaObject()->indexOfProperty("contentX") < 0) {
+        flickable = flickable->parentItem();
+    }
+    REQUIRE(flickable);
+    REQUIRE(QTest::qWaitFor(
+        [flickable] {
+            return qFuzzyCompare(flickable->property("contentX").toReal() + 1.0,
+                                 flickable->property("originX").toReal() + 1.0);
+        },
+        kTimeoutMs));
     const qreal pitch = dock->property("pitch").toReal();
     // Rest panel length (the page may already show the preview zoomed).
     const qreal restLength = dock->property("length").toReal();
@@ -1021,8 +1045,8 @@ TEST_CASE("Parabolic zoom in a settings preview matches the computed panel edge"
     REQUIRE(pitch > 0);
 
     // Sweep one icon pitch across the middle of the row in 1 px steps.
-    const QPointF centre = dock->mapToScene(QPointF(dock->width() / 2, dock->height() / 2));
-    const QPointF hoverOrigin = hoverArea->mapToScene(QPointF(0, 0));
+    const QPointF centre = dock->mapToItem(dialog->contentItem(), QPointF(dock->width() / 2, dock->height() / 2));
+    const QPointF hoverOrigin = hoverArea->mapToItem(dialog->contentItem(), QPointF(0, 0));
     // Keep the entire pointer path inside the miniature's actual input region.
     // The full dock item's geometric centre can sit close enough to an edge
     // that a one-pitch sweep exits hoverArea and starts the collapse behavior.
@@ -1030,10 +1054,39 @@ TEST_CASE("Parabolic zoom in a settings preview matches the computed panel edge"
     const int to = std::min(qRound(centre.x() + pitch / 2), qFloor(hoverOrigin.x() + hoverArea->width() - 1));
     REQUIRE(to > from);
     const int y = qRound(centre.y());
+
+    // The cursor can persist across QQuickWindow instances. Park it in a
+    // window corner outside this hover area first; this also clears a focused
+    // slider's interactiveHover suppression before the measured entry.
+    QPoint outside;
+    bool foundOutside = false;
+    const QList<QPoint> corners{{1, 1}, {dialog->width() - 2, 1}, {1, dialog->height() - 2},
+                                {dialog->width() - 2, dialog->height() - 2}};
+    for (const QPoint &candidate : corners) {
+        const QPointF local = hoverArea->mapFromItem(dialog->contentItem(), candidate);
+        if (!hoverArea->contains(local)) {
+            outside = candidate;
+            foundOutside = true;
+            break;
+        }
+    }
+    REQUIRE(foundOutside);
+    QTest::mouseMove(dialog, outside);
+    REQUIRE(QTest::qWaitFor(
+        [hoverArea] {
+            return hoverArea->isEnabled() && !hoverArea->property("containsMouse").toBool();
+        },
+        kTimeoutMs));
+
     QTest::mouseMove(dialog, QPoint(from, y));
     REQUIRE(QTest::qWaitFor(
+        [hoverArea] {
+            return hoverArea->property("containsMouse").toBool();
+        },
+        kTimeoutMs));
+    REQUIRE(QTest::qWaitFor(
         [dock] {
-            return dock->property("hovered").toBool() && dock->property("zoomAmount").toReal() == 1.0;
+            return dock->property("zoomAmount").toReal() == 1.0;
         },
         kTimeoutMs));
     // Engaged: the background grew around the zoomed icons.
