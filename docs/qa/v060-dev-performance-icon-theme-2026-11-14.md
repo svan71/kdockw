@@ -780,3 +780,29 @@ was active. The live production config still matches the permission-preserving
 Plasma visual acceptance is claimed for this cycle. Built-in Dock Widgets,
 Built-in Dock Widget Model, and Application Launcher remain `review`; no
 release, tag, or push was created.
+
+## Ninth owner review — separator alignment and technical checks (2026-11-16)
+
+Owner review scored **16/17**. The widget manager, all three Launcher icons and their contrast, the user icon override, and Folder Stack alignment were accepted. The built-in Separator remains the sole visual item for a short owner check.
+
+### Separator cause and correction
+
+The previous built-in line centered itself against the icon-only region in its delegate. The native TaskManager divider was centered between the transformed secondary extents of neighboring task delegates; those extents include the running-indicator band. That difference in reference geometry accounts for the observed 4–5 px cross-axis offset. No fixed pixel compensation was added.
+
+Both lines now use `DockSeparator.qml` for line geometry, Kirigami color, opacity, thickness, and orientation. The built-in widget maps the actual TaskManager line center into its own coordinates, while preserving its configured slot and size. QML regression compares centers after mapping both lines into the dock coordinate system for four dock edges, icon sizes 32/48/64, Spring Magnification enabled/disabled, and both indicator positions. The focused coordinate test also passed with `QT_SCALE_FACTOR=1.25` and `2`. The automated test proves QML geometry under those cases; visual acceptance in Plasma is still pending.
+
+### Full tests and stage
+
+- Production Release CTest: **222/222 passed**.
+- Diagnostic Release CTest: **229/229 passed**.
+- Focused separator orientation and shared-coordinate QML tests passed; the coordinate case passed at scale factors 1.25 and 2.
+- TaskManager preflight fixture unit tests: **8/8 passed**. Python compilation, shell syntax, Russian `msgfmt --check --check-format`, source/build/stage catalog comparisons, and `git diff --check` passed.
+- Diagnostic stage preflight passed for `0.6.0-dev`. The source and staged ELF GNU Build ID is `9616fae644d0b853d6eaa61a092993ec8c54e7b1`. Source and staged Russian MO SHA-256 is `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`.
+
+### Live TaskManager preflight — INVALID
+
+The live preflight used the staged candidate at `build/v060-dev-diagnostic/stage/bin/kdockw` with Build ID `9616fae644d0b853d6eaa61a092993ec8c54e7b1`, isolated profile `separator-preflight-20261116`, and an XCB fixture window under the live Plasma Wayland session. The fixture reported changed icon pixels. Required transitions for protocol/existing windows, fixture insertion, title change, grouping, and fixture removal were observed. No `DecorationRole` update was observed, so the run is **INVALID** for TaskManager performance comparisons. This evidence does not distinguish whether KWin/LibTaskManager did not emit the role update or whether it was lost downstream; the live gate was not weakened. Evidence: `diagnostics/v060-dev/logs/separator-preflight-20261116/final/live/functional-preflight.json` and adjacent event/trace files.
+
+### Session and remaining acceptance
+
+The candidate was stopped after the live check. Stable `/usr/bin/kdockw` **0.5.1** is active through `kdockw-v051-restored.service`; only that stable process remains. Production config `/home/stout/.config/kdockwrc` retains mode `0600` and matches the verified backup SHA-256 `0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5`. No release, tag, or push was created. The separator needs a brief visual check by the owner; existing Built-in Dock Widgets, Built-in Dock Widget Model, and Application Launcher cards remain in `review`.

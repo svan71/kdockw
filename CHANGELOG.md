@@ -27,6 +27,7 @@ carried forward from the Krema-based development period.
 - Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
 - Gave each default Launcher style its own theme-aware icon, selected for contrast against the dock, while retaining user-selected icon overrides across style changes and settings reloads.
 - Matched the built-in separator's line thickness, length, orientation, and opacity to the adjacent TaskManager separator.
+- Centered built-in separators on the actual TaskManager separator geometry using one shared dock-axis component, including the running-indicator band.
 - Anchored Launcher context menus to the actual click position through the Qt Quick Controls overlay, sized them from their contents, and applied the resolved KDockW/Kirigami theme to nested menus and states.
 - Rendered Launcher navigation buttons and context-menu actions with explicit theme-aware controls so their visibility and contrast do not depend on the active Qt Quick Controls style.
 
