@@ -78,7 +78,11 @@ ApplicationCatalog::ApplicationCatalog(QObject *parent)
             return;
         }
         m_refreshScheduled = true;
-        QTimer::singleShot(0, this, [this] {
+        const quint64 generation = ++m_refreshGeneration;
+        QTimer::singleShot(0, this, [this, generation] {
+            if (!m_refreshScheduled || generation != m_refreshGeneration) {
+                return;
+            }
             m_refreshScheduled = false;
             refresh();
         });
@@ -117,6 +121,12 @@ void ApplicationCatalog::ensureLoaded()
 
 void ApplicationCatalog::refresh()
 {
+    // An explicit refresh supersedes any queued Sycoca notification. Its
+    // cache snapshot already includes that change, so a second full rebuild
+    // would only duplicate work and catalogChanged.
+    m_refreshScheduled = false;
+    ++m_refreshGeneration;
+
     const bool wasReady = m_ready;
     const bool wasLoading = m_loading;
     prepareRefresh();
@@ -132,7 +142,6 @@ void ApplicationCatalog::refresh()
 
 void ApplicationCatalog::prepareRefresh()
 {
-    KSycoca::self()->ensureCacheValid();
     m_services.clear();
     m_records.clear();
     m_applications.clear();

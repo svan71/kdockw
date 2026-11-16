@@ -68,6 +68,7 @@ private:
     bool m_ready = false;
     bool m_loading = false;
     bool m_refreshScheduled = false;
+    quint64 m_refreshGeneration = 0;
 };
 
 } // namespace kdockw

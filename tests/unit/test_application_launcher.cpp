@@ -13,6 +13,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QDir>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QImage>
 #include <QIcon>
@@ -166,6 +167,16 @@ TEST_CASE("Refreshing the application catalog replaces data without growing its 
 
 TEST_CASE("Synchronous catalog refresh cancels a pending asynchronous first load", "[application-launcher][catalog][refresh]")
 {
+    // Settle KSycoca's one-time cache initialization before observing signals
+    // from the ApplicationCatalog instance under test. The first KService
+    // query can itself emit databaseChanged, which is unrelated to cancelling
+    // the queued async batches this case exercises.
+    {
+        kdockw::ApplicationCatalog sycocaWarmup;
+        sycocaWarmup.refresh();
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    }
+
     kdockw::ApplicationCatalog catalog;
     int catalogChanges = 0;
     QObject::connect(&catalog, &kdockw::ApplicationCatalog::catalogChanged, &catalog, [&catalogChanges] {
