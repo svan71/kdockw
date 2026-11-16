@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 
 
@@ -79,6 +80,17 @@ class TaskManagerPreflightTests(unittest.TestCase):
         )
         stale = taskmanager_load.assess_taskmanager_transitions(stale_id_log, self.run_id, 1, self.log, True)
         self.assertFalse(stale["checks"]["groupingObserved"])
+
+    def test_fixture_desktop_entry_leaves_runtime_icon_owned_by_window(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = pathlib.Path(temporary)
+            entry = taskmanager_load.fixture_desktop_entry(
+                base / "kdockw-test-window", "org.kdockw.p0load.test-run.alpha",
+                "KDockW P0 Load Alpha", base / "alpha.png",
+            )
+        self.assertIn("StartupWMClass=org.kdockw.p0load.test-run.alpha", entry)
+        self.assertIn("--icon-path", entry)
+        self.assertNotRegex(entry, r"(?m)^Icon=")
 
 
 if __name__ == "__main__":

@@ -47,6 +47,17 @@ def png(path: pathlib.Path, color: tuple[int, int, int]) -> None:
     path.write_bytes(data)
 
 
+def fixture_desktop_entry(fixture: pathlib.Path, app_id: str, name: str, icon_path: pathlib.Path) -> str:
+    """Keep identity resolvable while letting TaskManager use the window icon."""
+    return (
+        "[Desktop Entry]\nType=Application\n"
+        f"Name={name}\n"
+        f"Exec={shlex.quote(str(fixture))} --app-id {app_id} --title KDockW-P0-{name.rsplit(' ', 1)[-1].lower()} "
+        f"--icon-path {shlex.quote(str(icon_path))}\n"
+        f"StartupWMClass={app_id}\nNoDisplay=true\n"
+    )
+
+
 def manager_environment() -> dict[str, str]:
     output = subprocess.run(
         ["systemctl", "--user", "show-environment"], check=True,
@@ -81,10 +92,7 @@ def prepare(args: argparse.Namespace) -> int:
         if desktop_path.exists():
             raise RuntimeError(f"refusing to overwrite existing test Desktop Entry: {desktop_path}")
         desktop_path.write_text(
-            "[Desktop Entry]\nType=Application\n"
-            f"Name=KDockW P0 Load {name.title()}\n"
-            f"Exec={shlex.quote(str(fixture))} --app-id {app_id} --title KDockW-P0-{name} --icon-path {shlex.quote(str(icon_path))}\n"
-            f"Icon={icon_path}\nStartupWMClass={app_id}\nNoDisplay=true\n",
+            fixture_desktop_entry(fixture, app_id, f"KDockW P0 Load {name.title()}", icon_path),
             encoding="utf-8",
         )
     env = manager_environment()

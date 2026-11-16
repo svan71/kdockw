@@ -41,15 +41,78 @@
 
 #include <csignal>
 #include <cstdio>
+#include <vector>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #undef KeyPress
 
 namespace
 {
+
+void publishXcbWindowIcon(WId windowId, const QIcon &icon)
+{
+    if (QGuiApplication::platformName() != QLatin1String("xcb")) {
+        return;
+    }
+
+    const QPixmap pixmap = icon.pixmap(QSize(64, 64));
+    if (pixmap.isNull()) {
+        return;
+    }
+    const QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
+    std::vector<unsigned long> data;
+    data.reserve(static_cast<size_t>(image.width() * image.height() + 2));
+    data.push_back(static_cast<unsigned long>(image.width()));
+    data.push_back(static_cast<unsigned long>(image.height()));
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            data.push_back(static_cast<unsigned long>(image.pixel(x, y)));
+        }
+    }
+
+    static Display *display = XOpenDisplay(nullptr);
+    static std::vector<Pixmap> iconPixmaps;
+    if (!display) {
+        return;
+    }
+    const auto window = static_cast<::Window>(windowId);
+    const Atom netWmIcon = XInternAtom(display, "_NET_WM_ICON", False);
+    XChangeProperty(display, window, netWmIcon, XA_CARDINAL, 32,
+                    PropModeReplace, reinterpret_cast<const unsigned char *>(data.data()),
+                    static_cast<int>(data.size()));
+
+    const int bytesPerRow = (image.width() + 7) / 8;
+    std::vector<char> bitmap(static_cast<size_t>(bytesPerRow * image.height()), 0);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            if (qGray(image.pixel(x, y)) > 127) {
+                bitmap[static_cast<size_t>(y * bytesPerRow + x / 8)] |= static_cast<char>(1U << (x % 8));
+            }
+        }
+    }
+    const Pixmap iconPixmap = XCreateBitmapFromData(display, window, bitmap.data(), image.width(), image.height());
+    if (iconPixmap != None) {
+        XWMHints *hints = XGetWMHints(display, window);
+        if (!hints) {
+            hints = XAllocWMHints();
+        }
+        if (hints) {
+            hints->flags |= IconPixmapHint;
+            hints->icon_pixmap = iconPixmap;
+            XSetWMHints(display, window, hints);
+            XFree(hints);
+            iconPixmaps.push_back(iconPixmap);
+        } else {
+            XFreePixmap(display, iconPixmap);
+        }
+    }
+    XSync(display, False);
+}
+
 int s_sigFd[2] = {-1, -1};
 
 void onSignal(int)
@@ -175,6 +238,7 @@ int main(int argc, char **argv)
     if (const QString iconPath = parser.value(QStringLiteral("icon-path")); !iconPath.isEmpty()) {
         // This is a raw-render test stimulus, not a claim about Wayland app_id semantics.
         window.setWindowIcon(QIcon(iconPath));
+        publishXcbWindowIcon(window.winId(), window.windowIcon());
     }
 
     QLocalServer controlServer;
@@ -202,6 +266,7 @@ int main(int argc, char **argv)
                         ok = !icon.isNull();
                         if (ok) {
                             window.setWindowIcon(icon);
+                            publishXcbWindowIcon(window.winId(), window.windowIcon());
                         }
                     } else if (operation == QLatin1String("minimize")) {
                         window.showMinimized();
