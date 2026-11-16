@@ -301,22 +301,22 @@ the final exact-SHA matrix passed in [workflow run 43433604968](https://github.c
 The signed tag and all five release assets were verified on the
 [v0.5.1 GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.5.1).
 
-## v0.6.0 — Built-in Dock Widgets & Application Launcher (in progress)
+## v0.6.0 — Built-in Dock Widgets & Application Launcher (local gates passed; publication pending)
 
-- [ ] **Built-in Dock Widget Model** (`35353e13722e4769`, review): the
+- [x] **Built-in Dock Widget Model** (`35353e13722e4769`, done): the
   existing `DockEntriesModel` now supports persistent separators and fixed-size
   spacers, start/center/end placement, visibility, size editing, ordering, and
   a QML manager. Per-row extents are included in Spring Magnification; widgets
   remain outside TaskManager. Built-in widgets can be dragged among pinned
   entries; dynamic tasks stay outside that reorder path. Stretching spacers are
   deferred because the current content-wrapping `Flow` has no safe free-space
-  allocator. Unit and QML regressions pass; real Plasma/Wayland acceptance
-  remains in review. The current visual refinement keeps the widget manager
+  allocator. Unit and QML regressions pass; the owner completed real Plasma/Wayland
+  acceptance. The current visual refinement keeps the widget manager
   within the screen width, gives the three Launcher styles distinct
   theme-aware default icons without replacing custom overrides, aligns Folder
   Stack icons with dock icon bounds, and matches the built-in separator to the
   adjacent TaskManager separator. The internal model has no public plugin API.
-- [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): retain the
+- [x] **Application Launcher Widget** (`5c079ef1a7384398`, done): retain the
   shared KService/KServiceGroup catalog, KApplicationTrader search, KIO launch
   path, persisted launcher/style/pin state, cached incremental catalog loading,
   and single-new-instance rule (existing duplicates are preserved). The three
@@ -342,9 +342,8 @@ The signed tag and all five release assets were verified on the
   closed views stay unloaded. Existing system hierarchy and user settings are
   not rewritten.
   Separator must render a visible theme-derived line perpendicular to the dock,
-  distinct from an empty fixed spacer and sized with its saved slot. Automated
-  regressions pass; owner visual/functional acceptance in real Plasma/Wayland
-  remains open. The second visual pass sizes Popup.Window from the loaded page
+  distinct from an empty fixed spacer and sized with its saved slot. Automated regressions pass; owner visual/functional acceptance in real
+  Plasma/Wayland is complete. The second visual pass sizes Popup.Window from the loaded page
   before opening, uses the native surface size for placement, and sets preferred
   viewports to 900×600 (Launchpad), 680×600 (Start), and 800×600 (KDE
   Hierarchical), clamped to the selected output. Popup surfaces and controls
@@ -356,16 +355,16 @@ The signed tag and all five release assets were verified on the
   entries after existing KDockW pins. Unit and QML tests cover ordering and
   legacy state. A read-only live probe found eight source references, but the
   programmatic Wayland popup was rejected before input and end-to-end import
-  remains unverified. Visual and functional acceptance in Plasma/Wayland
-  remains open.
+  remains unverified in that read-only probe; the owner later accepted the
+  interactive behavior in the final Plasma/Wayland review.
   The new Launchpad model stores user folders, membership and root order in
   KDockW settings using stable folder IDs; it does not alter XDG entries or
   system favorites. Automated checks cover persistence, pagination, filtering,
   and shared favorites. The third owner review accepted 21/22 previously listed
   visual criteria, including separators/fixed spacers and accepted geometry;
   moving Launcher among dock icons was explicitly excluded from acceptance.
-  New Launcher work remains in review pending another functional and visual
-  acceptance in Plasma/Wayland.
+  The accepted Launcher scope is complete; publication checks are summarized
+  below.
 
   Sixth correction cycle: explicit theme-aware Launcher buttons and menu-item
   contents now cover the navigation controls and context menus; the folder
@@ -400,6 +399,21 @@ The signed tag and all five release assets were verified on the
   model and all three Launcher interfaces remain in review pending separate
   functional and visual acceptance. See
   [the investigation and bounded sampling procedure](docs/qa/v060-dev-performance-icon-theme-2026-11-14.md).
+
+  **Final local validation (2026-11-16):** owner acceptance of the remaining
+  Launcher and built-in widget items is complete. The settings-preview
+  integration flake was caused by checking hover/zoom before its loaded
+  Flickable had returned to its origin; the test now waits for the exposed
+  window, normalized Flickable, pointer leave, hover, and zoom state. Production
+  Release CTest passed 223/223 twice; Diagnostic Release CTest passed 230/230.
+  Full local Distro E2E passed on Debian 13 (219 passed, 21 skipped), Ubuntu
+  26.04 (227/13), and Fedora 45 (227/13), with no failures. Skipped cases
+  require additional outputs or Qt 6.9 hit-rectangle support. Local DEB/RPM
+  builds, source archive, checksum manifest, package installation, and Russian
+  package translations were verified. These package builds retain version
+  0.5.1 because the final version bump was not authorized. No tag, push, GitHub
+  Actions run, or release was created; exact-SHA remote gates and version
+  preparation remain pending. See the QA report for GNU Build IDs and hashes.
 
   Fourth Launcher refinement: the owner accepted 19/29 criteria (main-view
   contrast 4/4, Launchpad paging 6/6, KDE Hierarchical/shared favorites 5/5).

@@ -840,3 +840,43 @@ Owner acceptance is complete for the reviewed visual/functionality items, but th
 ### Release-infrastructure audit (read-only)
 
 The required release matrix currently lists Debian 13, Ubuntu 26.04 LTS, and Fedora 45 in `tests/distro/release-targets.txt` and `targets.tsv`. The existing Distro E2E workflow resolves `all` from that list, can bind a manual dispatch to `expected_sha`, builds and installs packages in target runtimes, and the release process requires a green full matrix on the exact tagged commit. The release CLI assembles only verified matrix packages, the GitHub source archive, release notes, and `SHA256SUMS`; GitHub Releases is the only publication channel. CI contains the CTest workflow and distro workflow, while the distro workflow is also manually dispatchable. This audit was static: no packages, source archive, checksum manifest, GitHub Actions run, tag, or release were produced for the current work. The working branch is a local `codex/` branch without an upstream, and the Production full-suite failure blocks release readiness. Distro E2E was therefore not run for this change.
+
+## Settings-preview test stabilization and full local distro matrix — 2026-11-16
+
+### Settings-preview integration failure
+
+The flaky case was `Parabolic zoom in a settings preview matches the computed panel edge` in `kdockw_integration_tests`. In the full suite, `Loader.Ready` was observed while the loaded Kirigami form's `Flickable` still retained a nonzero `contentX` (`-735` in the failing trace). The synthetic pointer was sent at x=1252, outside the 1008×720 test window, so the hover and zoom preconditions were false. The old fixed 300 ms delay did not synchronize this state; an isolated run passed only because it took a different timing path.
+
+The test harness now waits for the preview `QQuickWindow` to be exposed, the zoom setting to have the requested value, the preview to be visible, and the Flickable to return to `originX`. It then moves the pointer out, waits for hover to clear, re-enters the real preview area, and waits separately for the expected zoom amount before asserting geometry. Production Spring Magnification and the settings preview runtime code were not changed. The focused case passed **10/10** repetitions (74 assertions per repetition); integration ordering seed `603341698` passed **389 assertions / 20 cases**. Fix commit: `728353e` (`test: stabilize settings preview zoom interaction`).
+
+### Follow-on E2E regressions found and fixed
+
+The full distro suite exposed release-harness assumptions and one QML invalidation defect:
+
+- The context-menu helper navigated the old submenu order and selected Settings/About incorrectly after the persistent “Manage Widgets…” item was added. It now follows the production menu structure.
+- The DnD helper accepted only DockEntries schema v2 although the codec supports schemas v1–v5. It now validates the complete supported range and uses the typed entry list.
+- The settings sidebar expectation omitted the implemented “Application Launcher” page. The assertion now matches the actual UI.
+- `taskZoneBoundary` called `isPinnedDockIndex()` from a QML binding but had no reactive dependency on row moves. Same-count cross-zone row moves therefore left the system TaskManager separator absent. The binding now reads `layoutRevision`, already incremented by model row moves/layout changes/resets; no separator geometry or appearance was changed. A regression covers cross-zone reorder and recomputation. Fix commit: `7c2b6d8` (`fix: refresh task zone boundary after row moves`).
+
+The test-helper/menu/schema updates are in `ee4c4b8`; the missing sidebar expectation is in `88bc782`. The dedicated QML dock test passed after the layout fix. The listed commits are local; no history was rewritten.
+
+### Final automated and distro checks
+
+- Production Release CTest: **223/223 passed** twice (115.29 s and 115.03 s).
+- Diagnostic Release CTest: **230/230 passed** (115.03 s).
+- Full Distro E2E, using each distro package installed into its own runtime image and two shards:
+  - Debian 13: shard 0 **109 passed / 11 skipped**, shard 1 **110 / 10**; total **219 passed / 21 skipped / 0 failed**. Skips require multiple outputs or Qt 6.9 native AT-SPI hit rectangles.
+  - Ubuntu 26.04: shard 0 **113 passed / 7 skipped**, shard 1 **114 / 6**; total **227 / 13 / 0**. Skips require multiple outputs.
+  - Fedora 45: shard 0 **113 passed / 7 skipped**, shard 1 **114 / 6**; total **227 / 13 / 0**. Skips require multiple outputs.
+- Release-tooling unit suite: **154 passed / 1 skipped**. The skipped case is the optional LFS test.
+- The live TaskManager functional preflight remains the previously accepted **PASS 6/6** on diagnostic Build ID `2fa8516ffcb730d00f29e5fe263f14b2acad98da`; this turn changed only the separator's QML invalidation dependency and test harness, not TaskManager role forwarding.
+- Diagnostic launcher preflight passed on the refreshed staged candidate. Build and stage ELF GNU Build ID: `3739863ef93cdb7ea8b8a430a83b10dd894db9b6`; version `0.6.0-dev`. Russian source/stage MO SHA-256: `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`.
+- Production Release build ELF GNU Build ID: `c20d831db5f20e995a2f624a248a48ea14f56328`.
+- Test package ELF GNU Build IDs: Debian 13 `bd07662cb798133eedf98a9fd8ad0b68bd527be0`; Ubuntu 26.04 `f9993453d33c1747c0a1c55f1f87932a74174f20`; Fedora 45 `571c453fcf63c4782fcbf0fbc7a33a188808f384`. Each installed package reports version `0.5.1` and contains the Russian catalog with all 12 required settings translations.
+- Local packages, a source archive for the tested source snapshot, and `SHA256SUMS` were produced and checksum-verified under `build/release-validation/v060-dev-88bc782/`. These are validation artifacts, not release assets. The application/package version was deliberately not changed from `0.5.1`.
+
+### Release and session status
+
+The local release-tooling tests and all local package/E2E checks pass. No exact-commit GitHub Actions run was started: the branch has no upstream and is local-only, and the user explicitly prohibited push, tags, releases, and the final version bump. Therefore the exact tagged-commit CI requirement remains pending; do not describe v0.6.0 as published or treat these local artifacts as eligible release assets. No release, tag, push, or configuration migration was performed.
+
+The active process remains stable `/usr/bin/kdockw` v0.5.1, PID `1890466`, GNU Build ID `7c410e5c4355c330092377e082705df97e1baef6`. The production configuration remains mode `0600` with verified backup SHA-256 `0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5`. No diagnostic KDockW process was launched in the owner session. Historical anonymous-PSS ownership remains UNKNOWN; the accepted performance P0 was not reopened.

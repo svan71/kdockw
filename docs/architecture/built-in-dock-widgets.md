@@ -262,8 +262,8 @@ KDockW pin order, then appends matching Plasma favorites once. A legacy
 older importer skipped all Plasma favorites when any KDockW pin existed. The
 reader's real-session snapshot was available and contained eight raw favorite
 references in the tested session; the diagnostic popup could not be opened
-without a real input event, so end-to-end UI import remains unverified pending
-owner acceptance.
+without a real input event in that earlier session. The owner later accepted
+the favorite behavior in the final real Plasma/Wayland functional review.
 
 The fifth owner review reported 10/25 criteria. The old report's expected
 `visual-review-diagnostic` path differed from the standard v0.6.0 launcher
@@ -271,4 +271,15 @@ path, but the precise executable used by that owner observation was not
 captured, so stale QML is not established as the cause of the missing buttons.
 Current offscreen popup screenshots show Start navigation and Hierarchical
 Back in their loaded views. This stand does not replace real Plasma/Wayland
-acceptance; the feature cards remain `review`.
+acceptance; the owner subsequently accepted the feature in the final review.
+
+## Task-zone separator invalidation
+
+The boundary between pinned and running tasks is derived by calling the
+`DockPresentationModel::isPinnedDockIndex()` invokable. QML does not track that
+invokable's reads as binding dependencies, so `taskZoneBoundary` explicitly
+reads `dockRepeater.layoutRevision`. `DockRepeater` increments this revision
+when presentation rows move, layout changes, or the model resets. That causes
+the separator boundary to be recomputed after same-count cross-zone reorders,
+when the row count alone would not invalidate the binding. The QML regression
+repartitions rows after reordering and verifies the separator returns.

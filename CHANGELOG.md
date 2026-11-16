@@ -54,6 +54,7 @@ carried forward from the Krema-based development period.
 - Disabled unintended horizontal GridView interaction in paginated Launchpad and constrained its grid width to the viewport; no explicit horizontal ScrollBar was present in the QML.
 - Localized the folder-dialog Cancel action, aligned equal-height actions at the right edge, and removed the empty Move to folder submenu when no destination exists.
 - Sized the widget manager to the available screen width, removed horizontal overflow, and aligned Folder Stack icons to the same edge-based icon geometry as task and launcher icons.
+- Recomputed the TaskManager task-zone separator after same-count row moves so it remains visible when pinned and running task zones are reordered.
 
 ### Changed
 
