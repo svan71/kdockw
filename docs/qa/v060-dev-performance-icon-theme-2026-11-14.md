@@ -793,6 +793,8 @@ Both lines now use `DockSeparator.qml` for line geometry, Kirigami color, opacit
 
 ### Full tests and stage
 
+- The first post-change Production full run ended **221/222** because an older orientation assertion compared local coordinates of adjacent delegates and used the settings icon size rather than the delegate's effective size. The assertion was narrowed to orientation/properties; a dedicated regression now compares both divider centers in dock coordinates. Focused orientation coverage passed **6/6** and the common-coordinate cases **50/50**.
+- The first Diagnostic full run ended **228/229**: a cold Sycoca initialization notified the catalog after the first query, producing an extra legitimate refresh in the async-cancellation test. Normal refresh no longer forces `ensureCacheValid()`; queued Sycoca refresh callbacks are generation-guarded, and that test now warms Sycoca before measuring its own async cancellation behavior.
 - Production Release CTest: **222/222 passed**.
 - Diagnostic Release CTest: **229/229 passed**.
 - Focused separator orientation and shared-coordinate QML tests passed; the coordinate case passed at scale factors 1.25 and 2.
