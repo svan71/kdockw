@@ -315,7 +315,7 @@ def test_dnd_002_reorder_persists_after_restart(kdockw: KDockW) -> None:
     wait_until(lambda: kdockw.item_names() == order, message=lambda: f"AT-SPI order {order} (have {kdockw.item_names()})")
     saved = [config.launcher(DESKTOP_IDS[n]) for n in order]
     wait_until(lambda: saved_pinned_task_urls(kdockw) == saved,
-               message=lambda: f"DockEntries v2 task URLs {saved} (have {saved_pinned_task_urls(kdockw)})")
+               message=lambda: f"typed DockEntries task URLs {saved} (have {saved_pinned_task_urls(kdockw)})")
     saved_ids = [entry["id"] for entry in config.dock_entries(kdockw.read_config()) if entry.get("type") == "task"]
 
     kdockw.restart()

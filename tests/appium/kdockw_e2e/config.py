@@ -113,9 +113,22 @@ def as_list(value: str) -> list[str]:
 
 
 def dock_entries(settings: Mapping[str, Mapping[str, str]]) -> list[dict[str, str]]:
-    """Return the typed version-2 DockEntries records from a parsed config."""
+    """Return typed DockEntries records from a parsed config.
+
+    The application accepts schema versions 1 through 5. Task records retain
+    their URL and stable ID across those versions; widget fields were added
+    later and do not affect the task-order assertions in this E2E helper.
+    """
     raw = settings.get("General", {}).get("DockEntries", "")
     document = json.loads(raw)
-    if document.get("version") != 2 or not isinstance(document.get("entries"), list):
-        raise ValueError("expected a version-2 DockEntries document")
+    if not isinstance(document, dict):
+        raise ValueError("expected a typed DockEntries document")
+    version = document.get("version")
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or not 1 <= version <= 5
+        or not isinstance(document.get("entries"), list)
+    ):
+        raise ValueError("expected a typed DockEntries document")
     return document["entries"]

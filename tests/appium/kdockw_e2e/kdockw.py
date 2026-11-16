@@ -531,7 +531,10 @@ class KDockW:
         ``entries`` lists enabled top-level rows; the KDockW submenu children
         are selected with Right/Down after entering that submenu.
         """
-        dock_actions = ("Settings...", "About KDockW", "Quit KDockW")
+        # The persistent widget-manager command precedes Settings in the
+        # KDockW submenu. Keep the complete order here so keyboard-driven E2E
+        # selection reaches the requested action instead of the first row.
+        dock_actions = ("Manage Widgets...", "Settings...", "About KDockW", "Quit KDockW")
         if label in dock_actions:
             for _ in range(entries.index("KDockW") + 1):
                 inp.key("Down")
