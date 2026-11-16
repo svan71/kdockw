@@ -17,7 +17,7 @@ namespace kdockw
 namespace
 {
 
-constexpr int kSchemaVersion = 4;
+constexpr int kSchemaVersion = 5;
 
 QString taskId(const QUrl &url)
 {
@@ -155,6 +155,9 @@ QString DockEntriesCodec::encode(const QList<DockEntry> &entries)
                 : entry.slot == DockWidgetSlot::End ? QStringLiteral("end") : QStringLiteral("center"));
             item.insert(QStringLiteral("size"), entry.widgetSize);
             item.insert(QStringLiteral("visible"), entry.widgetVisible);
+            if (entry.widgetKind == QLatin1String("applicationLauncher")) {
+                item.insert(QStringLiteral("iconIsCustom"), entry.iconIsCustom);
+            }
         }
         serializedEntries.append(item);
     }
@@ -210,6 +213,11 @@ DockEntriesCodec::DecodeResult DockEntriesCodec::decode(const QString &serialize
             if (version >= 4) {
                 entry.widgetSize = item.value(QStringLiteral("size")).toInt();
                 entry.widgetVisible = item.value(QStringLiteral("visible")).toBool(true);
+            }
+            if (entry.widgetKind == QLatin1String("applicationLauncher")) {
+                entry.iconIsCustom = version >= 5
+                    ? item.value(QStringLiteral("iconIsCustom")).toBool()
+                    : entry.iconName != QLatin1String("start-here-kde");
             }
         }
         if (!entry.isValid() || ids.contains(entry.id)) {

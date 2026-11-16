@@ -549,14 +549,24 @@ Item {
             const item = items(dock)[0]
             const rule = T.findFirst(item, o => o.objectName === "builtInSeparator")
             verify(rule && rule.visible, "the persisted built-in separator must render in the dock slot")
+            const taskSeparator = T.findFirst(dock, o => o.objectName === "taskZonesSeparator")
+            verify(taskSeparator, "the dock must expose the TaskManager separator used as the visual reference")
             const placeholder = T.findFirst(item, o => o.objectName === "iconPlaceholder")
             verify(placeholder && !placeholder.visible,
                    "built-in separator must not be covered by the normal missing-icon placeholder")
             fuzzyCompare(DockView.isVertical ? item.height : item.width, 32, 0.01)
             compare(rule.width > rule.height, DockView.isVertical,
                     "the separator's short axis must follow the dock orientation")
-            verify(Math.max(rule.width, rule.height) > 2,
-                   "the separator line must have a visible length inside its configured slot")
+            fuzzyCompare(Math.min(rule.width, rule.height), dock.taskZoneSeparatorThickness, 0.01)
+            fuzzyCompare(Math.max(rule.width, rule.height),
+                         Math.min(DockSettings.iconSize, Kirigami.Units.gridUnit * 2), 0.01)
+            compare(rule.color, taskSeparator.color,
+                    "built-in separator must use the same theme color as the TaskManager boundary")
+            fuzzyCompare(rule.opacity, taskSeparator.opacity, 0.01)
+            const expectedCrossCenter = item._indicatorAfterIcon ? DockSettings.iconSize / 2
+                : (DockView.isVertical ? item.width : item.height) - DockSettings.iconSize / 2
+            fuzzyCompare(DockView.isVertical ? rule.x + rule.width / 2 : rule.y + rule.height / 2,
+                         expectedCrossCenter, 0.01)
             compare(item.taskIndex, -1, "a built-in widget must not resolve to a TaskManager row")
             compare(DockModel.delegateGeometryRequests.length, 0,
                     "a built-in widget must not publish TaskManager window geometry")
@@ -699,7 +709,114 @@ Item {
             verify(controls && controls.columns === 1, "widget parameters must stack in a narrow window")
             verify(orderLabel && orderLabel.visible, "reorder controls must have a readable label")
             verify(removeButton && removeButton.width > 0, "remove must remain reachable without clipping")
+            verify(manager.contentItem.contentWidth <= manager.contentItem.availableWidth + 1,
+                   "the manager must not create horizontal overflow on a narrow output")
             manager.close()
+        }
+
+        function test_widgetManagerFitsTypicalWindowWithoutHorizontalScroll() {
+            DockView.screenGeometry = Qt.rect(0, 0, 1920, 1080)
+            DockModel.dockEntriesModel.appendSeparator("start")
+            DockModel.dockEntriesModel.appendSpacer(48, "center")
+            DockModel.dockEntriesModel.appendApplicationLauncher("end")
+            const dock = makeDock(0)
+            const manager = dock.builtInWidgetManager
+            manager.open()
+            tryVerify(() => manager.opened)
+            compare(manager.width, 720)
+            const scroll = manager.contentItem
+            tryVerify(() => scroll.availableWidth > 0 && scroll.contentWidth > 0)
+            verify(scroll.contentWidth <= scroll.availableWidth + 1,
+                   "normal widget settings must fit the viewport without horizontal scrolling")
+            const controls = T.findFirst(scroll, o => o.objectName === "widgetManagerControls")
+            verify(controls && controls.width <= scroll.availableWidth + 1,
+                   "the settings grid must shrink to the available content width")
+            manager.close()
+        }
+
+        function test_launcherStyleIconsAreDistinctContrastAwareAndKeepCustomOverride() {
+            DockView.backgroundColor = Qt.rgba(0.08, 0.08, 0.1, 1)
+            const row = DockModel.tasksModel.addTask({
+                display: "Application Menu",
+                entryType: "builtInWidget",
+                widgetKind: "applicationLauncher",
+                entryId: "widget:application-launcher:icons",
+                iconName: "start-here-kde",
+                IconName: "start-here-kde",
+                iconIsCustom: false,
+                taskIndex: -1,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Custom Application Menu",
+                entryType: "builtInWidget",
+                widgetKind: "applicationLauncher",
+                entryId: "widget:application-launcher:custom-icons",
+                iconName: "user-custom-launcher",
+                IconName: "user-custom-launcher",
+                iconIsCustom: true,
+                taskIndex: -1,
+            })
+            const dock = makeDock(2)
+            const item = items(dock)[0]
+            const customItem = items(dock)[1]
+            const styleIcon = T.findFirst(item, o => o.objectName === "applicationLauncherStyleIcon")
+            verify(styleIcon && styleIcon.visible && styleIcon.isMask,
+                   "default style icons must be theme-aware mask icons")
+            const styleNames = []
+            for (const style of ["launchpad", "start", "hierarchical"]) {
+                DockModel.applicationLauncherState.style = style
+                styleNames.push(item.iconName)
+                verify(styleIcon.valid, "the selected icon must resolve through the active icon theme")
+            }
+            compare(new Set(styleNames).size, 3,
+                    "Launchpad, Start, and Hierarchical must each have a distinct icon")
+            compare(styleNames[0], "view-grid")
+            compare(styleNames[1], "applications-all-symbolic")
+            compare(styleNames[2], "view-list-tree")
+            verify(BadgeTextColor.contrastRatio(item.launcherIconForeground, item.launcherIconSurface) >= 4.5,
+                   "the style glyph must retain readable contrast on a dark dock")
+            verify(row >= 0)
+            for (const style of ["launchpad", "start", "hierarchical"]) {
+                DockModel.applicationLauncherState.style = style
+                compare(customItem.iconName, "user-custom-launcher",
+                        "a saved custom icon must survive launcher style changes")
+                const customIcon = T.findFirst(customItem, o => o.objectName === "applicationLauncherStyleIcon")
+                verify(customIcon && !customIcon.visible,
+                       "custom icons must bypass the generated style mask")
+            }
+        }
+
+        function test_folderStackIconAlignsWithTaskIconOnAllDockEdges_data() {
+            return dockEdges()
+        }
+
+        function test_folderStackIconAlignsWithTaskIconOnAllDockEdges(data) {
+            DockView.edge = data.edge
+            DockSettings.runningIndicatorPosition = 0
+            DockModel.tasksModel.addTask({
+                display: "Application",
+                entryType: "task",
+                AppId: "application",
+                iconName: "applications-system",
+                IsWindow: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Folder",
+                entryType: "folderStack",
+                entryId: "folder:alignment",
+                iconName: "folder",
+                taskIndex: -1,
+            })
+            const dock = makeDock(2)
+            const taskIcon = T.findFirst(items(dock)[0], o => o.objectName === "dockItemIconImage")
+            const folderIcon = T.findFirst(items(dock)[1], o => o.objectName === "folderStackIcon")
+            verify(taskIcon && folderIcon)
+            const taskCenter = taskIcon.mapToItem(dock, taskIcon.width / 2, taskIcon.height / 2)
+            const folderCenter = folderIcon.mapToItem(dock, folderIcon.width / 2, folderIcon.height / 2)
+            if (data.edge < 2) // Horizontal docks: compare the cross-axis baseline.
+                fuzzyCompare(folderCenter.y, taskCenter.y, 0.01)
+            else // Vertical docks: compare the cross-axis baseline.
+                fuzzyCompare(folderCenter.x, taskCenter.x, 0.01)
         }
 
         function test_internalApplicationReorderSkipsBuiltInWidgetTargets() {

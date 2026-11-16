@@ -69,6 +69,8 @@ QVariant DockEntriesModel::data(const QModelIndex &index, int role) const
         return entry.widgetSize;
     case WidgetVisibleRole:
         return entry.widgetVisible;
+    case IconIsCustomRole:
+        return entry.iconIsCustom;
     default:
         return {};
     }
@@ -87,6 +89,7 @@ QHash<int, QByteArray> DockEntriesModel::roleNames() const
         {PlacementSlotRole, "placementSlot"},
         {WidgetSizeRole, "widgetSize"},
         {WidgetVisibleRole, "widgetVisible"},
+        {IconIsCustomRole, "iconIsCustom"},
     };
 }
 
@@ -231,9 +234,10 @@ bool DockEntriesModel::setBuiltInWidgetIcon(const QString &entryId, const QStrin
         DockEntry &entry = m_entries[row];
         if (entry.type != DockEntryType::BuiltInWidget || entry.id != entryId
             || entry.widgetKind != QLatin1String("applicationLauncher")) continue;
-        if (entry.iconName == iconName) return true;
+        if (entry.iconName == iconName && entry.iconIsCustom) return true;
         entry.iconName = iconName;
-        Q_EMIT dataChanged(index(row, 0), index(row, 0), {IconNameRole});
+        entry.iconIsCustom = true;
+        Q_EMIT dataChanged(index(row, 0), index(row, 0), {IconNameRole, IconIsCustomRole});
         Q_EMIT entriesChanged();
         return true;
     }

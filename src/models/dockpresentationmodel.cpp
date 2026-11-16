@@ -198,6 +198,8 @@ QVariant DockPresentationModel::data(const QModelIndex &index, int role) const
         return row.widgetSize;
     case WidgetVisibleRole:
         return row.widgetVisible;
+    case IconIsCustomRole:
+        return row.iconIsCustom;
     default:
         break;
     }
@@ -233,6 +235,7 @@ QHash<int, QByteArray> DockPresentationModel::roleNames() const
     names.insert(IsPinnedRole, "isPinned");
     names.insert(WidgetSizeRole, "widgetSize");
     names.insert(WidgetVisibleRole, "widgetVisible");
+    names.insert(IconIsCustomRole, "iconIsCustom");
     return names;
 }
 
@@ -319,6 +322,7 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         row.iconUrl = entry.iconUrl;
         row.widgetSize = entry.widgetSize;
         row.widgetVisible = entry.widgetVisible;
+        row.iconIsCustom = entry.iconIsCustom;
         row.placementSlot = entry.slot == DockWidgetSlot::Start ? QStringLiteral("start")
             : entry.slot == DockWidgetSlot::End ? QStringLiteral("end") : QStringLiteral("center");
         row.key = QStringLiteral("entry:%1").arg(entry.id);

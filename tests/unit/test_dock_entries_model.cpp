@@ -122,6 +122,7 @@ TEST_CASE("Application Launcher entry persists its icon and can be configured", 
     REQUIRE(model.setBuiltInWidgetIcon(id, QStringLiteral("start-here-kde")));
     CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::IconNameRole).toString()
           == QStringLiteral("start-here-kde"));
+    CHECK(model.data(model.index(0, 0), kdockw::DockEntriesModel::IconIsCustomRole).toBool());
     REQUIRE(model.setBuiltInWidgetSlot(id, QStringLiteral("start")));
     CHECK(model.setBuiltInWidgetVisible(id, false));
 
@@ -131,6 +132,7 @@ TEST_CASE("Application Launcher entry persists its icon and can be configured", 
     CHECK(decoded.entries.first().id == id);
     CHECK(decoded.entries.first().widgetKind == QStringLiteral("applicationLauncher"));
     CHECK(decoded.entries.first().iconName == QStringLiteral("start-here-kde"));
+    CHECK(decoded.entries.first().iconIsCustom);
     CHECK(decoded.entries.first().slot == kdockw::DockWidgetSlot::Start);
     CHECK_FALSE(decoded.entries.first().widgetVisible);
 }

@@ -174,8 +174,19 @@ QtObject {
             if (hasApplicationLauncher) return ""
             const id = "widget:application-launcher:mock-" + (++_nextWidgetId)
             append({ entryId: id, entryType: "builtInWidget", widgetKind: "applicationLauncher",
+                     iconName: "start-here-kde", iconIsCustom: false,
                      placementSlot: slot || "center", widgetSize: 0, widgetVisible: true })
             return id
+        }
+        function setBuiltInWidgetIcon(entryId, iconName) {
+            for (let row = 0; row < count; ++row) {
+                if (get(row).entryId === entryId) {
+                    setProperty(row, "iconName", iconName)
+                    setProperty(row, "iconIsCustom", true)
+                    return true
+                }
+            }
+            return false
         }
         function removeBuiltInWidget(entryId) {
             for (let row = 0; row < count; ++row) {

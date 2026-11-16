@@ -28,6 +28,7 @@ public:
         PlacementSlotRole,
         WidgetSizeRole,
         WidgetVisibleRole,
+        IconIsCustomRole,
     };
     Q_ENUM(Role)
 

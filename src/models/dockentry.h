@@ -33,6 +33,7 @@ struct DockEntry {
     DockWidgetSlot slot = DockWidgetSlot::Center;
     int widgetSize = 0;
     bool widgetVisible = true;
+    bool iconIsCustom = false;
 
     [[nodiscard]] static DockEntry task(const QUrl &url);
     [[nodiscard]] static DockEntry folderStack(const QUrl &url);

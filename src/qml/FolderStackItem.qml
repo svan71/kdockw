@@ -17,6 +17,7 @@ Item {
     required property Item rootItem
     property bool verticalDock: false
     property int dockEdge: 3
+    property bool indicatorAfterIcon: true
     property real maxZoomFactor: 1.6
     readonly property string displayName: model.display || ""
     property string iconName: "folder"
@@ -113,7 +114,13 @@ Item {
     // not enlarge a rest-size texture.
     Image {
         id: folderIcon
-        anchors.centerIn: parent
+        objectName: "folderStackIcon"
+        x: stackItem.verticalDock
+            ? (stackItem.indicatorAfterIcon ? 0 : parent.width - width)
+            : (parent.width - width) / 2
+        y: stackItem.verticalDock
+            ? (parent.height - height) / 2
+            : (stackItem.indicatorAfterIcon ? 0 : parent.height - height)
         width: DockSettings.iconSize
         height: DockSettings.iconSize
         source: {

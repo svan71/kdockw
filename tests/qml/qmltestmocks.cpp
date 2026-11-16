@@ -51,6 +51,8 @@ MockTasksModel::MockTasksModel(QObject *parent)
     for (int i = 0; i < roles.keyCount(); ++i) {
         m_roleNames.insert(roles.value(i), QByteArray(roles.key(i)));
     }
+    m_roleNames.insert(MockAbstractTasksModel::IconNameForDockItem, QByteArrayLiteral("iconName"));
+    m_roleNames.insert(MockAbstractTasksModel::IconIsCustom, QByteArrayLiteral("iconIsCustom"));
     m_roleNames.insert(MockAbstractTasksModel::TaskIndex, QByteArrayLiteral("taskIndex"));
     m_roleNames.insert(MockAbstractTasksModel::EntryId, QByteArrayLiteral("entryId"));
     m_roleNames.insert(MockAbstractTasksModel::EntryType, QByteArrayLiteral("entryType"));

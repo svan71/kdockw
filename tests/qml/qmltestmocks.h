@@ -175,6 +175,8 @@ public:
         WidgetSize,
         WidgetVisible,
         IsPinned,
+        IconIsCustom,
+        IconNameForDockItem,
     };
     Q_ENUM(AdditionalRoles)
 };

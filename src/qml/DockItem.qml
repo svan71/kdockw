@@ -35,11 +35,24 @@ Item {
     readonly property bool isFolderStack: model.entryType === "folderStack"
     readonly property bool isBuiltInWidget: model.entryType === "builtInWidget"
     readonly property bool isApplicationLauncher: isBuiltInWidget && model.widgetKind === "applicationLauncher"
+    readonly property bool usesDefaultLauncherIcon: isApplicationLauncher && !(model.iconIsCustom ?? false)
+    readonly property string defaultLauncherIconName: {
+        switch (DockModel.applicationLauncherState.style) {
+        case "start": return "applications-all-symbolic"
+        case "hierarchical": return "view-list-tree"
+        default: return "view-grid"
+        }
+    }
     readonly property int taskIndex: model.taskIndex !== undefined ? model.taskIndex : index
     readonly property string dockEntryId: model.entryId || ""
     readonly property string iconName: isFolderStack ? (model.iconName || "folder")
-        : isApplicationLauncher ? (model.iconName || "start-here-kde")
+        : isApplicationLauncher ? (usesDefaultLauncherIcon ? defaultLauncherIconName : (model.iconName || defaultLauncherIconName))
         : isBuiltInWidget ? "" : DockModel.iconName(taskIndex)
+    readonly property color launcherIconSurface: DockView.backgroundColor.a > 0
+        ? BadgeTextColor.composite(DockView.backgroundColor, Kirigami.Theme.backgroundColor)
+        : BadgeTextColor.composite(Qt.alpha(Kirigami.Theme.backgroundColor, DockSettings.backgroundOpacity),
+                                   Kirigami.Theme.backgroundColor)
+    readonly property color launcherIconForeground: BadgeTextColor.choose(launcherIconSurface, Kirigami.Theme.textColor)
     property Item dockRoot: null
 
     function openFolderStack() {
@@ -856,14 +869,16 @@ Item {
     // Application icon
     Image {
         id: iconImage
+        objectName: "dockItemIconImage"
         // Anchors set via states below (iconAnchorStates)
         width: iconSize
         height: iconSize
         visible: !dockItem.isFolderStack && (!dockItem.isBuiltInWidget || dockItem.isApplicationLauncher)
+            && !dockItem.usesDefaultLauncherIcon
         source: {
             if (dockItem.isFolderStack) return ""
             if (dockItem.isApplicationLauncher)
-                return "image://icon/" + encodeURIComponent(dockItem.iconName || "start-here-kde")
+                return "image://icon/" + encodeURIComponent(dockItem.iconName || dockItem.defaultLauncherIconName)
                     + "?v=" + DockView.iconCacheVersion
             if (dockItem.isBuiltInWidget) return ""
             // IMPORTANT: Read model.display to create a reactive dependency on
@@ -1016,6 +1031,26 @@ Item {
         ]
     }
 
+    Kirigami.Icon {
+        id: styleLauncherIcon
+        objectName: "applicationLauncherStyleIcon"
+        visible: dockItem.usesDefaultLauncherIcon
+        x: DockView.isVertical
+            ? (dockItem._indicatorAfterIcon ? 0 : parent.width - width)
+            : (parent.width - width) / 2
+        y: DockView.isVertical
+            ? (parent.height - height) / 2
+            : (dockItem._indicatorAfterIcon ? 0 : parent.height - height)
+        width: dockItem.iconSize
+        height: dockItem.iconSize
+        source: dockItem.defaultLauncherIconName
+        fallback: "applications-all-symbolic"
+        isMask: true
+        color: dockItem.launcherIconForeground
+        opacity: DockSettings.iconOpacity
+        Accessible.ignored: true
+    }
+
     FolderStackItem {
         id: folderStackDelegate
         anchors.fill: parent
@@ -1027,22 +1062,24 @@ Item {
         rootItem: dockItem.dockRoot
         verticalDock: DockView.isVertical
         dockEdge: DockView.edge
+        indicatorAfterIcon: dockItem._indicatorAfterIcon
         maxZoomFactor: dockItem.maxZoomFactor
         Accessible.ignored: true
     }
 
-    Rectangle {
+    Kirigami.Separator {
         objectName: "builtInSeparator"
         visible: dockItem.isBuiltInWidget && model.widgetKind === "separator"
-        color: Kirigami.Theme.textColor
-        opacity: 0.45
-        radius: width / 2
-        readonly property real lineExtent: Math.max(2,
-            Math.min(dockItem._primaryExtent - Kirigami.Units.largeSpacing * 2,
-                     dockItem.iconSize * 0.62))
-        width: DockView.isVertical ? lineExtent : 2
-        height: DockView.isVertical ? 2 : lineExtent
-        anchors.centerIn: parent
+        readonly property real lineExtent: Math.min(dockItem.iconSize, Kirigami.Units.gridUnit * 2)
+        readonly property real iconCrossAxisCenter: dockItem._indicatorAfterIcon
+            ? dockItem.iconSize / 2
+            : (DockView.isVertical ? dockItem.width : dockItem.height) - dockItem.iconSize / 2
+        readonly property real separatorThickness: dockItem.dockRoot
+            ? dockItem.dockRoot.taskZoneSeparatorThickness : 1
+        width: DockView.isVertical ? lineExtent : separatorThickness
+        height: DockView.isVertical ? separatorThickness : lineExtent
+        x: DockView.isVertical ? iconCrossAxisCenter - width / 2 : (parent.width - width) / 2
+        y: DockView.isVertical ? (parent.height - height) / 2 : iconCrossAxisCenter - height / 2
         Accessible.ignored: true
     }
 

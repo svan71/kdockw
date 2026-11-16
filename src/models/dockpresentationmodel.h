@@ -42,6 +42,7 @@ public:
         IsPinnedRole,
         WidgetSizeRole,
         WidgetVisibleRole,
+        IconIsCustomRole,
     };
     Q_ENUM(Role)
 
@@ -76,6 +77,7 @@ private:
         QString placementSlot = QStringLiteral("center");
         int widgetSize = 0;
         bool widgetVisible = true;
+        bool iconIsCustom = false;
         int taskIndex = -1;
         bool pinned = false;
 

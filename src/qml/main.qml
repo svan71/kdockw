@@ -2624,7 +2624,9 @@ Item {
             screenWidth - Kirigami.Units.largeSpacing * 4)
         readonly property real usableScreenHeight: Math.max(1,
             screenHeight - Kirigami.Units.largeSpacing * 4)
-        width: Math.min(720, usableScreenWidth)
+        readonly property real preferredManagerWidth: Math.min(720, usableScreenWidth)
+        readonly property real minimumManagerWidth: Math.min(520, usableScreenWidth)
+        width: Math.max(minimumManagerWidth, preferredManagerWidth)
         height: Math.min(usableScreenHeight, implicitHeight)
         padding: Kirigami.Units.largeSpacing
 
@@ -2634,8 +2636,10 @@ Item {
             implicitWidth: Math.max(1, widgetManager.width - widgetManager.leftPadding - widgetManager.rightPadding)
             implicitHeight: Math.min(widgetManagerContent.implicitHeight,
                                      widgetManager.usableScreenHeight * 0.78)
+            contentWidth: availableWidth
             clip: true
             QQC2.ScrollBar.vertical.policy: QQC2.ScrollBar.AsNeeded
+            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
 
             ColumnLayout {
                 id: widgetManagerContent
@@ -2666,7 +2670,7 @@ Item {
                         objectName: "addApplicationLauncherButton"
                         text: widgetManager.hasApplicationLauncher
                             ? i18n("Application menu already added") : i18n("Add Application Menu")
-                        icon.name: "start-here-kde"
+                        icon.name: "applications-all-symbolic"
                         enabled: !widgetManager.hasApplicationLauncher
                         Accessible.description: widgetManager.hasApplicationLauncher
                             ? i18n("The dock already has an Application Launcher.")

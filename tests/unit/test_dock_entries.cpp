@@ -85,7 +85,7 @@ TEST_CASE("Built-in separator descriptors persist stable identity and placement 
     CHECK(decoded.entries.at(2).slot == kdockw::DockWidgetSlot::End);
 }
 
-TEST_CASE("Built-in spacer size and visibility survive schema v4 and v3 migrates", "[dock-entries][dock-widgets][migration]")
+TEST_CASE("Built-in spacer size and visibility survive schema v5 and v3 migrates", "[dock-entries][dock-widgets][migration]")
 {
     auto spacer = kdockw::DockEntry::spacer(kdockw::DockWidgetSlot::End, 96);
     spacer.widgetVisible = false;
@@ -103,6 +103,23 @@ TEST_CASE("Built-in spacer size and visibility survive schema v4 and v3 migrates
     REQUIRE(legacy.entries.size() == 1);
     CHECK(legacy.entries.first().widgetSize == 0);
     CHECK(legacy.entries.first().widgetVisible);
+}
+
+TEST_CASE("Launcher icon override state migrates from v4 and persists in v5", "[dock-entries][application-launcher][migration]")
+{
+    const QString v4 = QStringLiteral(
+        R"({"version":4,"entries":[{"id":"widget:application-launcher:default","type":"builtInWidget","url":"","iconName":"start-here-kde","widgetKind":"applicationLauncher","slot":"center","size":0,"visible":true},{"id":"widget:application-launcher:custom","type":"builtInWidget","url":"","iconName":"custom-launcher-icon","widgetKind":"applicationLauncher","slot":"end","size":0,"visible":true}]})");
+    const auto migrated = kdockw::DockEntriesCodec::decode(v4);
+    REQUIRE(migrated.validDocument);
+    REQUIRE(migrated.entries.size() == 2);
+    CHECK_FALSE(migrated.entries.at(0).iconIsCustom);
+    CHECK(migrated.entries.at(1).iconIsCustom);
+
+    const auto roundTrip = kdockw::DockEntriesCodec::decode(kdockw::DockEntriesCodec::encode(migrated.entries));
+    REQUIRE(roundTrip.entries.size() == 2);
+    CHECK_FALSE(roundTrip.entries.at(0).iconIsCustom);
+    CHECK(roundTrip.entries.at(1).iconIsCustom);
+    CHECK(roundTrip.entries.at(1).iconName == QStringLiteral("custom-launcher-icon"));
 }
 
 TEST_CASE("Typed dock entry decoding rejects unsupported documents and malformed entries", "[dock-entries]")
