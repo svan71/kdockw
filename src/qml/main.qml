@@ -42,6 +42,35 @@ Item {
         return -1
     }
     readonly property real taskZoneSeparatorThickness: 1
+    readonly property var taskZoneSeparatorItems: {
+        const revision = dockRepeater.layoutRevision
+        const boundary = taskZoneBoundary
+        return {
+            pinned: boundary > 0 ? dockRepeater.itemAt(boundary - 1) : null,
+            running: boundary >= 0 ? dockRepeater.itemAt(boundary) : null
+        }
+    }
+    readonly property real taskZoneSeparatorSecondaryCenter: {
+        const pair = taskZoneSeparatorItems
+        if (!pair.pinned || !pair.running) {
+            return DockView.isVertical
+                ? dockRow.x + dockRow.width / 2
+                : dockRow.y + dockRow.height / 2
+        }
+        const pinnedSpan = _secondarySpan(pair.pinned, pair.pinned.currentScale)
+        const runningSpan = _secondarySpan(pair.running, pair.running.currentScale)
+        return (pinnedSpan.near + pinnedSpan.far + runningSpan.near + runningSpan.far) / 4
+    }
+
+    function taskZoneSeparatorSecondaryCenterIn(item) {
+        // mapFromItem() does not create bindings for the source geometry, so
+        // read it explicitly to follow layout and Spring Magnification moves.
+        const geometryRevision = taskZonesSeparator.x + taskZonesSeparator.y
+            + taskZonesSeparator.width + taskZonesSeparator.height
+        const point = item.mapFromItem(
+            taskZonesSeparator, taskZonesSeparator.width / 2, taskZonesSeparator.height / 2)
+        return DockView.isVertical ? point.x : point.y
+    }
     readonly property real taskZoneGap: taskZoneBoundary >= 0
         ? DockSettings.iconSpacing + taskZoneSeparatorThickness : 0
     property string hoveredName: ""
@@ -1916,22 +1945,14 @@ Item {
         // separator is centered between transformed visual edges below, cannot
         // become a task or keyboard stop, and contributes its thickness to
         // root.taskZoneGap for normal spacing on both sides.
-        Kirigami.Separator {
+        DockSeparator {
             id: taskZonesSeparator
             objectName: "taskZonesSeparator"
             z: -0.5
             readonly property int boundary: root.taskZoneBoundary
             readonly property bool hasBoundary: boundary >= 0
-            readonly property var pinnedItem: {
-                let revision = dockRepeater.layoutRevision
-                let count = dockRepeater.count
-                return hasBoundary ? dockRepeater.itemAt(boundary - 1) : null
-            }
-            readonly property var runningItem: {
-                let revision = dockRepeater.layoutRevision
-                let count = dockRepeater.count
-                return hasBoundary ? dockRepeater.itemAt(boundary) : null
-            }
+            readonly property var pinnedItem: root.taskZoneSeparatorItems.pinned
+            readonly property var runningItem: root.taskZoneSeparatorItems.running
             readonly property real primaryCenter: {
                 if (!pinnedItem || !runningItem) return 0
                 let pinnedExtent = DockView.isVertical ? pinnedItem.height : pinnedItem.width
@@ -1942,19 +1963,15 @@ Item {
                     - runningExtent * runningItem.currentScale / 2
                 return (pinnedEdge + runningEdge) / 2
             }
-            readonly property real secondaryCenter: {
-                if (!pinnedItem || !runningItem) return 0
-                let pinnedSpan = root._secondarySpan(pinnedItem, pinnedItem.currentScale)
-                let runningSpan = root._secondarySpan(runningItem, runningItem.currentScale)
-                return (pinnedSpan.near + pinnedSpan.far + runningSpan.near + runningSpan.far) / 4
-            }
+            readonly property real secondaryCenter: root.taskZoneSeparatorSecondaryCenter
             readonly property real thickness: root.taskZoneSeparatorThickness
             readonly property real length: Math.min(DockSettings.iconSize, Kirigami.Units.gridUnit * 2)
             visible: hasBoundary && pinnedItem !== null && runningItem !== null
-            width: DockView.isVertical ? length : thickness
-            height: DockView.isVertical ? thickness : length
-            x: Math.round((DockView.isVertical ? secondaryCenter : primaryCenter) - width / 2)
-            y: Math.round((DockView.isVertical ? primaryCenter : secondaryCenter) - height / 2)
+            verticalDock: DockView.isVertical
+            lineLength: length
+            lineThickness: thickness
+            primaryPosition: primaryCenter
+            crossAxisPosition: secondaryCenter
             Accessible.role: Accessible.Separator
             Accessible.name: i18n("Pinned and running apps separator")
             Accessible.focusable: false

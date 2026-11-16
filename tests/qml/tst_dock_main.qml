@@ -559,14 +559,10 @@ Item {
                     "the separator's short axis must follow the dock orientation")
             fuzzyCompare(Math.min(rule.width, rule.height), dock.taskZoneSeparatorThickness, 0.01)
             fuzzyCompare(Math.max(rule.width, rule.height),
-                         Math.min(DockSettings.iconSize, Kirigami.Units.gridUnit * 2), 0.01)
+                         Math.min(item.iconSize, Kirigami.Units.gridUnit * 2), 0.01)
             compare(rule.color, taskSeparator.color,
                     "built-in separator must use the same theme color as the TaskManager boundary")
             fuzzyCompare(rule.opacity, taskSeparator.opacity, 0.01)
-            const expectedCrossCenter = item._indicatorAfterIcon ? DockSettings.iconSize / 2
-                : (DockView.isVertical ? item.width : item.height) - DockSettings.iconSize / 2
-            fuzzyCompare(DockView.isVertical ? rule.x + rule.width / 2 : rule.y + rule.height / 2,
-                         expectedCrossCenter, 0.01)
             compare(item.taskIndex, -1, "a built-in widget must not resolve to a TaskManager row")
             compare(DockModel.delegateGeometryRequests.length, 0,
                     "a built-in widget must not publish TaskManager window geometry")
@@ -575,6 +571,73 @@ Item {
             wait(350)
             verify(dock._dragPending, "built-in widgets must be available as internal dock drag sources")
             mouseRelease(stage, point.x, point.y, Qt.LeftButton)
+        }
+
+        function test_builtinSeparatorMatchesTaskManagerInDockCoordinates_data() {
+            const rows = []
+            for (const edge of [0, 1, 2, 3]) {
+                for (const iconSize of [32, 48, 64]) {
+                    for (const spring of [false, true]) {
+                        for (const indicatorPosition of [0, 1]) {
+                            rows.push({ tag: `${edge}-${iconSize}-${spring}-${indicatorPosition}`,
+                                        edge, iconSize, spring, indicatorPosition })
+                        }
+                    }
+                }
+            }
+            return rows
+        }
+
+        function test_builtinSeparatorMatchesTaskManagerInDockCoordinates(data) {
+            DockView.edge = data.edge
+            DockSettings.iconSize = data.iconSize
+            DockSettings.runningIndicatorSize = 5
+            DockSettings.runningIndicatorPosition = data.indicatorPosition
+            DockSettings.separateLaunchers = true
+            DockSettings.magnificationMode = data.spring ? 1 : 0
+            DockSettings.maxZoomFactor = 1.7
+            addSeparatedTasks()
+            DockModel.tasksModel.addTask({
+                display: "Built-in separator",
+                entryType: "builtInWidget",
+                widgetKind: "separator",
+                widgetSize: data.iconSize,
+                entryId: "widget:separator:shared-coordinate-test",
+                taskIndex: -1,
+            })
+
+            const dock = makeDock(5)
+            const rows = items(dock)
+            const nativeSeparator = T.findFirst(dock, o => o.objectName === "taskZonesSeparator")
+            const builtin = T.findFirst(dock, o => o.objectName === "builtInSeparator" && o.visible)
+            verify(nativeSeparator && nativeSeparator.visible,
+                   "the native separator must be visible between the pinned and running task rows")
+            verify(builtin && builtin.visible, "the built-in separator delegate must be visible")
+
+            if (data.spring) {
+                const target = rows.find(item => item.displayName === "Running A")
+                verify(target)
+                const pointer = centerOf(target)
+                mouseMove(stage, pointer.x, pointer.y)
+                tryVerify(() => target.currentScale > 1.05, 2000,
+                          "Spring Magnification did not scale the TaskManager row")
+            }
+
+            const taskCenter = nativeSeparator.mapToItem(dock, nativeSeparator.width / 2, nativeSeparator.height / 2)
+            const widgetCenter = builtin.mapToItem(dock, builtin.width / 2, builtin.height / 2)
+            if (DockView.isVertical)
+                fuzzyCompare(widgetCenter.x, taskCenter.x, 0.01,
+                             `separator centers must share the dock cross-axis coordinate (${widgetCenter.x} vs ${taskCenter.x})`)
+            else
+                fuzzyCompare(widgetCenter.y, taskCenter.y, 0.01,
+                             `separator centers must share the dock cross-axis coordinate (${widgetCenter.y} vs ${taskCenter.y})`)
+
+            compare(builtin.color, nativeSeparator.color)
+            fuzzyCompare(builtin.opacity, nativeSeparator.opacity, 0.01)
+            fuzzyCompare(Math.min(builtin.width, builtin.height),
+                         Math.min(nativeSeparator.width, nativeSeparator.height), 0.01)
+            fuzzyCompare(Math.max(builtin.width, builtin.height),
+                         Math.max(nativeSeparator.width, nativeSeparator.height), 0.01)
         }
 
         function test_builtinSpacerHasConfiguredPrimarySizeOnAllEdges_data() {

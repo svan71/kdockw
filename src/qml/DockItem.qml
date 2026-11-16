@@ -1067,20 +1067,16 @@ Item {
         Accessible.ignored: true
     }
 
-    Kirigami.Separator {
+    DockSeparator {
         objectName: "builtInSeparator"
-        visible: dockItem.isBuiltInWidget && model.widgetKind === "separator"
-        readonly property real lineExtent: Math.min(dockItem.iconSize, Kirigami.Units.gridUnit * 2)
-        readonly property real iconCrossAxisCenter: dockItem._indicatorAfterIcon
-            ? dockItem.iconSize / 2
-            : (DockView.isVertical ? dockItem.width : dockItem.height) - dockItem.iconSize / 2
-        readonly property real separatorThickness: dockItem.dockRoot
-            ? dockItem.dockRoot.taskZoneSeparatorThickness : 1
-        width: DockView.isVertical ? lineExtent : separatorThickness
-        height: DockView.isVertical ? separatorThickness : lineExtent
-        x: DockView.isVertical ? iconCrossAxisCenter - width / 2 : (parent.width - width) / 2
-        y: DockView.isVertical ? (parent.height - height) / 2 : iconCrossAxisCenter - height / 2
-        Accessible.ignored: true
+        visible: dockItem.isBuiltInWidget && dockItem.model.widgetKind === "separator"
+        verticalDock: DockView.isVertical
+        lineLength: Math.min(dockItem.iconSize, Kirigami.Units.gridUnit * 2)
+        lineThickness: dockItem.dockRoot ? dockItem.dockRoot.taskZoneSeparatorThickness : 1
+        primaryPosition: DockView.isVertical ? dockItem.height / 2 : dockItem.width / 2
+        crossAxisPosition: dockItem.dockRoot
+            ? dockItem.dockRoot.taskZoneSeparatorSecondaryCenterIn(dockItem)
+            : (DockView.isVertical ? dockItem.width / 2 : dockItem.height / 2)
     }
 
     Item {

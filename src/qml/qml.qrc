@@ -3,6 +3,7 @@
         <file>fixtures/preview-clip-pattern.svg</file>
         <file>main.qml</file>
         <file>DockItem.qml</file>
+        <file>DockSeparator.qml</file>
         <file>FolderStackItem.qml</file>
         <file>ApplicationLauncherPopup.qml</file>
         <file>ApplicationLauncherToolButton.qml</file>
