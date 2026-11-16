@@ -19,18 +19,20 @@ carried forward from the Krema-based development period.
 - Added an optional one-time import of KDE Plasma launcher favorites into an empty Windows Start pin list, preserving the source order and KDockW-owned settings afterward.
 - Added paginated Launchpad navigation and persistent user-created application folders.
 - Added a shared launcher favorites list to KDE Hierarchical, using the existing Windows Start favorites.
-- Added a 220 ms horizontal Launchpad page transition with bounded current/target page delegates and cancellation on search, layout changes, and popup close.
+- Added a 380 ms horizontal Launchpad page transition with bounded current/target page delegates and cancellation on search, layout changes, and popup close.
 
 ### Changed
 
 - Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
 - Anchored Launcher context menus to the clicked item through the Qt Quick Controls overlay and applied the resolved KDockW/Kirigami theme palette to all three menus.
+- Rendered Launcher navigation buttons and context-menu actions with explicit theme-aware controls so their visibility and contrast do not depend on the active Qt Quick Controls style.
 
 ### Fixed
 
 - Prevented a crash while creating a Launchpad folder by keeping the native move-to-folder menu stable while its folder model changes.
 - Synchronized both Launchpad page grids during the 220 ms slide and released the old page after the transition.
 - Kept the Windows Start navigation actions and KDE Hierarchical Back control visible in the loaded native popup, with regression coverage against the real popup and catalog.
+- Refreshed the read-only Plasma favorites source on initialization and kept favorite import pending until the Kicker model reports readiness.
 - Gave the Launchpad folder-name field an explicit theme-derived surface, text, placeholder, focus, and selection palette for readable light and dark themes.
 - Avoided reloading every dock icon when TaskManager updates one task's icon, reducing repeated icon work and preserving responsive dock updates.
 - Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.

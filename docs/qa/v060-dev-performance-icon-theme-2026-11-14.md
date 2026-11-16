@@ -597,3 +597,47 @@ The owner reported **10/25** checks passed. They accepted the popup positioning,
 - The live preflight helper unit tests passed **6/6**. `msgfmt --check --check-format`, `bash -n` for the diagnostic start/restore scripts, Python byte-compilation, and `git diff --check` passed.
 - Final launcher preflight passed with the exact stage path and Build ID above. No release, tag or push was created. The previous responsiveness P0 remains closed based on the owner's 2026-11-15 acceptance; its historical anonymous-PSS cause remains UNKNOWN.
 - Application Launcher, Built-in Dock Widget Model, Built-in Dock Widgets, and the v0.6.0 stage remain in `review`. Owner visual/functional acceptance of the corrected fifth-cycle candidate in Plasma/Wayland is still required.
+
+## Sixth Application Launcher correction cycle — 2026-11-16
+
+The owner tested the fifth-cycle candidate identified as GNU Build ID
+`553544c9a6be4d48755c76e9f5b9c092f892a8cf` and accepted 17/28 checks. Folder
+creation, rename, open/delete, app membership and persistence, thumbnails,
+synchronized Launchpad page movement, page indicators, and general appearance
+and responsiveness were accepted. Remaining reports were missing navigation
+controls, dark context-menu text on dark surfaces, unreadable folder dialogs,
+fast page flips, and a suspected missing initial Plasma Favorites import.
+Adding apps directly from Favorites was explicitly not requested.
+
+### Changes and source evidence
+
+- Replaced Launcher navigation controls and menu-item contents with explicit
+  theme-derived controls. Windows Start, KDE Hierarchical, and Launchpad retain
+  their separate layouts and existing navigation/actions. Folder dialog input
+  and buttons use the resolved light/dark theme palette. The custom menu item
+  remains a `QQC2.MenuItem` delegate, preserving native menu open/close and
+  submenu behavior.
+- Launchpad page translation is 380 ms with `InOutCubic`; the existing bounded
+  two-grid transition and cancellation behavior remain. The architecture note
+  and changelog now describe 380 ms.
+- The favorites source used `Kicker.RootModel { autoPopulate: false }` but did
+  not call `refresh()`. It therefore could fail to emit `refreshed`, leaving the
+  import readiness gate pending. Initialization now refreshes and snapshots
+  the read-only model; KDockW still waits for readiness and does not overwrite
+  already configured pins or write back to Plasma. The owner profile's
+  `kactivitymanagerd-statsrc` and activity database contain nonempty Kickoff
+  favorites. Their exact mapping in the candidate's isolated profile was not
+  observed in a real popup, so successful owner-profile import is not claimed.
+- Added QML readiness coverage for the Kicker model and unit coverage for
+  pending, empty, unavailable, and configured favorites import states. Updated
+  the TaskManager preflight assessor to require a changed icon pixel hash when
+  a DecorationRole update is reported, and adjusted the XWayland fixture's
+  app identity for isolated live testing.
+
+### Candidate verification and limits
+
+- Final source/staged candidate: `/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`, version `0.6.0-dev`, GNU Build ID `1591979d86d48b793d43c6cfc7c9094af8c4a451`. Final stage preflight rebuilt/installed the QML resources and verified source/stage GNU Build IDs match; KService metadata resolved the candidate and required KWin interfaces. Russian source/stage catalogs were byte-identical and `msgfmt --check --check-format` passed.
+- Full Production Release CTest passed **220/220** in **334.47 s** after the final QML refresh/readiness change. Full Diagnostic Release CTest passed **227/227** in **183.62 s**. The TaskManager preflight assessor unit tests passed **7/7**; they require changed pixels and reject role-only notifications without an icon change. Shell syntax and `git diff --check` passed.
+- A bounded actual Wayland popup open was attempted through the diagnostic route. KWin rejected the synthetic programmatic popup because the parent surface had not received a real input event (`Failed to create grabbing popup` / `Cannot attach popup of unknown type`). No user input was synthesized and no Wayland visual acceptance is claimed. A test-only/offscreen render does not substitute for the owner's real session.
+- The final live TaskManager preflight was **INVALID**, not a performance sample: test-window insertion, title update, grouping and removal were observed, but no `DecorationRole` transition was recorded (`decorationRoleChanged=false`). The fixture icon pixels changed, but the dock model did not report the required role update. Do not use this run as evidence of TaskManager icon-transition functionality or performance.
+- The candidate was stopped and `/usr/bin/kdockw` v0.5.1 restored under `kdockw-v051-restored.service`. Production config remains unchanged at SHA-256 `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`; the permission-preserving backup is retained. No release, tag, or push was made. Launcher and built-in widget cards remain `review` pending owner visual/functional acceptance.

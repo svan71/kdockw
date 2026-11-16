@@ -103,9 +103,12 @@ extension/plugin API.
   read once; favorites map to current catalog IDs, invalid or repeated items
   are skipped, and existing Start pins are never overwritten. The attempted/
   status marker is persisted, so removing pins later does not import them again.
-  The Kicker QML module is private and optional; an unavailable model leaves
-  Start usable and reports that favorites could not be imported. KDockW does
-  not write to Plasma favorites.
+  The Kicker QML module is private and optional. The read-only
+  `Kicker.RootModel` is explicitly refreshed on source initialization, and
+  import waits for its `refreshed` readiness signal; an unavailable model
+  leaves Start usable and reports that favorites could not be imported. KDockW
+  does not write to Plasma favorites. The installed Plasma/Kicker private API
+  and real-user favorite mapping still require manual runtime verification.
 - A single native popup loads one of three distinct QML layouts. macOS Launchpad
   shows every application in an adaptive icon grid paginated by available full
   rows. Only the active page is bound to the GridView. Dots, wheel and keyboard
@@ -147,7 +150,7 @@ extension/plugin API.
 
 Launchpad paging reuses its existing page model. During a page change, only the
 current and target page models are bound to two clipped GridViews; both translate
-horizontally for 220 ms with end deceleration. The active page indicator tracks
+horizontally for 380 ms with an ease-in/ease-out cubic curve. The active page indicator tracks
 the target. A new input while transitioning first completes the current target,
 then starts the next bounded transition. Search changes, layout changes, and
 popup close cancel an in-flight transition and reset its offset. The duration
@@ -192,7 +195,7 @@ load during real popup rendering.
 Full Production Release CTest passed **214/214** and full Diagnostic Release
 CTest passed **221/221** during the fourth refinement. The first Production
 run had one stale assertion expecting a synchronous page change; the focused
-rerun passed after waiting for the 220 ms transition. The subsequent full
+rerun passed after waiting for the 380 ms transition. The subsequent full
 Production and Diagnostic runs both passed. The real Kicker source probe loaded
 successfully but returned zero favorites, so it could not validate mapping of
 real Plasma favorite IDs. Owner feature acceptance is 19/29; the widget/model/
@@ -216,7 +219,7 @@ The outgoing Launchpad GridView must not have an anchor that overrides its
 animated `x`. It stays on the current page model while the incoming view binds
 to the target model; both translate with the same `slideOffset` and
 `transitionDirection`. The incoming view is emptied when `pageTransitioning`
-becomes false, keeping only the current page's delegates after the 220 ms
+becomes false, keeping only the current page's delegates after the 380 ms
 transition. Tests cover synchronized geometry, forward/back movement, page
 indicators, wheel input, rapid selection, search and popup close.
 

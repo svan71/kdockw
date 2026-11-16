@@ -361,6 +361,20 @@ The signed tag and all five release assets were verified on the
   New Launcher work remains in review pending another functional and visual
   acceptance in Plasma/Wayland.
 
+  Sixth correction cycle: explicit theme-aware Launcher buttons and menu-item
+  contents now cover the navigation controls and context menus; the folder
+  dialog uses the resolved theme palette, Launchpad paging is 380 ms with an
+  ease-in/ease-out curve, and the read-only Kicker source is refreshed before
+  favorite readiness is evaluated. Production CTest passed 220/220 and
+  Diagnostic CTest passed 227/227. The live Wayland visual review is still
+  pending; the
+  attempted popup route was rejected before a real input event, so no real
+  Wayland appearance is claimed. The active TaskManager preflight was INVALID
+  because its icon DecorationRole transition was not observed. Existing widget
+  and Launcher cards remain in `review`. Stage preflight passed for
+  `build/v060-dev-diagnostic/stage/bin/kdockw`, GNU Build ID
+  `1591979d86d48b793d43c6cfc7c9094af8c4a451`.
+
   Follow-up: “Manage Widgets…” is now in the KDockW submenu for application
   icons and the blank dock-area menu; the manager names its add-launcher action
   and explains its disabled state. A new isolated profile inherits only the
