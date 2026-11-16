@@ -147,7 +147,7 @@ def assess_taskmanager_transitions(log: str, run_id: str, existing_windows: int)
         "testWindowAppeared": any(initial_title in line and "isWindow= true" in line for line in log.splitlines()),
         "titleChanged": changed_title in log and "[KDOCKW_TASK_DATA_TRACE]" in log,
         "decorationRoleChanged": re.search(r"dataChangedRoles=.*(?:\bdecoration|\b1):\s*[1-9]\d*", log) is not None,
-        "groupingObserved": any("desktopId= kdockw-test-window" in line and "isGroupParent= true" in line
+        "groupingObserved": any(f"desktopId= org.kdockw.p0load.{run_id}.alpha.desktop" in line and "isGroupParent= true" in line
                                  for line in log.splitlines()),
         "testWindowDisappeared": False,
     }
@@ -231,7 +231,10 @@ class Scenario:
             "XDG_DATA_HOME": manifest["dataHome"],
             "XDG_DATA_DIRS": manifest["dataDirs"],
             "XDG_CACHE_HOME": manifest["cacheHome"],
-            "QT_QPA_PLATFORM": "wayland",
+            # Wayland xdg_toplevel has no runtime window-icon request. Use
+            # XWayland for preflight fixtures that exercise live icon changes;
+            # both clients remain managed by the same KWin Wayland session.
+            "QT_QPA_PLATFORM": args.fixture_platform,
         })
 
     def mark(self, action: str, **data: object) -> None:
@@ -590,7 +593,8 @@ def functional_preflight(args: argparse.Namespace) -> int:
             scenario.close(window)
     result.update({"variant": args.variant, "dockPid": args.dock_pid,
                    "dockExecutable": actual_executable, "gnuBuildId": args.build_id,
-                   "runId": manifest["runId"], "monotonicCompletedNs": time.monotonic_ns()})
+                   "runId": manifest["runId"], "fixtureQpaPlatform": args.fixture_platform,
+                   "monotonicCompletedNs": time.monotonic_ns()})
     (output / "functional-preflight.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(f"TaskManager functional preflight: {result['status']} ({output / 'functional-preflight.json'})")
     if result["status"] != "PASS":
@@ -635,6 +639,8 @@ def main() -> int:
     preflight.add_argument("--build-id", required=True)
     preflight.add_argument("--variant", choices=("v051", "v060"), required=True)
     preflight.add_argument("--dock-log", required=True)
+    preflight.add_argument("--fixture-platform", choices=("wayland", "xcb"), default="wayland",
+                           help="Use xcb (XWayland under Plasma) to exercise runtime window-icon updates")
     preflight.add_argument("--ready-timeout", type=float, default=15.0)
     preflight.add_argument("--stop-file")
     preflight.set_defaults(func=functional_preflight)

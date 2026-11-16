@@ -218,6 +218,11 @@ ColumnLayout {
     }
 
     function beginCreateFolder(applicationId) {
+        // Close the transient context-menu surface before opening another
+        // popup. Mutating the folder model later changes the visibility of
+        // folder-only submenu entries; keeping that menu open during the
+        // mutation can invalidate its native popup stack.
+        contextMenu.close()
         folderNameDialog.targetApplicationId = applicationId
         folderNameDialog.targetFolderId = ""
         folderNameField.text = ""
@@ -227,6 +232,7 @@ ColumnLayout {
     }
 
     function beginRenameFolder(folderId, name) {
+        contextMenu.close()
         folderNameDialog.targetApplicationId = ""
         folderNameDialog.targetFolderId = folderId
         folderNameField.text = name
@@ -383,7 +389,6 @@ ColumnLayout {
             id: grid
             objectName: "launchpadGrid"
             anchors.top: parent.top
-            anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width
             height: Math.min(parent.height, page.rowCount * page.cellExtent)
             cellWidth: Math.floor(width / page.columnCount)
@@ -483,7 +488,7 @@ ColumnLayout {
             height: grid.height
             cellWidth: grid.cellWidth
             cellHeight: page.cellExtent
-            model: page.transitionItems
+            model: page.pageTransitioning ? page.transitionItems : []
             clip: true
             interactive: false
             boundsBehavior: Flickable.StopAtBounds
@@ -588,7 +593,9 @@ ColumnLayout {
             objectName: "launchpadMoveToFolderMenu"
             title: page.currentFolderId.length > 0
                 ? i18n("Move to another folder") : i18n("Move to folder")
-            visible: page.canMoveToFolder(contextMenu.entry)
+            enabled: page.canMoveToFolder(contextMenu.entry)
+                || (contextMenu.entry && contextMenu.entry.type === "application"
+                    && page.folders.length === 0)
             Kirigami.Theme.colorSet: Kirigami.Theme.Window
             Kirigami.Theme.inherit: false
             Kirigami.Theme.backgroundColor: launcherPopup.surface
@@ -602,10 +609,16 @@ ColumnLayout {
             palette.buttonText: launcherPopup.foreground
             palette.highlight: launcherPopup.selectedSurface
             palette.highlightedText: launcherPopup.selectedForeground
+            QQC2.MenuItem {
+                text: i18n("No folders available")
+                visible: page.folders.length === 0
+                enabled: false
+            }
             Repeater {
                 model: page.folders.filter(folder => folder.id !== page.currentFolderId)
                 delegate: QQC2.MenuItem {
                     required property var modelData
+                    objectName: "launchpadMoveToFolderAction-" + modelData.id
                     text: modelData.name
                     palette.buttonText: down ? launcherPopup.selectedForeground
                         : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
@@ -644,6 +657,7 @@ ColumnLayout {
             onTriggered: page.activate(contextMenu.entry)
         }
         QQC2.MenuItem {
+            objectName: "launchpadRenameFolderAction"
             text: i18n("Rename folder…")
             visible: page.isLaunchpadFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
@@ -655,6 +669,7 @@ ColumnLayout {
             onTriggered: page.beginRenameFolder(contextMenu.entry.id, contextMenu.entry.name)
         }
         QQC2.MenuItem {
+            objectName: "launchpadDeleteFolderAction"
             text: i18n("Delete folder")
             visible: page.isLaunchpadFolder(contextMenu.entry)
             palette.buttonText: down ? launcherPopup.selectedForeground
@@ -664,6 +679,7 @@ ColumnLayout {
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
             }
             onTriggered: {
+                contextMenu.close()
                 deleteFolderDialog.folderId = contextMenu.entry.id
                 deleteFolderDialog.folderName = contextMenu.entry.name
                 deleteFolderDialog.open()
@@ -726,10 +742,22 @@ ColumnLayout {
                 placeholderText: i18n("Folder name")
                 selectByMouse: true
                 color: launcherPopup.foreground
+                selectionColor: launcherPopup.focusColor
+                selectedTextColor: launcherPopup.selectedForeground
+                palette.base: launcherPopup.alternateSurface
                 palette.text: launcherPopup.foreground
                 palette.placeholderText: launcherPopup.secondaryForeground
+                palette.highlight: launcherPopup.focusColor
+                palette.highlightedText: launcherPopup.selectedForeground
                 onTextEdited: folderNameDialog.validationMessage = ""
                 onAccepted: folderNameDialog.submit()
+                background: Rectangle {
+                    color: launcherPopup.alternateSurface
+                    border.color: parent.activeFocus
+                        ? launcherPopup.focusColor : launcherPopup.borderColor
+                    border.width: parent.activeFocus ? 2 : 1
+                    radius: Kirigami.Units.smallSpacing
+                }
             }
             QQC2.Label {
                 objectName: "launchpadFolderNameError"
@@ -742,6 +770,7 @@ ColumnLayout {
         }
         footer: RowLayout {
             QQC2.Button {
+                objectName: "launchpadFolderNameCancel"
                 text: i18n("Cancel")
                 palette.buttonText: down ? launcherPopup.selectedForeground
                     : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground

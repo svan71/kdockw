@@ -6,10 +6,14 @@
 # Run: ctest -R qml --output-on-failure
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS QuickTest)
+find_program(KBUILDSYCOCA_EXECUTABLE NAMES kbuildsycoca6 REQUIRED)
 
 add_executable(kdockw_qml_tests
     main.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/springzoomcontroller.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/applicationlauncherstate.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/applicationcatalog.cpp
+    ${CMAKE_BINARY_DIR}/src/kdockw.cpp
     qmltestmocks.cpp
     qmltestmocks.h
 )
@@ -26,6 +30,7 @@ endif()
 # utils/zoomcalculator.h (header-only) backs the DockView.zoomLayout() mock.
 target_include_directories(kdockw_qml_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/src
 )
 
 target_link_libraries(kdockw_qml_tests PRIVATE
@@ -33,12 +38,20 @@ target_link_libraries(kdockw_qml_tests PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickTest
+    KF6::ConfigCore
+    KF6::ConfigGui
+    KF6::Service
+    KF6::KIOGui
+    KF6::JobWidgets
+    KF6::Notifications
     KF6::I18n
     KF6::I18nQml
 )
 
 set(KDOCKW_QML_TEST_FILES
     tst_application_launcher
+    tst_application_launcher_integration
+    tst_application_launcher_popup_visual
     tst_application_launcher_settings
     tst_application_launcher_popup
     tst_dockitem_zoom
@@ -69,6 +82,27 @@ foreach(test_name IN LISTS KDOCKW_QML_TEST_FILES)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=Basic;LANGUAGE=en_US;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-cache"
     )
 endforeach()
+
+# The production catalog reads the KDE Sycoca database. Keep its cache private
+# to this test build and build it before the real-popup visual integration test.
+add_test(NAME qml_prepare_application_catalog_cache
+    COMMAND ${CMAKE_COMMAND} -E env
+        XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config
+        XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-cache
+        LANGUAGE=en_US
+        ${KBUILDSYCOCA_EXECUTABLE} --noincremental
+)
+set_tests_properties(qml_prepare_application_catalog_cache PROPERTIES
+    FIXTURES_SETUP application_catalog_cache
+    LABELS "qml;setup"
+    TIMEOUT 120
+)
+set_tests_properties(qml_tst_application_launcher_popup_visual PROPERTIES
+    FIXTURES_REQUIRED application_catalog_cache
+)
+set_property(TEST qml_tst_application_launcher_popup_visual APPEND PROPERTY
+    ENVIRONMENT "KDOCKW_USE_SYSTEM_THEME_ICONS=1;KDOCKW_TEST_REAL_APPLICATION_CATALOG=1"
+)
 
 # Isolate the approved close-button state check from unrelated preview tests.
 add_test(NAME qml_preview_close_button_states

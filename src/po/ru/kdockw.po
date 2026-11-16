@@ -1954,6 +1954,10 @@ msgid "Move to another folder"
 msgstr "Переместить в другую папку"
 
 #: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "No folders available"
+msgstr "Нет доступных папок"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
 msgid "Extract from folder"
 msgstr "Извлечь из папки"
 

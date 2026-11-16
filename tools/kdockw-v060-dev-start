@@ -192,11 +192,13 @@ if [[ "$source_build_id" != "$staged_build_id" ]]; then
 fi
 [[ "$source_build_id" == "$staged_build_id" ]] \
     || fail "staged ELF GNU Build ID still differs (source $source_binary: $source_build_id; stage $binary: $staged_build_id)"
+canonical_binary="$(readlink -f -- "$binary")"
+printf 'Verified KDockW candidate ELF: %s (GNU Build ID %s)\n' \
+    "$canonical_binary" "$staged_build_id"
 source_catalog="${build_dir}/src/locale/ru/LC_MESSAGES/kdockw.mo"
 staged_catalog="${build_dir}/stage/share/locale/ru/LC_MESSAGES/kdockw.mo"
 [[ -f "$source_catalog" && -f "$staged_catalog" ]] || fail "candidate Russian translation catalog is missing"
 cmp -s "$source_catalog" "$staged_catalog" || fail "staged Russian catalog does not match the current build"
-canonical_binary="$(readlink -f -- "$binary")"
 [[ "$canonical_binary" != *' '* ]] || fail "binary path contains spaces unsupported by Desktop Exec"
 
 check_candidate_metadata() {

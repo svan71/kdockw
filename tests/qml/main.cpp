@@ -15,6 +15,9 @@
 // i18n() is provided by the real KLocalizedContext, exactly as in DockView.
 
 #include "qmltestmocks.h"
+#include "kdockw.h"
+#include "models/applicationcatalog.h"
+#include "models/applicationlauncherstate.h"
 #include "utils/springzoomcontroller.h"
 
 #include <KLocalizedQmlContext>
@@ -25,13 +28,19 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QImage>
+#include <QIcon>
 #include <QRectF>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QStandardPaths>
 #include <QSize>
 #include <QString>
+#include <QTemporaryDir>
 #include <QVariant>
 #include <QtQuickTest>
 
 #include <clocale>
+#include <memory>
 
 class MockPreviewFrameImageProvider final : public QQuickImageProvider {
 public:
@@ -61,6 +70,24 @@ public:
     QPixmap pixmap(pixmapSize);
     pixmap.fill(QColor(QStringLiteral("#5277aa")));
     return pixmap;
+  }
+};
+
+class SystemThemeIconImageProvider final : public QQuickImageProvider {
+public:
+  SystemThemeIconImageProvider() : QQuickImageProvider(QQuickImageProvider::Pixmap) {}
+
+  QPixmap requestPixmap(const QString &id, QSize *size,
+                        const QSize &requestedSize) override {
+    const QSize pixmapSize = requestedSize.width() > 0 && requestedSize.height() > 0
+        ? requestedSize : QSize(32, 32);
+    if (size)
+      *size = pixmapSize;
+    const QString iconName = id.section(QLatin1Char('?'), 0, 0);
+    QIcon icon = QIcon::fromTheme(iconName);
+    if (icon.isNull())
+      icon = QIcon::fromTheme(QStringLiteral("application-x-executable"));
+    return icon.pixmap(pixmapSize);
   }
 };
 
@@ -215,11 +242,106 @@ public:
   }
 };
 
+class ApplicationLauncherStateFixture final : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(QObject *state READ state NOTIFY stateChanged)
+  Q_PROPERTY(QObject *catalog READ catalog CONSTANT)
+  Q_PROPERTY(QString captureDirectory READ captureDirectory CONSTANT)
+
+public:
+  ApplicationLauncherStateFixture() {
+    m_previousConfigHome = qgetenv("XDG_CONFIG_HOME");
+    m_hadConfigHome = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+    qputenv("XDG_CONFIG_HOME", m_configHome.path().toLocal8Bit());
+    m_settings = std::make_unique<KDockWSettings>();
+    m_settings->load();
+    m_state = std::make_unique<kdockw::ApplicationLauncherState>(m_settings.get());
+  }
+
+  ~ApplicationLauncherStateFixture() override {
+    m_state.reset();
+    m_settings.reset();
+    if (m_hadConfigHome)
+      qputenv("XDG_CONFIG_HOME", m_previousConfigHome);
+    else
+      qunsetenv("XDG_CONFIG_HOME");
+  }
+
+  QObject *state() const { return m_state.get(); }
+  QObject *catalog() const { return m_catalog.get(); }
+  QString captureDirectory() const {
+    return qEnvironmentVariable("KDOCKW_CAPTURE_DIR");
+  }
+
+  Q_INVOKABLE bool capture(QObject *object, const QString &path) const {
+    auto *item = qobject_cast<QQuickItem *>(object);
+    if (!item || path.isEmpty())
+      return false;
+    auto *window = item->window();
+    if (!window)
+      return false;
+    window->update();
+    const QImage image = window->grabWindow();
+    return !image.isNull() && image.save(path);
+  }
+
+  Q_INVOKABLE void reset() {
+    const QVariantList folders = m_state->launchpadFolders();
+    for (const QVariant &value : folders)
+      m_state->deleteLaunchpadFolder(value.toMap().value(QStringLiteral("id")).toString());
+    const QStringList pins = m_state->pinnedApplicationIds();
+    for (const QString &pin : pins)
+      m_state->togglePinned(pin);
+    m_state->setLaunchpadItemOrder({});
+    m_settings->save();
+  }
+
+  Q_INVOKABLE void save() { m_settings->save(); }
+
+  void initializeCatalog() {
+    if (!m_catalog)
+      m_catalog = std::make_unique<kdockw::ApplicationCatalog>();
+  }
+
+  Q_INVOKABLE void reload() {
+    m_settings->save();
+    m_state.reset();
+    m_settings.reset();
+    m_settings = std::make_unique<KDockWSettings>();
+    m_settings->load();
+    m_state = std::make_unique<kdockw::ApplicationLauncherState>(m_settings.get());
+    Q_EMIT stateChanged();
+  }
+
+Q_SIGNALS:
+  void stateChanged();
+
+private:
+  QTemporaryDir m_configHome;
+  QByteArray m_previousConfigHome;
+  bool m_hadConfigHome = false;
+  std::unique_ptr<KDockWSettings> m_settings;
+  std::unique_ptr<kdockw::ApplicationLauncherState> m_state;
+  std::unique_ptr<kdockw::ApplicationCatalog> m_catalog;
+};
+
 class KDockWQmlTestSetup : public QObject {
   Q_OBJECT
 
 public Q_SLOTS:
   void applicationAvailable() {
+    if (qEnvironmentVariableIsSet("KDOCKW_USE_SYSTEM_THEME_ICONS")) {
+      const QString theme = qEnvironmentVariable("KDOCKW_TEST_ICON_THEME", QStringLiteral("breeze"));
+      QStringList iconPaths = QIcon::themeSearchPaths();
+      iconPaths.prepend(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                        + QStringLiteral("/icons"));
+      iconPaths.prepend(QStringLiteral("/usr/local/share/icons"));
+      iconPaths.prepend(QStringLiteral("/usr/share/icons"));
+      QIcon::setThemeSearchPaths(iconPaths);
+      if (!theme.isEmpty())
+        QIcon::setThemeName(theme);
+      QIcon::setFallbackThemeName(QStringLiteral("breeze"));
+    }
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kdockw"));
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     KLocalizedString::addDomainLocaleDir(QByteArrayLiteral("kdockw"),
@@ -231,6 +353,8 @@ public Q_SLOTS:
       qputenv("KDOCKW_TEST_RU_LOCALE_AVAILABLE", russianLocaleAvailable ? QByteArrayLiteral("1") : QByteArrayLiteral("0"));
     }
     KDockWQmlTest::registerMockTypes();
+    if (qEnvironmentVariableIsSet("KDOCKW_TEST_REAL_APPLICATION_CATALOG"))
+      applicationLauncherStateFixture.initializeCatalog();
     qmlRegisterType<kdockw::SpringZoomController>("com.thicking.kdockw", 1,
                                                   0, "SpringZoomController");
   }
@@ -242,7 +366,11 @@ public Q_SLOTS:
     engine->setImportPathList(paths);
     engine->addImageProvider(QStringLiteral("previewframes"),
                              new MockPreviewFrameImageProvider);
-    engine->addImageProvider(QStringLiteral("icon"), new MockIconImageProvider);
+    if (qEnvironmentVariableIsSet("KDOCKW_USE_SYSTEM_THEME_ICONS")) {
+      engine->addImageProvider(QStringLiteral("icon"), new SystemThemeIconImageProvider);
+    } else {
+      engine->addImageProvider(QStringLiteral("icon"), new MockIconImageProvider);
+    }
     engine->rootContext()->setContextProperty(QStringLiteral("IconDiagnostics"),
                                               &iconDiagnostics);
     engine->rootContext()->setContextProperty(QStringLiteral("SettingsWindow"),
@@ -252,6 +380,10 @@ public Q_SLOTS:
         qEnvironmentVariableIntValue("KDOCKW_TEST_RU_LOCALE_AVAILABLE") == 1);
     engine->rootContext()->setContextProperty(QStringLiteral("LauncherVariantListFixture"),
                                               &launcherVariantListFixture);
+    engine->rootContext()->setContextProperty(QStringLiteral("ApplicationLauncherStateFixture"),
+                                              &applicationLauncherStateFixture);
+    engine->rootContext()->setContextProperty(QStringLiteral("ApplicationCatalogFixture"),
+                                              applicationLauncherStateFixture.catalog());
 
     auto *localizedContext = KLocalization::setupLocalizedContext(engine);
     localizedContext->setTranslationDomain(QStringLiteral("kdockw"));
@@ -260,6 +392,7 @@ public Q_SLOTS:
 private:
   MockIconDiagnostics iconDiagnostics;
   LauncherVariantListFixture launcherVariantListFixture;
+  ApplicationLauncherStateFixture applicationLauncherStateFixture;
   KDockWQmlTest::ZoomLayoutEngine zoomLayoutEngine;
 };
 

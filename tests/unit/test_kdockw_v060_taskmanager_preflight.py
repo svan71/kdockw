@@ -28,7 +28,7 @@ class TaskManagerPreflightTests(unittest.TestCase):
                 f"[KDOCKW_DOCK_ROW] desktopId= kdockw-test-window display= {self.initial} isWindow= true",
                 f"[KDOCKW_TASK_DATA_TRACE] display= {self.renamed}",
                 "[KDOCKW_PERF_TASK_MANAGER] dataChangedRoles= Geometry:1,decoration:1",
-                "[KDOCKW_DOCK_ROW] desktopId= kdockw-test-window isGroupParent= true isWindow= true",
+                f"[KDOCKW_DOCK_ROW] desktopId= org.kdockw.p0load.{self.run_id}.alpha.desktop isGroupParent= true isWindow= true",
                 f'Task diagnostic snapshot: "rows removed" rows= 26 windows= 1\nTask diagnostic row path= root AppId= user.app',
                 'Task diagnostic snapshot: "rows removed" rows= 26 windows= 1',
             )
@@ -64,6 +64,16 @@ class TaskManagerPreflightTests(unittest.TestCase):
         result = taskmanager_load.assess_taskmanager_transitions(remaining, self.run_id, 1)
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["testWindowDisappeared"])
+
+    def test_grouping_uses_the_unique_fixture_desktop_id(self) -> None:
+        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1)
+        self.assertTrue(result["checks"]["groupingObserved"])
+
+        stale_id_log = self.log.replace(
+            f"org.kdockw.p0load.{self.run_id}.alpha.desktop", "kdockw-test-window"
+        )
+        stale = taskmanager_load.assess_taskmanager_transitions(stale_id_log, self.run_id, 1)
+        self.assertFalse(stale["checks"]["groupingObserved"])
 
 
 if __name__ == "__main__":

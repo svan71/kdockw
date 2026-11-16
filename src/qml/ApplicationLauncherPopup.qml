@@ -22,8 +22,12 @@ QQC2.Popup {
     property real requestedWidth: maxPopupWidth
     property real requestedHeight: maxPopupHeight
     property bool enablePlasmaFavoritesSource: true
-    readonly property var catalog: DockModel.applicationCatalog
-    readonly property var launcherState: DockModel.applicationLauncherState
+    // Internal test seams allow the visual integration harness to supply the
+    // real C++ catalog/state without replacing this production popup or pages.
+    property var catalogOverride: null
+    property var launcherStateOverride: null
+    readonly property var catalog: catalogOverride || DockModel.applicationCatalog
+    readonly property var launcherState: launcherStateOverride || DockModel.applicationLauncherState
     readonly property bool favoritesSourceReady: !enablePlasmaFavoritesSource
         || favoritesLoader.status === Loader.Ready
         || favoritesLoader.status === Loader.Error
