@@ -66,6 +66,15 @@ def manager_environment() -> dict[str, str]:
     return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
 
 
+def effective_config_home(manager_env: dict[str, str], process_env: dict[str, str] | None = None) -> str:
+    process_env = os.environ if process_env is None else process_env
+    return (
+        manager_env.get("XDG_CONFIG_HOME")
+        or process_env.get("XDG_CONFIG_HOME")
+        or str(pathlib.Path.home() / ".config")
+    )
+
+
 def prepare(args: argparse.Namespace) -> int:
     manifest = pathlib.Path(args.manifest).resolve()
     if manifest.exists():
@@ -102,6 +111,7 @@ def prepare(args: argparse.Namespace) -> int:
     runtime_data_dirs = data_dirs if str(data_home) in data_dirs.split(":") else f"{data_home}:{data_dirs}"
     clean_env = {**os.environ, **env, "XDG_DATA_HOME": str(data_home),
                  "XDG_DATA_DIRS": runtime_data_dirs, "XDG_CACHE_HOME": str(cache_home)}
+    clean_env["XDG_CONFIG_HOME"] = effective_config_home(env, clean_env)
     subprocess.run(["dbus-run-session", "--", "env",
                     *(f"{key}={clean_env[key]}" for key in (
                         "XDG_DATA_HOME", "XDG_DATA_DIRS", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
@@ -152,16 +162,22 @@ def assess_taskmanager_transitions(log: str, run_id: str, existing_windows: int,
                                   icon_pixels_changed: bool = False) -> dict[str, object]:
     initial_title = f"KDockW P0 PREFLIGHT {run_id} INITIAL"
     changed_title = f"KDockW P0 PREFLIGHT {run_id} RENAMED"
+    role_traces = re.findall(r"incomingRoles= QList\(([^)]*)\)", icon_log or log)
+    decoration_role_traced = any(
+        not roles.strip()
+        or 1 in {int(role.strip()) for role in roles.split(",") if role.strip().isdigit()}
+        for roles in role_traces
+    )
     checks = {
         "protocolAndExistingWindows": existing_windows > 0,
         "testWindowAppeared": any(initial_title in line and "isWindow= true" in line for line in log.splitlines()),
         "titleChanged": changed_title in log and "[KDOCKW_TASK_DATA_TRACE]" in log,
-        # Current DockPresentationModel diagnostics report Qt role integers as
-        # incomingRoles=QList(...); keep support for older sampled logs too.
+        # Qt defines an empty dataChanged roles list as "all roles changed".
+        # The icon interval is bounded separately so grouping notifications
+        # cannot satisfy this check.
         "decorationRoleChanged": icon_pixels_changed and (
             re.search(r"dataChangedRoles=.*(?:\bdecoration|\b1):\s*[1-9]\d*", icon_log or log) is not None
-            or any(1 in {int(role.strip()) for role in roles.split(",") if role.strip().isdigit()}
-                   for roles in re.findall(r"incomingRoles= QList\(([^)]*)\)", icon_log or log))
+            or decoration_role_traced
         ),
         "groupingObserved": any(f"desktopId= org.kdockw.p0load.{run_id}.alpha.desktop" in line and "isGroupParent= true" in line
                                  for line in log.splitlines()),

@@ -8,6 +8,7 @@ import importlib.util
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -57,6 +58,12 @@ class TaskManagerPreflightTests(unittest.TestCase):
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["decorationRoleChanged"])
 
+    def test_empty_data_changed_roles_means_all_roles_changed(self) -> None:
+        all_roles = self.log.replace("QList(1, 257, 258)", "QList()")
+        result = taskmanager_load.assess_taskmanager_transitions(all_roles, self.run_id, 1, all_roles, True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(result["checks"]["decorationRoleChanged"])
+
     def test_icon_role_without_changed_pixels_is_not_an_icon_update(self) -> None:
         result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1, self.log, False)
         self.assertEqual(result["status"], "INVALID")
@@ -91,6 +98,17 @@ class TaskManagerPreflightTests(unittest.TestCase):
         self.assertIn("StartupWMClass=org.kdockw.p0load.test-run.alpha", entry)
         self.assertIn("--icon-path", entry)
         self.assertNotRegex(entry, r"(?m)^Icon=")
+
+    def test_prepare_uses_xdg_config_fallback_when_user_manager_omits_it(self) -> None:
+        with mock.patch.dict(taskmanager_load.os.environ, {}, clear=True):
+            self.assertEqual(
+                taskmanager_load.effective_config_home({}),
+                str(pathlib.Path.home() / ".config"),
+            )
+        self.assertEqual(
+            taskmanager_load.effective_config_home({}, {"XDG_CONFIG_HOME": "/tmp/kdockw-config"}),
+            "/tmp/kdockw-config",
+        )
 
 
 if __name__ == "__main__":

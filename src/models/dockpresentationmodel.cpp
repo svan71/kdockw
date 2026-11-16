@@ -696,6 +696,11 @@ void DockPresentationModel::forwardTaskDataChanged(const QModelIndex &topLeft, c
     const bool presentationMayChange = roles.isEmpty() || roles.contains(Qt::DisplayRole) || roles.contains(appNameRole)
         || roles.contains(TaskManager::AbstractTasksModel::IsLauncher) || roles.contains(TaskManager::AbstractTasksModel::IsWindow)
         || roles.contains(TaskManager::AbstractTasksModel::IsGroupParent) || roles.contains(TaskManager::AbstractTasksModel::WinIdList);
+    // DecorationRole is relevant to icon updates, but it must not participate
+    // in presentationMayChange: that flag also adds DisplayRole to the
+    // forwarded signal. Keep the runtime notification narrow and widen only
+    // the diagnostic trace gate.
+    const bool diagnosticTraceMayChange = presentationMayChange || roles.contains(Qt::DecorationRole);
     if (roles.isEmpty() || roles.contains(launcherRole) || roles.contains(TaskManager::AbstractTasksModel::AppId)
         || roles.contains(TaskManager::AbstractTasksModel::WinIdList)
         || roles.contains(TaskManager::AbstractTasksModel::IsLauncher)
@@ -714,7 +719,7 @@ void DockPresentationModel::forwardTaskDataChanged(const QModelIndex &topLeft, c
     }
     for (int taskIndex = topLeft.row(); taskIndex <= bottomRight.row(); ++taskIndex) {
         const int dockIndex = rowForTaskIndex(taskIndex);
-        if (m_diagnosticsEnabled && presentationMayChange) {
+        if (m_diagnosticsEnabled && diagnosticTraceMayChange) {
             qCInfo(lcDockPresentation).noquote()
                 << "[KDOCKW_TASK_DATA_TRACE]"
                 << "taskRow=" << taskIndex

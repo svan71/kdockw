@@ -7,6 +7,7 @@
 
 #include <QFileInfo>
 #include <QCoreApplication>
+#include <QLoggingCategory>
 #include <QStandardItemModel>
 #include <QSignalSpy>
 #include <QSignalBlocker>
@@ -19,6 +20,13 @@
 
 namespace
 {
+QStringList capturedQtMessages;
+
+void captureQtMessage(QtMsgType, const QMessageLogContext &, const QString &message)
+{
+    capturedQtMessages.append(message);
+}
+
 int appendTask(QStandardItemModel &model, const QString &name, const QUrl &launcherUrl)
 {
     auto *item = new QStandardItem(name);
@@ -64,6 +72,29 @@ TEST_CASE("Dock presentation forwards one task notification without entering an 
     CHECK(changed.count() == 1);
     CHECK(presentation.data(presentation.index(0, 0), Qt::DisplayRole).toString()
           == QStringLiteral("Editor — document"));
+}
+
+TEST_CASE("DecorationRole stays narrow while diagnostic traces record icon updates",
+          "[dock-presentation][taskmanager-regression]")
+{
+    const QUrl launcherUrl(QStringLiteral("applications:org.example.Editor"));
+    QStandardItemModel tasks;
+    const int taskRow = appendTask(tasks, QStringLiteral("Editor"), launcherUrl);
+    kdockw::DockEntriesModel entries;
+    entries.setEntries({kdockw::DockEntry::task(launcherUrl)});
+    kdockw::DockPresentationModel presentation(&tasks, &entries, nullptr, true);
+    QTRY_COMPARE_WITH_TIMEOUT(presentation.rowCount(), 1, 2000);
+
+    QSignalSpy changed(&presentation, &QAbstractItemModel::dataChanged);
+    capturedQtMessages.clear();
+    const QtMessageHandler previousHandler = qInstallMessageHandler(captureQtMessage);
+    tasks.item(taskRow)->setData(QStringLiteral("icon-update"), Qt::DecorationRole);
+    qInstallMessageHandler(previousHandler);
+
+    REQUIRE(changed.count() == 1);
+    const QList<int> forwardedRoles = changed.takeFirst().at(2).value<QList<int>>();
+    CHECK(forwardedRoles == QList<int>{Qt::DecorationRole});
+    CHECK(capturedQtMessages.join(QLatin1Char('\n')).contains(QStringLiteral("incomingRoles= QList(1)")));
 }
 
 TEST_CASE("Dock presentation model merges pinned entries in stable order and leaves running tasks after them", "[dock-presentation]")
