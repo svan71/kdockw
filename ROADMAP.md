@@ -399,6 +399,30 @@ The signed tag and all five release assets were verified on the
   possible while the owner's candidate remained active; all three cards stay
   in `review`.
 
+  Fifth Launcher acceptance: the owner reported 10/25 checks. The crash while
+  creating a Launchpad folder was reproduced in the real-QML/C++ state harness;
+  GDB stopped in `QQuickMenu::setVisible(bool)` while the folder-model signal
+  invalidated a dynamic menu visibility binding. The submenu no longer changes
+  visibility during model mutation, transient menus close before another popup
+  opens, and the folder workflow now passes regression coverage. The outgoing
+  Launchpad GridView had a horizontal-center anchor that overrode its animated
+  `x`, leaving the previous page stationary until its model changed; removing
+  that anchor synchronizes both page grids and releases the inactive target
+  model after the 220 ms slide. The folder-name field now defines its themed
+  background, text, placeholder, focus, and selection colors explicitly.
+  A new integration visual stand opens the actual `ApplicationLauncherPopup`,
+  uses the production `ApplicationCatalog` and state backend, operates Start
+  navigation and Hierarchical Back, creates a Launchpad folder, and saves
+  rendered frames with the selected system icon theme. The actual popup frames
+  show the controls, but the reason they were absent in the owner's earlier
+  runtime remains unconfirmed: that exact process ELF/build was not captured.
+  `tools/kdockw-v060-dev-start` prints the canonical staged executable and GNU
+  Build ID to remove ambiguity in future runs. Offscreen visual evidence is not
+  Plasma/Wayland owner acceptance. Owner score is 10/25; widget, model, and
+  Launcher cards remain `review`, while the accepted responsiveness P0 stays
+  closed. See `diagnostics/v060-dev/logs/launcher-fifth-cycle-20261116/` and
+  `docs/qa/v060-dev-performance-icon-theme-2026-11-14.md`.
+
   Controlled GOOD/BAD endpoint runs on 2026-11-14 did not reproduce the earlier
   high-load BAD state: the exact dirty BAD candidate measured 0.18–0.27% CPU
   across three settled samples, while the isolated GOOD stage measured 0.3% in

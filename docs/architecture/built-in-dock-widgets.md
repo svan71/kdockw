@@ -199,3 +199,40 @@ real Plasma favorite IDs. Owner feature acceptance is 19/29; the widget/model/
 launcher cards remain `review`. No new Plasma/Wayland visual acceptance was
 performed; menu placement, the screenshot stripe, animation feel, real favorite
 mapping, and DPI/light-dark rendering remain owner checks.
+
+### Fifth Launcher acceptance corrections
+
+The Launchpad move-to-folder `Menu` remains in the native popup tree while the
+folder model changes. Its enabled state and child actions track folder
+availability; its `visible` property is not bound to the mutating model. Folder
+creation/rename close the context menu before opening a dialog, and deletion
+closes it before showing confirmation. This avoids re-entering
+`QQuickMenu::setVisible()` from the synchronous `launchpadFoldersChanged`
+notification that accompanies `ApplicationLauncherState::createLaunchpadFolder()`.
+The regression test runs folder creation, membership changes, extraction,
+rename, delete, save, and reload through the production QML page and C++ state.
+
+The outgoing Launchpad GridView must not have an anchor that overrides its
+animated `x`. It stays on the current page model while the incoming view binds
+to the target model; both translate with the same `slideOffset` and
+`transitionDirection`. The incoming view is emptied when `pageTransitioning`
+becomes false, keeping only the current page's delegates after the 220 ms
+transition. Tests cover synchronized geometry, forward/back movement, page
+indicators, wheel input, rapid selection, search and popup close.
+
+The folder-name TextField supplies an explicit Kirigami-resolved background,
+foreground, placeholder, focus, and selection palette. The real-popup visual
+stand uses `ApplicationLauncherPopup.qml`, production `ApplicationCatalog`,
+and `ApplicationLauncherState`; it opens the Start home/full-list paths, a
+Hierarchical Favorites/category path, and the Launchpad create-folder flow. A
+private test Sycoca cache and read-only system icon-theme provider produce
+reviewable screenshots without changing the user's configuration. The test
+runner retains mock providers for other QML tests.
+
+The fifth owner review reported 10/25 criteria. The old report's expected
+`visual-review-diagnostic` path differed from the standard v0.6.0 launcher
+path, but the precise executable used by that owner observation was not
+captured, so stale QML is not established as the cause of the missing buttons.
+Current offscreen popup screenshots show Start navigation and Hierarchical
+Back in their loaded views. This stand does not replace real Plasma/Wayland
+acceptance; the feature cards remain `review`.

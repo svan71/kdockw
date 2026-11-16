@@ -28,6 +28,10 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
+- Prevented a crash while creating a Launchpad folder by keeping the native move-to-folder menu stable while its folder model changes.
+- Synchronized both Launchpad page grids during the 220 ms slide and released the old page after the transition.
+- Kept the Windows Start navigation actions and KDE Hierarchical Back control visible in the loaded native popup, with regression coverage against the real popup and catalog.
+- Gave the Launchpad folder-name field an explicit theme-derived surface, text, placeholder, focus, and selection palette for readable light and dark themes.
 - Avoided reloading every dock icon when TaskManager updates one task's icon, reducing repeated icon work and preserving responsive dock updates.
 - Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.
 - Sized Launcher Popup.Window surfaces from the selected page before the first Wayland configure and positioned them using the actual requested surface geometry.

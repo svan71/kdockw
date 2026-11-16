@@ -559,3 +559,41 @@ without a captured candidate path or GNU Build ID.
   v0.5.1. The fourth-cycle stage was not launched to avoid a second dock and no
   new Plasma screenshot/video was captured. No real visual acceptance is
   claimed; widget, model and Launcher cards remain `review`. No release/tag/push.
+
+## Fifth Application Launcher acceptance correction cycle — 2026-11-16
+
+The owner reported **10/25** checks passed. They accepted the popup positioning, disappearance of the Launchpad horizontal stripe, overall appearance, and responsiveness. Reported failures were missing Windows Start navigation actions, missing KDE Hierarchical Back, a Launchpad page transition whose old icons disappeared late, a crash during folder creation, and unreadable folder-name input in the light theme. This report records the owner feedback; the corrected candidate has not yet received a new owner Plasma/Wayland visual acceptance.
+
+### Candidate identity and stage
+
+- The old review note named `build/visual-review-diagnostic/stage/bin/kdockw`, while the supported launcher installs and starts `build/v060-dev-diagnostic/stage/bin/kdockw`. The exact owner process path and GNU Build ID for the 10/25 observation were not captured. A stale executable or QML resource is therefore **not established** as the cause of missing navigation.
+- Final candidate path: `/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`; version `0.6.0-dev`; source and stage GNU Build ID: `553544c9a6be4d48755c76e9f5b9c092f892a8cf`.
+- The launcher preflight passed after the final tests and resolved the exact staged executable through a private Sycoca. The Russian catalog source and stage files are byte-identical (SHA-256 `0003d8a1d896598b99d26a6b7dfa94682430335e1757f64fdff60359416a2c28`). QML is embedded in the executable resources; the real-popup QML harness loaded the current production popup, catalog and launcher state backend.
+- `tools/kdockw-v060-dev-start` reports the canonical stage path and Build ID. The tested manual launch command is `tools/kdockw-v060-dev-start --profile launcher-fifth-xwayland-20261116 --task-diagnostics --performance-diagnostics`; the profile is isolated under `diagnostics/v060-dev/profiles/`.
+
+### Crash root cause and correction
+
+- The original crash was reproduced in GDB using the production Launchpad QML and the real `ApplicationLauncherState` C++ backend. The stack ended at `QQuickMenu::setVisible(bool)` while `ApplicationLauncherState::persistLaunchpadModel()` emitted a folder-model change from `createLaunchpadFolder()`. That synchronous signal invalidated a dynamic QML `Menu.visible` binding while the native menu was mutating.
+- The move-to-folder submenu now remains in the popup tree and updates its enabled state without changing `visible` during mutation. The context menu closes before create/rename dialogs and before delete confirmation.
+- The integration regression exercises empty-name validation, cancel, create, move into a folder, open folder contents, extract, rename, confirm delete, save and reload. The reproducing pre-fix trace is `diagnostics/v060-dev/logs/launcher-fifth-cycle-20261116/folder-gdb.log`; post-fix GDB/test logs are `integration-gdb.log`, `integration-qml.log`, and the full CTest logs listed below.
+
+### Navigation, page animation and input contrast
+
+- A production-popup integration stand now opens `ApplicationLauncherPopup.qml` with the production catalog and state backend, operates Windows Start “All applications”/Back and KDE Hierarchical Back, creates a Launchpad folder, and captures rendered states. Current popup frames show the controls. The exact cause of their absence in the owner's earlier process remains unknown because that process identity was not recorded.
+- The outgoing Launchpad `GridView` had a horizontal-center anchor that took precedence over its animated `x`; its icons stayed in place until the page model changed. Removing the anchor lets both page grids slide together for 220 ms. The inactive incoming model is released after the transition; the implementation does not instantiate all pages.
+- The folder-name field now sets its theme-derived surface, text, placeholder, focus, cursor and selection colors explicitly.
+- Reviewed rendered images are in `diagnostics/v060-dev/logs/launcher-fifth-cycle-20261116/popup-screens/` and `screens/`. They are Qt Quick offscreen captures, not compositor screenshots or visual acceptance in Plasma/Wayland.
+
+### Live TaskManager functional preflight and restore
+
+- The first live preflight was correctly rejected as `INVALID`: the old checker looked for the stale fixture ID `kdockw-test-window`, while the current fixture uses a per-run Desktop ID. Its Wayland `xdg_toplevel` client also cannot publish a runtime window icon because that protocol has no icon request. The run did show existing windows, test-window insertion, title change, grouping and removal; it is retained as a failed diagnostic attempt in `taskmanager-preflight/`.
+- The checker now matches the unique fixture Desktop ID. A repeated run used a test-owned Qt/XCB fixture (XWayland under the same Plasma Wayland/KWin session) to exercise live `_NET_WM_ICON`/DecorationRole changes. Result: **PASS, 6/6** (`protocolAndExistingWindows`, `testWindowAppeared`, `titleChanged`, `decorationRoleChanged`, `groupingObserved`, `testWindowDisappeared`). Details: `taskmanager-xwayland-preflight/functional-preflight.json`, `taskmanager-xwayland-preflight/events.jsonl`, and `taskmanager-xwayland-preflight.log`.
+- Both candidate runs were sequential with production; no two dock processes ran together. The final check stopped the candidate and restored `/usr/bin/kdockw` v0.5.1. At the end, only that production binary was running and `kdockw-v051-restored.service` was active. The production configuration and permission-preserving backup still match SHA-256 `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`, mode `0600`, UID 1000, GID 1001. The test Desktop Entries were removed from the isolated diagnostic data home and its private Sycoca was refreshed.
+
+### Verification
+
+- Full Production Release CTest after the final helper/test changes: **217/217 passed** (`production-ctest-final-post-harness.log`, 315.94 s).
+- Full Diagnostic Release CTest after the final helper/test changes: **224/224 passed** (`diagnostic-ctest-final-post-harness.log`, 310.01 s).
+- The live preflight helper unit tests passed **6/6**. `msgfmt --check --check-format`, `bash -n` for the diagnostic start/restore scripts, Python byte-compilation, and `git diff --check` passed.
+- Final launcher preflight passed with the exact stage path and Build ID above. No release, tag or push was created. The previous responsiveness P0 remains closed based on the owner's 2026-11-15 acceptance; its historical anonymous-PSS cause remains UNKNOWN.
+- Application Launcher, Built-in Dock Widget Model, Built-in Dock Widgets, and the v0.6.0 stage remain in `review`. Owner visual/functional acceptance of the corrected fifth-cycle candidate in Plasma/Wayland is still required.
