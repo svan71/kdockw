@@ -783,7 +783,7 @@ release, tag, or push was created.
 
 ## Ninth owner review — separator alignment and technical checks (2026-11-16)
 
-Owner review scored **16/17**. The widget manager, all three Launcher icons and their contrast, the user icon override, and Folder Stack alignment were accepted. The built-in Separator remains the sole visual item for a short owner check.
+Owner review scored **16/17**. The starting candidate at commit `817b17e` had Build ID `9616fae644d0b853d6eaa61a092993ec8c54e7b1`; the rebuilt candidate for this cycle is identified below. The widget manager, all three Launcher icons and their contrast, the user icon override, and Folder Stack alignment were accepted. The built-in Separator remains the sole visual item for a short owner check.
 
 ### Separator cause and correction
 
@@ -797,11 +797,11 @@ Both lines now use `DockSeparator.qml` for line geometry, Kirigami color, opacit
 - Diagnostic Release CTest: **229/229 passed**.
 - Focused separator orientation and shared-coordinate QML tests passed; the coordinate case passed at scale factors 1.25 and 2.
 - TaskManager preflight fixture unit tests: **8/8 passed**. Python compilation, shell syntax, Russian `msgfmt --check --check-format`, source/build/stage catalog comparisons, and `git diff --check` passed.
-- Diagnostic stage preflight passed for `0.6.0-dev`. The source and staged ELF GNU Build ID is `9616fae644d0b853d6eaa61a092993ec8c54e7b1`. Source and staged Russian MO SHA-256 is `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`.
+- Diagnostic stage preflight passed for `0.6.0-dev`. The source and staged ELF GNU Build ID is `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`. Source and staged Russian MO SHA-256 is `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`.
 
 ### Live TaskManager preflight — INVALID
 
-The live preflight used the staged candidate at `build/v060-dev-diagnostic/stage/bin/kdockw` with Build ID `9616fae644d0b853d6eaa61a092993ec8c54e7b1`, isolated profile `separator-preflight-20261116`, and an XCB fixture window under the live Plasma Wayland session. The fixture reported changed icon pixels. Required transitions for protocol/existing windows, fixture insertion, title change, grouping, and fixture removal were observed. No `DecorationRole` update was observed, so the run is **INVALID** for TaskManager performance comparisons. This evidence does not distinguish whether KWin/LibTaskManager did not emit the role update or whether it was lost downstream; the live gate was not weakened. Evidence: `diagnostics/v060-dev/logs/separator-preflight-20261116/final/live/functional-preflight.json` and adjacent event/trace files.
+The live preflight used the staged candidate at `build/v060-dev-diagnostic/stage/bin/kdockw` with Build ID `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`, isolated profile `separator-preflight-20261116`, and an XCB fixture window under the live Plasma Wayland session. The fixture reported changed icon pixels. Required transitions for protocol/existing windows, fixture insertion, title change, grouping, and fixture removal were observed. No `DecorationRole` update was observed, so the run is **INVALID** for TaskManager performance comparisons. This evidence does not distinguish whether KWin/LibTaskManager did not emit the role update or whether it was lost downstream; the live gate was not weakened. Evidence: `diagnostics/v060-dev/logs/separator-preflight-20261116/final/live/functional-preflight.json` and adjacent event/trace files.
 
 ### Session and remaining acceptance
 
