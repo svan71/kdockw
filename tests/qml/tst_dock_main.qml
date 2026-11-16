@@ -1690,6 +1690,38 @@ Item {
             tryVerify(() => Math.abs(primaryExtent(DockVisibility.panelRect) - expected) <= 1)
         }
 
+        function test_taskZoneSeparatorRecomputesAfterCrossZoneReorder_data() {
+            return dockEdges()
+        }
+
+        function test_taskZoneSeparatorRecomputesAfterCrossZoneReorder(data) {
+            DockView.edge = data.edge
+            DockSettings.separateLaunchers = false
+            addSeparatedTasks()
+            const dock = makeDock(4)
+            const separator = separatorOf(dock)
+            verify(separator && !separator.visible,
+                   "combined task order must not show the pinned/running separator")
+
+            const runningId = DockModel.dockPresentationModel.entryIdForDockIndex(3)
+            const pinnedId = DockModel.dockPresentationModel.entryIdForDockIndex(0)
+            verify(runningId && pinnedId
+                   && DockModel.tasksModel.moveByEntryId(runningId, pinnedId),
+                   "combined mode must permit a cross-zone reorder")
+            tryVerify(() => DockModel.dockPresentationModel.entryIdForDockIndex(0) === runningId)
+
+            DockSettings.separateLaunchers = true
+            // The QML fake TaskManager model does not automatically partition
+            // rows on SeparateLaunchersChanged. Simulate the real model's
+            // same-count cross-zone moves so Repeater receives rowsMoved.
+            verify(DockModel.tasksModel.moveByEntryId(pinnedId, runningId))
+            const secondPinnedId = DockModel.dockPresentationModel.entryIdForDockIndex(2)
+            verify(DockModel.tasksModel.moveByEntryId(secondPinnedId, runningId))
+            tryVerify(() => separator.visible,
+                      2000, "the separator must return after the model repartitions moved rows")
+            compare(dock.taskZoneBoundary, 2)
+        }
+
         function test_separatedParabolicHoverPreservesGapAndRestProxy_data() {
             return dockEdges()
         }

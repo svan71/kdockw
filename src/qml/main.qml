@@ -33,6 +33,10 @@ Item {
     // inter-icon gap. The boundary remains a model-free index so task and
     // keyboard indices are unchanged.
     readonly property int taskZoneBoundary: {
+        // isPinnedDockIndex() reads model row data through an invokable, which
+        // does not itself create a QML binding dependency. Re-evaluate the
+        // boundary when presentation rows move even if the row count is stable.
+        const layoutRevision = dockRepeater.layoutRevision
         if (!DockSettings.separateLaunchers || DockModel.pinnedDockEntryCount === 0)
             return -1
         for (let i = 0; i < dockRepeater.count; ++i) {
