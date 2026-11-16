@@ -27,7 +27,7 @@ class TaskManagerPreflightTests(unittest.TestCase):
             (
                 f"[KDOCKW_DOCK_ROW] desktopId= kdockw-test-window display= {self.initial} isWindow= true",
                 f"[KDOCKW_TASK_DATA_TRACE] display= {self.renamed}",
-                "[KDOCKW_PERF_TASK_MANAGER] dataChangedRoles= Geometry:1,decoration:1",
+                "[KDOCKW_TASK_DATA_TRACE] incomingRoles= QList(1, 257, 258)",
                 f"[KDOCKW_DOCK_ROW] desktopId= org.kdockw.p0load.{self.run_id}.alpha.desktop isGroupParent= true isWindow= true",
                 f'Task diagnostic snapshot: "rows removed" rows= 26 windows= 1\nTask diagnostic row path= root AppId= user.app',
                 'Task diagnostic snapshot: "rows removed" rows= 26 windows= 1',
@@ -35,24 +35,29 @@ class TaskManagerPreflightTests(unittest.TestCase):
         )
 
     def test_all_live_transitions_are_required(self) -> None:
-        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1)
+        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1, self.log, True)
         self.assertEqual(result["status"], "PASS")
         self.assertTrue(all(result["checks"].values()))
 
     def test_missing_window_manager_snapshot_is_invalid(self) -> None:
-        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 0)
+        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 0, self.log, True)
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["protocolAndExistingWindows"])
 
     def test_static_rows_cannot_substitute_for_window_transitions(self) -> None:
         static_only = self.log.replace("isWindow= true", "isWindow= false")
-        result = taskmanager_load.assess_taskmanager_transitions(static_only, self.run_id, 1)
+        result = taskmanager_load.assess_taskmanager_transitions(static_only, self.run_id, 1, self.log, True)
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["testWindowAppeared"])
 
     def test_missing_icon_role_invalidates_preflight(self) -> None:
-        no_icon = self.log.replace("decoration:1", "display:1")
-        result = taskmanager_load.assess_taskmanager_transitions(no_icon, self.run_id, 1)
+        no_icon = self.log.replace("QList(1, 257, 258)", "QList(0, 257, 258)")
+        result = taskmanager_load.assess_taskmanager_transitions(no_icon, self.run_id, 1, no_icon, True)
+        self.assertEqual(result["status"], "INVALID")
+        self.assertFalse(result["checks"]["decorationRoleChanged"])
+
+    def test_icon_role_without_changed_pixels_is_not_an_icon_update(self) -> None:
+        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1, self.log, False)
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["decorationRoleChanged"])
 
@@ -61,18 +66,18 @@ class TaskManagerPreflightTests(unittest.TestCase):
         prefix, separator, tail = self.log.rpartition(marker)
         self.assertTrue(separator)
         remaining = prefix + f"Task diagnostic row path= root display= {self.initial}\n" + separator + tail
-        result = taskmanager_load.assess_taskmanager_transitions(remaining, self.run_id, 1)
+        result = taskmanager_load.assess_taskmanager_transitions(remaining, self.run_id, 1, self.log, True)
         self.assertEqual(result["status"], "INVALID")
         self.assertFalse(result["checks"]["testWindowDisappeared"])
 
     def test_grouping_uses_the_unique_fixture_desktop_id(self) -> None:
-        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1)
+        result = taskmanager_load.assess_taskmanager_transitions(self.log, self.run_id, 1, self.log, True)
         self.assertTrue(result["checks"]["groupingObserved"])
 
         stale_id_log = self.log.replace(
             f"org.kdockw.p0load.{self.run_id}.alpha.desktop", "kdockw-test-window"
         )
-        stale = taskmanager_load.assess_taskmanager_transitions(stale_id_log, self.run_id, 1)
+        stale = taskmanager_load.assess_taskmanager_transitions(stale_id_log, self.run_id, 1, self.log, True)
         self.assertFalse(stale["checks"]["groupingObserved"])
 
 

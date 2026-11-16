@@ -352,8 +352,11 @@ TEST_CASE("Windows Start records unavailable Plasma favorites and preserves exis
         KDockWSettings settings;
         settings.load();
         kdockw::ApplicationLauncherState state(&settings);
-        CHECK_FALSE(state.importPlasmaFavorites({}, {}, false));
-        CHECK(state.startFavoritesImportAttempted());
+        CHECK_FALSE(state.importPlasmaFavorites({}, {}, false, false));
+        CHECK_FALSE(state.startFavoritesImportAttempted());
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("notAttempted"));
+        CHECK_FALSE(state.importPlasmaFavorites({}, {}, false, true));
+        CHECK_FALSE(state.startFavoritesImportAttempted());
         CHECK(state.startFavoritesImportStatus() == QStringLiteral("unavailable"));
     }
     {
@@ -367,6 +370,26 @@ TEST_CASE("Windows Start records unavailable Plasma favorites and preserves exis
         CHECK(state.pinnedApplicationIds() == QStringList{QStringLiteral("existing.desktop")});
         CHECK(state.startFavoritesImportStatus() == QStringLiteral("existingPinsPreserved"));
     }
+}
+
+TEST_CASE("Windows Start waits for Plasma favorites readiness and finalizes a real empty source once", "[application-launcher][state][favorites]")
+{
+    const ScopedConfigHome home;
+    KDockWSettings settings;
+    settings.load();
+    kdockw::ApplicationLauncherState state(&settings);
+
+    CHECK_FALSE(state.importPlasmaFavorites({}, {}, true, false));
+    CHECK_FALSE(state.startFavoritesImportAttempted());
+    CHECK(state.startFavoritesImportStatus() == QStringLiteral("notAttempted"));
+
+    CHECK_FALSE(state.importPlasmaFavorites({}, {}, true, true));
+    CHECK(state.startFavoritesImportAttempted());
+    CHECK(state.startFavoritesImportStatus() == QStringLiteral("noFavorites"));
+    CHECK_FALSE(state.importPlasmaFavorites({QStringLiteral("applications:later.desktop")},
+                                             {QStringLiteral("later.desktop")}, true, true));
+    CHECK(state.pinnedApplicationIds().isEmpty());
+    CHECK(state.startFavoritesImportStatus() == QStringLiteral("noFavorites"));
 }
 
 TEST_CASE("Launchpad folders persist identity, membership, names, and root position", "[application-launcher][state][folders]")

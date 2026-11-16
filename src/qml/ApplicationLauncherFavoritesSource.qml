@@ -7,7 +7,10 @@ import org.kde.plasma.private.kicker as Kicker
 Item {
     id: source
 
-    readonly property bool available: Boolean(rootModel.favoritesModel)
+    property bool refreshed: false
+    readonly property bool ready: refreshed
+    readonly property bool available: ready && Boolean(rootModel.favoritesModel)
+    readonly property int favoriteCount: ready ? favoriteItems.count : 0
     property var favoriteIds: []
 
     function updateSnapshot() {
@@ -44,8 +47,17 @@ Item {
 
     Connections {
         target: rootModel
-        function onRefreshed() { Qt.callLater(source.updateSnapshot) }
+        function onRefreshed() {
+            source.refreshed = true
+            Qt.callLater(source.updateSnapshot)
+        }
     }
 
-    Component.onCompleted: Qt.callLater(updateSnapshot)
+    Component.onCompleted: {
+        // autoPopulate is disabled so the complete launcher tree is built on
+        // demand. RootModel.refresh() is the readiness boundary; without it,
+        // Kicker never emits refreshed and the favorites import stays pending.
+        rootModel.refresh()
+        Qt.callLater(updateSnapshot)
+    }
 }

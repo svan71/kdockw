@@ -139,14 +139,22 @@ def proc_memory(pid: int) -> dict[str, int]:
     return values
 
 
-def assess_taskmanager_transitions(log: str, run_id: str, existing_windows: int) -> dict[str, object]:
+def assess_taskmanager_transitions(log: str, run_id: str, existing_windows: int,
+                                  icon_log: str | None = None,
+                                  icon_pixels_changed: bool = False) -> dict[str, object]:
     initial_title = f"KDockW P0 PREFLIGHT {run_id} INITIAL"
     changed_title = f"KDockW P0 PREFLIGHT {run_id} RENAMED"
     checks = {
         "protocolAndExistingWindows": existing_windows > 0,
         "testWindowAppeared": any(initial_title in line and "isWindow= true" in line for line in log.splitlines()),
         "titleChanged": changed_title in log and "[KDOCKW_TASK_DATA_TRACE]" in log,
-        "decorationRoleChanged": re.search(r"dataChangedRoles=.*(?:\bdecoration|\b1):\s*[1-9]\d*", log) is not None,
+        # Current DockPresentationModel diagnostics report Qt role integers as
+        # incomingRoles=QList(...); keep support for older sampled logs too.
+        "decorationRoleChanged": icon_pixels_changed and (
+            re.search(r"dataChangedRoles=.*(?:\bdecoration|\b1):\s*[1-9]\d*", icon_log or log) is not None
+            or any(1 in {int(role.strip()) for role in roles.split(",") if role.strip().isdigit()}
+                   for roles in re.findall(r"incomingRoles= QList\(([^)]*)\)", icon_log or log))
+        ),
         "groupingObserved": any(f"desktopId= org.kdockw.p0load.{run_id}.alpha.desktop" in line and "isGroupParent= true" in line
                                  for line in log.splitlines()),
         "testWindowDisappeared": False,
@@ -317,8 +325,11 @@ class Scenario:
         first.title = changed_title
         first.send("setTitle", changed_title)
         self.mark("functional-title-changed", appId=app_id)
-        first.send("setIcon", self.manifest["icons"]["beta"])
-        self.mark("functional-icon-changed", appId=app_id)
+        icon_before = first.send("ping").get("iconPixelSha256")
+        icon_log_start = len(log_path.read_text(encoding="utf-8", errors="replace"))
+        icon_after = first.send("setIcon", self.manifest["icons"]["beta"]).get("iconPixelSha256")
+        icon_pixels_changed = bool(icon_before and icon_after and icon_before != icon_after)
+        self.mark("functional-icon-changed", appId=app_id, pixelsChanged=icon_pixels_changed)
 
         second = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 2")
         third = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 3")
@@ -329,7 +340,8 @@ class Scenario:
         self.wait(3, "functional-removal-settle")
 
         log = log_path.read_text(encoding="utf-8", errors="replace")[log_start:]
-        return assess_taskmanager_transitions(log, run_id, existing_windows)
+        icon_log = log_path.read_text(encoding="utf-8", errors="replace")[icon_log_start:]
+        return assess_taskmanager_transitions(log, run_id, existing_windows, icon_log, icon_pixels_changed)
 
     def run(self) -> None:
         alpha1 = self.open("alpha")

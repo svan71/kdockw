@@ -29,11 +29,12 @@ QQC2.Popup {
     readonly property var catalog: catalogOverride || DockModel.applicationCatalog
     readonly property var launcherState: launcherStateOverride || DockModel.applicationLauncherState
     readonly property bool favoritesSourceReady: !enablePlasmaFavoritesSource
-        || favoritesLoader.status === Loader.Ready
         || favoritesLoader.status === Loader.Error
+        || (favoritesLoader.status === Loader.Ready && favoritesLoader.item
+            && favoritesLoader.item.ready)
     readonly property bool favoritesSourceAvailable: enablePlasmaFavoritesSource
-        && favoritesLoader.status === Loader.Ready
-        && favoritesLoader.item && favoritesLoader.item.available
+        && favoritesLoader.status === Loader.Ready && favoritesLoader.item
+        && favoritesLoader.item.ready && favoritesLoader.item.available
     readonly property var favoritesSource: favoritesLoader.item
     readonly property var favoritesSourceLoader: favoritesLoader
     readonly property var favoriteIds: favoritesSourceAvailable ? favoritesLoader.item.favoriteIds : []
@@ -102,6 +103,131 @@ QQC2.Popup {
         if (style === "start") return Qt.size(680, 600)
         if (style === "hierarchical") return Qt.size(800, 600)
         return Qt.size(900, 600)
+    }
+
+    function configureDiagnosticRoute() {
+        const route = DockView.launcherDiagnosticPage
+        const view = contentLoader.item
+        if (!route || !view || !catalog.ready)
+            return false
+        switch (route) {
+        case "start-home-empty":
+            view.diagnosticEmptyPins = true
+            view.pageMode = "home"
+            break
+        case "start-all":
+            view.pageMode = "all"
+            break
+        case "start-context":
+            return view.diagnosticOpenContextMenu()
+        case "hierarchical-category":
+            if (view.rootItems.length < 2) return false
+            view.activate(view.rootItems[1])
+            break
+        case "hierarchical-favorites":
+            view.activate(view.favoritesFolder)
+            break
+        case "hierarchical-context":
+            return view.diagnosticOpenContextMenu()
+        case "launchpad-folder": {
+            let folders = view.folders
+            if (!folders.length) {
+                const apps = catalog.applications.slice(0, 2).map(app => app.id)
+                if (!apps.length) return false
+                const id = launcherState.createLaunchpadFolder("Diagnostic Folder", apps,
+                    catalog.applications.map(app => app.id))
+                if (!id) return false
+                folders = view.folders
+            }
+            view.currentFolderId = folders[0].id
+            break
+        }
+        case "launchpad-context":
+            return view.diagnosticOpenContextMenu()
+        case "launchpad-dialog": {
+            const app = catalog.applications[0]
+            if (!app) return false
+            view.beginCreateFolder(app.id)
+            break
+        }
+        default:
+            return false
+        }
+        return true
+    }
+
+    function findNamedItem(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        const children = item.children || []
+        for (let index = 0; index < children.length; ++index) {
+            const found = findNamedItem(children[index], name)
+            if (found) return found
+        }
+        return null
+    }
+
+    function traceControl(name) {
+        const target = findNamedItem(contentLoader.item, name)
+        if (!target) {
+            DockView.traceLauncherUi(name, { found: false, route: DockView.launcherDiagnosticPage })
+            return
+        }
+        const content = target.contentItem || null
+        let textChild = null
+        let iconChild = null
+        if (content && content.children) {
+            for (let index = 0; index < content.children.length; ++index) {
+                const child = content.children[index]
+                if (child.objectName && child.objectName.endsWith("PaintedLabel")) textChild = child
+                if (child.objectName && child.objectName.endsWith("PaintedIcon")) iconChild = child
+            }
+        }
+        const point = target.mapToItem(null, 0, 0)
+        DockView.traceLauncherUi(name, {
+            found: true,
+            route: DockView.launcherDiagnosticPage,
+            controlType: target.toString(),
+            visible: target.visible,
+            enabled: target.enabled,
+            opacity: target.opacity,
+            x: target.x, y: target.y, width: target.width, height: target.height,
+            implicitWidth: target.implicitWidth, implicitHeight: target.implicitHeight,
+            sceneX: point.x, sceneY: point.y,
+            contentWidth: content ? content.width : -1,
+            contentHeight: content ? content.height : -1,
+            contentOpacity: content ? content.opacity : -1,
+            text: target.text === undefined ? "" : target.text,
+            textColor: textChild ? textChild.color.toString()
+                : target.color !== undefined ? target.color.toString() : "unknown",
+            textWidth: textChild ? textChild.width : -1,
+            icon: target.icon && target.icon.name ? target.icon.name : "",
+            iconColor: iconChild ? iconChild.color.toString() : "unknown",
+            backgroundColor: target.background && target.background.color !== undefined
+                ? target.background.color.toString() : "unknown",
+            paletteText: target.palette ? target.palette.text.toString() : "unknown",
+            paletteButtonText: target.palette ? target.palette.buttonText.toString() : "unknown",
+            popup: { x: popup.x, y: popup.y, width: popup.width, height: popup.height,
+                visible: popup.visible, surface: surface.toString(), foreground: foreground.toString() },
+            favoriteSource: { ready: favoritesSourceReady, available: favoritesSourceAvailable,
+                count: favoriteIds.length, status: launcherState.startFavoritesImportStatus,
+                attempted: launcherState.startFavoritesImportAttempted }
+        })
+    }
+
+    function traceDiagnosticRoute() {
+        const route = DockView.launcherDiagnosticPage
+        let names = []
+        if (route === "start-home-empty") names = ["startAllApplicationsButton", "startCloseButton"]
+        else if (route === "start-all") names = ["startBackButton"]
+        else if (route === "hierarchical-category" || route === "hierarchical-favorites")
+            names = ["hierarchicalBackButton"]
+        else if (route === "launchpad-folder") names = ["launchpadFolderBackButton"]
+        else if (route === "launchpad-dialog") names = ["launchpadFolderNameField", "launchpadFolderNameCancel", "launchpadFolderNameSubmit"]
+        else if (route.endsWith("-context")) names = [route.startsWith("start-")
+            ? "startPinMenuAction" : route.startsWith("hierarchical-")
+                ? "hierarchicalFavoriteToggle" : "launchpadCreateFolderAction"]
+        for (const name of names) traceControl(name)
     }
 
     function mixSurface(foregroundColor, amount) {
@@ -176,6 +302,10 @@ QQC2.Popup {
     onOpened: {
         if (contentLoader.item && contentLoader.item.focusSearch)
             contentLoader.item.focusSearch()
+        if (typeof DockView.launcherDiagnosticPage === "string" && DockView.launcherDiagnosticPage.length)
+            diagnosticRouteTimer.start()
+        if (typeof DockView.launcherDiagnosticPage === "string" && DockView.launcherDiagnosticPage.length)
+            diagnosticTraceTimer.start()
     }
     onClosed: contentLoader.active = false
 
@@ -184,6 +314,23 @@ QQC2.Popup {
         active: popup.visible && popup.enablePlasmaFavoritesSource
             && popup.launcherState.style === "start"
         source: "ApplicationLauncherFavoritesSource.qml"
+    }
+
+    Timer {
+        id: diagnosticRouteTimer
+        interval: 250
+        repeat: true
+        onTriggered: {
+            if (!popup.visible) { stop(); return }
+            if (popup.configureDiagnosticRoute()) stop()
+        }
+    }
+
+    Timer {
+        id: diagnosticTraceTimer
+        interval: 900
+        repeat: false
+        onTriggered: popup.traceDiagnosticRoute()
     }
 
     background: Rectangle {

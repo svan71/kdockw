@@ -2583,6 +2583,29 @@ Item {
         dockRoot: root
     }
 
+    // Diagnostic-only, opt-in route for opening the real launcher popup on a
+    // live Wayland surface without synthesizing keyboard or pointer input.
+    Timer {
+        id: launcherDiagnosticOpenTimer
+        interval: 1200
+        repeat: true
+        running: typeof DockView.launcherDiagnosticPage === "string"
+            && DockView.launcherDiagnosticPage.length > 0
+        onTriggered: {
+            if (!DockModel.applicationCatalog.ready) {
+                DockModel.applicationCatalog.ensureLoaded()
+                return
+            }
+            if (dockRepeater.count < 1) return
+            const route = DockView.launcherDiagnosticPage
+            const style = route.startsWith("start-") ? "start"
+                : route.startsWith("hierarchical-") ? "hierarchical" : "launchpad"
+            DockModel.applicationLauncherState.style = style
+            appLauncherPopup.openFor(dockRepeater.itemAt(0))
+            stop()
+        }
+    }
+
     QQC2.Dialog {
         id: widgetManager
         objectName: "builtInWidgetManager"

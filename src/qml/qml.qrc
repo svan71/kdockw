@@ -5,6 +5,8 @@
         <file>DockItem.qml</file>
         <file>FolderStackItem.qml</file>
         <file>ApplicationLauncherPopup.qml</file>
+        <file>ApplicationLauncherToolButton.qml</file>
+        <file>ApplicationLauncherMenuItem.qml</file>
         <file>ApplicationLauncherGridTile.qml</file>
         <file>ApplicationLauncherLaunchpad.qml</file>
         <file>ApplicationLauncherStart.qml</file>

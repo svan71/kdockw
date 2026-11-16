@@ -26,8 +26,9 @@ ColumnLayout {
     property string query: ""
     property string pageMode: "home" // home, all, alphabet
     property string scrollToLetter: ""
+    property bool diagnosticEmptyPins: false
     readonly property var visibleItems: query.length ? catalog.search(query) : catalog.applications
-    readonly property var pinnedItems: toArray(launcherState.pinnedApplicationIds)
+    readonly property var pinnedItems: diagnosticEmptyPins ? [] : toArray(launcherState.pinnedApplicationIds)
         .map(id => catalog.application(id)).filter(app => app && app.id)
     readonly property int pinnedColumnCount: Math.max(1, Math.floor(pinnedGrid.width / 104))
     readonly property int pinnedRowCount: Math.ceil(pinnedItems.length / pinnedColumnCount)
@@ -36,6 +37,13 @@ ColumnLayout {
     readonly property var alphabetEntries: buildAlphabetEntries()
 
     function focusSearch() { searchField.forceActiveFocus() }
+    function diagnosticOpenContextMenu() {
+        const app = toArray(catalog.applications)[0]
+        if (!app) return false
+        contextMenu.targetApp = app
+        contextMenu.popup(QQC2.Overlay.overlay, Qt.point(24, 72))
+        return true
+    }
     function importInitialFavorites() {
         if (!catalog.ready || !launcherPopup.favoritesSourceReady
                 || launcherState.startFavoritesImportAttempted)
@@ -43,7 +51,8 @@ ColumnLayout {
         const applicationIds = toArray(catalog.applications)
             .map(app => app && app.id ? String(app.id) : "").filter(id => id.length > 0)
         launcherState.importPlasmaFavorites(launcherPopup.favoriteIds,
-            applicationIds, launcherPopup.favoritesSourceAvailable)
+            applicationIds, launcherPopup.favoritesSourceAvailable,
+            launcherPopup.favoritesSourceReady)
     }
     function toArray(value) {
         if (!value || typeof value.length !== "number") return []
@@ -173,7 +182,7 @@ ColumnLayout {
             }
             onTextEdited: searchDebounce.restart()
         }
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "startCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
@@ -182,6 +191,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: launcherPopup.close()
         }
@@ -198,7 +210,7 @@ ColumnLayout {
         objectName: "startHomeHeaderRow"
         Layout.fillWidth: true
         visible: page.query.length === 0 && page.pageMode !== "alphabet"
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "startBackButton"
             text: i18n("Back")
             icon.name: "go-previous"
@@ -208,6 +220,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: page.pageMode = "home"
         }
@@ -219,7 +234,7 @@ ColumnLayout {
             elide: Text.ElideRight
             color: launcherPopup.foreground
         }
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "startAllApplicationsButton"
             text: i18n("All applications")
             icon.name: "go-next"
@@ -229,6 +244,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: page.showAllApplications("")
         }
@@ -238,7 +256,7 @@ ColumnLayout {
         objectName: "startAlphabetHeadingRow"
         Layout.fillWidth: true
         visible: page.pageMode === "alphabet" && page.query.length === 0
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "startAlphabetBackButton"
             text: i18n("Back")
             icon.name: "go-previous"
@@ -247,6 +265,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: page.showAllApplications("")
         }
@@ -474,6 +495,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: page.showAlphabet()
             Keys.onReturnPressed: page.showAlphabet()
@@ -556,6 +580,7 @@ ColumnLayout {
     QQC2.Menu {
         id: contextMenu
         objectName: "startApplicationContextMenu"
+        width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
         property var targetApp: ({})
         modal: false
         focus: true
@@ -573,7 +598,15 @@ ColumnLayout {
         palette.buttonText: launcherPopup.foreground
         palette.highlight: launcherPopup.selectedSurface
         palette.highlightedText: launcherPopup.selectedForeground
-        QQC2.MenuItem {
+        ApplicationLauncherMenuItem {
+            foregroundColor: launcherPopup.foreground
+            disabledForegroundColor: launcherPopup.secondaryForeground
+            hoverForegroundColor: launcherPopup.hoverForeground
+            selectedForegroundColor: launcherPopup.selectedForeground
+            hoverBackgroundColor: launcherPopup.hoverSurface
+            selectedBackgroundColor: launcherPopup.selectedSurface
+            focusColor: launcherPopup.focusColor
+            objectName: "startPinMenuAction"
             text: page.launcherState.isPinned(contextMenu.targetApp.id) ? i18n("Unpin") : i18n("Pin")
             palette.text: down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
@@ -582,6 +615,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onTriggered: page.launcherState.togglePinned(contextMenu.targetApp.id)
         }

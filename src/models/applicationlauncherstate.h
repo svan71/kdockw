@@ -47,7 +47,8 @@ public:
     Q_INVOKABLE bool deleteLaunchpadFolder(const QString &folderId);
     Q_INVOKABLE bool importPlasmaFavorites(const QStringList &favoriteIds,
                                            const QStringList &availableApplicationIds,
-                                           bool sourceAvailable);
+                                           bool sourceAvailable,
+                                           bool sourceReady = true);
 
 Q_SIGNALS:
     void styleChanged();

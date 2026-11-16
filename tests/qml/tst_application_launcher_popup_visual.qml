@@ -41,6 +41,11 @@ Item {
         enablePlasmaFavoritesSource: false
     }
 
+    Component {
+        id: plasmaFavoritesSourceComponent
+        Launcher.ApplicationLauncherFavoritesSource { }
+    }
+
     TestCase {
         name: "ApplicationLauncherPopupVisual"
         when: windowShown
@@ -100,6 +105,16 @@ Item {
                 "could not capture popup window state " + imageName)
         }
 
+        function test_plasma_favorites_source_explicitly_refreshes_before_import() {
+            const source = plasmaFavoritesSourceComponent.createObject(root)
+            verify(source, "the read-only Kicker favorites adapter must load")
+            tryVerify(() => source.ready, 10000)
+            verify(source.available,
+                "an empty favorites list is still an available and completed source")
+            verify(source.favoriteCount >= 0)
+            source.destroy()
+        }
+
         function test_windows_start_navigation_is_present_inside_the_real_popup() {
             const page = openStyle("start")
             const applications = ApplicationCatalogFixture.applications
@@ -121,6 +136,27 @@ Item {
             capture(page, "popup-windows-start-all-applications")
             mouseClick(back)
             compare(page.pageMode, "home")
+            disposePopup()
+        }
+
+        function test_explicit_launcher_control_content_is_thematic_and_accessible() {
+            const page = openStyle("start")
+            const allApps = findChild(page, "startAllApplicationsButton")
+            const allAppsLabel = findChild(page, "startAllApplicationsButtonPaintedLabel")
+            verifyVisibleInPopup(allApps, page, "Start All applications")
+            verify(allAppsLabel && allAppsLabel.visible && allAppsLabel.width > 0,
+                "the launcher draws navigation text through its explicit content item")
+            compare(allAppsLabel.color, popup.foreground)
+            verify(allApps.Accessible.name.length > 0,
+                "the themed custom content must retain the control's accessible name")
+
+            verify(page.diagnosticOpenContextMenu())
+            const action = findChild(page, "startPinMenuAction")
+            tryVerify(() => action && action.visible)
+            const actionLabel = action.contentItem.children.find(item => item.text === action.text)
+            verify(actionLabel && actionLabel.visible && actionLabel.width > 0,
+                "context-menu text is drawn by the explicitly themed content item")
+            compare(actionLabel.color, popup.foreground)
             disposePopup()
         }
 

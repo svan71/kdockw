@@ -104,6 +104,27 @@ set_property(TEST qml_tst_application_launcher_popup_visual APPEND PROPERTY
     ENVIRONMENT "KDOCKW_USE_SYSTEM_THEME_ICONS=1;KDOCKW_TEST_REAL_APPLICATION_CATALOG=1"
 )
 
+# Repeat the explicit launcher-control rendering assertion with the KDE
+# desktop style used by the live Plasma application and with Qt Fusion. The
+# QML suite's default Basic style alone does not exercise either implementation.
+foreach(style_variant IN ITEMS kde fusion)
+    if(style_variant STREQUAL "kde")
+        set(controls_style org.kde.desktop)
+    else()
+        set(controls_style Fusion)
+    endif()
+    add_test(NAME qml_launcher_controls_${style_variant}
+        COMMAND kdockw_qml_tests -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_application_launcher_popup_visual.qml
+            ApplicationLauncherPopupVisual::test_explicit_launcher_control_content_is_thematic_and_accessible
+    )
+    set_tests_properties(qml_launcher_controls_${style_variant} PROPERTIES
+        FIXTURES_REQUIRED application_catalog_cache
+        LABELS "qml;launcher;style"
+        TIMEOUT 120
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QUICK_CONTROLS_STYLE=${controls_style};LANGUAGE=en_US;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-cache;KDOCKW_USE_SYSTEM_THEME_ICONS=1;KDOCKW_TEST_REAL_APPLICATION_CATALOG=1"
+    )
+endforeach()
+
 # Isolate the approved close-button state check from unrelated preview tests.
 add_test(NAME qml_preview_close_button_states
     COMMAND kdockw_qml_tests -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_preview_popup.qml

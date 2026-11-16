@@ -50,6 +50,13 @@ ColumnLayout {
     }
 
     function focusSearch() { searchField.forceActiveFocus() }
+    function diagnosticOpenContextMenu() {
+        const app = toArray(catalog.applications)[0]
+        if (!app) return false
+        contextEntry = app
+        favoriteMenu.popup(QQC2.Overlay.overlay, Qt.point(24, 72))
+        return true
+    }
     function activate(item) {
         if (item.type === "folder") {
             path = path.concat([item])
@@ -75,7 +82,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "hierarchicalBackButton"
             text: i18n("Back")
             icon.name: "go-previous"
@@ -86,6 +93,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: page.goBack()
         }
@@ -118,7 +128,7 @@ ColumnLayout {
                 border.width: searchField.activeFocus ? 2 : 1
             }
         }
-        QQC2.ToolButton {
+        ApplicationLauncherToolButton {
             objectName: "hierarchicalCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
@@ -127,6 +137,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onClicked: launcherPopup.close()
         }
@@ -210,6 +223,7 @@ ColumnLayout {
     QQC2.Menu {
         id: favoriteMenu
         objectName: "hierarchicalFavoriteContextMenu"
+        width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
         modal: false
         focus: true
         closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
@@ -226,7 +240,14 @@ ColumnLayout {
         palette.buttonText: launcherPopup.foreground
         palette.highlight: launcherPopup.selectedSurface
         palette.highlightedText: launcherPopup.selectedForeground
-        QQC2.MenuItem {
+        ApplicationLauncherMenuItem {
+            foregroundColor: launcherPopup.foreground
+            disabledForegroundColor: launcherPopup.secondaryForeground
+            hoverForegroundColor: launcherPopup.hoverForeground
+            selectedForegroundColor: launcherPopup.selectedForeground
+            hoverBackgroundColor: launcherPopup.hoverSurface
+            selectedBackgroundColor: launcherPopup.selectedSurface
+            focusColor: launcherPopup.focusColor
             objectName: "hierarchicalFavoriteToggle"
             text: page.launcherState.isPinned(page.contextEntry.id)
                 ? i18n("Remove from Favorites") : i18n("Add to Favorites")
@@ -237,6 +258,9 @@ ColumnLayout {
             background: Rectangle {
                 color: parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
+                border.width: parent.activeFocus ? 2 : 0
+                border.color: launcherPopup.focusColor
+                radius: Kirigami.Units.smallSpacing
             }
             onTriggered: page.launcherState.togglePinned(page.contextEntry.id)
         }

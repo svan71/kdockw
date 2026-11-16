@@ -44,6 +44,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#undef KeyPress
+
 namespace
 {
 int s_sigFd[2] = {-1, -1};
@@ -107,7 +111,10 @@ int main(int argc, char **argv)
     QGuiApplication::setDesktopFileName(appId);
 
     QApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("kdockw-test-window"));
+    // On X11/XWayland TaskManager keys live windows by WM_CLASS, which Qt
+    // derives from applicationName. Keep it aligned with --app-id so the
+    // diagnostic fixture exercises its own Desktop Entry identity.
+    app.setApplicationName(appId);
 
     QCommandLineParser parser;
     parser.addHelpOption();
@@ -153,6 +160,18 @@ int main(int argc, char **argv)
     layout->addWidget(quit);
     window.setCentralWidget(central);
     window.resize(parser.value(QStringLiteral("width")).toInt(), parser.value(QStringLiteral("height")).toInt());
+    if (QGuiApplication::platformName() == QLatin1String("xcb")) {
+        // Qt's XCB WM_CLASS otherwise remains the test executable's name,
+        // which prevents KWin/TaskManager from matching the per-run Desktop
+        // Entry used by the live diagnostic fixture.
+        if (Display *display = XOpenDisplay(nullptr)) {
+            QByteArray className = appId.toLocal8Bit();
+            XClassHint classHint{className.data(), className.data()};
+            XSetClassHint(display, static_cast<::Window>(window.winId()), &classHint);
+            XFlush(display);
+            XCloseDisplay(display);
+        }
+    }
     if (const QString iconPath = parser.value(QStringLiteral("icon-path")); !iconPath.isEmpty()) {
         // This is a raw-render test stimulus, not a claim about Wayland app_id semantics.
         window.setWindowIcon(QIcon(iconPath));

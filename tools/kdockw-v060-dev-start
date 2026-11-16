@@ -36,6 +36,8 @@ experiment_suppress_task_model_forwarding=false
 gdb_attach=false
 object_census=false
 kservice_trace=false
+launcher_page=""
+controls_style=""
 
 fail() { printf 'KDockW v0.6.0-dev launcher refused: %s\n' "$1" >&2; exit 1; }
 
@@ -74,9 +76,35 @@ while (($#)); do
         --gdb-attach) gdb_attach=true; shift ;;
         --object-census) object_census=true; shift ;;
         --kservice-trace) kservice_trace=true; shift ;;
-        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace]" ;;
+        --launcher-page)
+            (($# >= 2)) || fail "--launcher-page requires a diagnostic page name"
+            launcher_page="$2"
+            shift 2
+            ;;
+        --launcher-page=*) launcher_page="${1#*=}"; shift ;;
+        --controls-style)
+            (($# >= 2)) || fail "--controls-style requires org.kde.desktop, Fusion, or Basic"
+            controls_style="$2"
+            shift 2
+            ;;
+        --controls-style=*) controls_style="${1#*=}"; shift ;;
+        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace] [--launcher-page PAGE] [--controls-style org.kde.desktop|Fusion|Basic]" ;;
     esac
 done
+if [[ -n "$launcher_page" ]]; then
+    case "$launcher_page" in
+        start-home-empty|start-all|start-context|hierarchical-category|hierarchical-favorites|hierarchical-context|launchpad-folder|launchpad-context|launchpad-dialog) ;;
+        *) fail "unsupported diagnostic launcher page: $launcher_page" ;;
+    esac
+    [[ -n "$profile_name" ]] || fail "--launcher-page requires an isolated --profile"
+    performance_diagnostics=false
+fi
+if [[ -n "$controls_style" ]]; then
+    case "$controls_style" in
+        org.kde.desktop|Fusion|Basic) ;;
+        *) fail "--controls-style supports org.kde.desktop, Fusion, or Basic" ;;
+    esac
+fi
 if [[ "$qml_profiler" == true ]]; then
     [[ -x /usr/lib/qt6/bin/qmlprofiler ]] || fail "Qt QML profiler client is not installed"
     grep -Fq -- '-DQT_QML_DEBUG' "${build_dir}/CMakeCache.txt" \
@@ -362,6 +390,14 @@ qml_profiler_args=()
 if [[ "$qml_profiler" == true ]]; then
     qml_profiler_args+=(-qmljsdebugger=port:3768,host:127.0.0.1,services:QmlProfiler)
 fi
+launcher_probe_args=()
+if [[ -n "$launcher_page" ]]; then
+    launcher_probe_args+=(--setenv="KDOCKW_DIAGNOSTIC_LAUNCHER_PAGE=${launcher_page}")
+fi
+controls_style_args=()
+if [[ -n "$controls_style" ]]; then
+    controls_style_args+=(--setenv="QT_QUICK_CONTROLS_STYLE=${controls_style}")
+fi
 runtime_observer_log="${diagnostic_root}/logs/runtime-${profile_name:-default}-$(date +%Y%m%d-%H%M%S).jsonl"
 runtime_observer_service="kdockw-v060-runtime-observer-$(date +%s)"
 if [[ "$performance_diagnostics" == true ]]; then
@@ -389,6 +425,8 @@ systemd-run --user --no-block --collect --unit="$service" \
     "${gdb_attach_args[@]}" \
     "${object_census_args[@]}" \
     "${kservice_trace_args[@]}" \
+    "${launcher_probe_args[@]}" \
+    "${controls_style_args[@]}" \
     --setenv=KDOCKW_GEOMETRY_TRACE=1 \
     --setenv="XDG_DATA_HOME=${runtime_data_home}" \
     --setenv="XDG_DATA_DIRS=${runtime_data_dirs}" \

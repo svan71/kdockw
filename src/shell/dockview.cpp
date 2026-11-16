@@ -13,8 +13,13 @@
 #include "utils/zoomlayoutvariant.h"
 
 #include <QDBusConnection>
+#include <QGuiApplication>
 #include <QLoggingCategory>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPalette>
 #include <QPainterPath>
+#include <QQuickStyle>
 #include <LayerShellQt/Window>
 
 #include <taskmanager/tasksmodel.h>
@@ -58,6 +63,27 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
 {
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     m_geometryTraceEnabled = qEnvironmentVariable("KDOCKW_GEOMETRY_TRACE") == QLatin1String("1");
+    m_launcherDiagnosticPage = qEnvironmentVariable("KDOCKW_DIAGNOSTIC_LAUNCHER_PAGE");
+    if (!m_launcherDiagnosticPage.isEmpty()) {
+        const QVariantMap state{
+            {QStringLiteral("binary"), QCoreApplication::applicationFilePath()},
+            {QStringLiteral("controlsStyle"), QQuickStyle::name()},
+            {QStringLiteral("QT_QUICK_CONTROLS_STYLE"), qEnvironmentVariable("QT_QUICK_CONTROLS_STYLE")},
+            {QStringLiteral("QT_QUICK_CONTROLS_FALLBACK_STYLE"), qEnvironmentVariable("QT_QUICK_CONTROLS_FALLBACK_STYLE")},
+            {QStringLiteral("QT_QUICK_CONTROLS_CONF"), qEnvironmentVariable("QT_QUICK_CONTROLS_CONF")},
+            {QStringLiteral("QT_QPA_PLATFORMTHEME"), qEnvironmentVariable("QT_QPA_PLATFORMTHEME")},
+            {QStringLiteral("QT_STYLE_OVERRIDE"), qEnvironmentVariable("QT_STYLE_OVERRIDE")},
+            {QStringLiteral("XDG_CONFIG_HOME"), qEnvironmentVariable("XDG_CONFIG_HOME")},
+            {QStringLiteral("XDG_DATA_HOME"), qEnvironmentVariable("XDG_DATA_HOME")},
+            {QStringLiteral("XDG_CACHE_HOME"), qEnvironmentVariable("XDG_CACHE_HOME")},
+            {QStringLiteral("XDG_DATA_DIRS"), qEnvironmentVariable("XDG_DATA_DIRS")},
+            {QStringLiteral("paletteWindow"), QGuiApplication::palette().color(QPalette::Window).name(QColor::HexArgb)},
+            {QStringLiteral("paletteText"), QGuiApplication::palette().color(QPalette::WindowText).name(QColor::HexArgb)},
+            {QStringLiteral("qmlImports"), engine()->importPathList()},
+        };
+        qCInfo(lcDockView).noquote() << "[KDOCKW_LAUNCHER_UI_ENV]"
+                                     << QJsonDocument(QJsonObject::fromVariantMap(state)).toJson(QJsonDocument::Compact);
+    }
 #endif
     // Capture the screen MultiDockManager assigned before setupWindow():
     // LayerShellQt < 6.6 creates the platform window in Window::get(), and
@@ -296,6 +322,26 @@ bool DockView::performanceDiagnosticsEnabled() const
     return qEnvironmentVariable("KDOCKW_PERF_DIAGNOSTICS") == QLatin1String("1");
 #else
     return false;
+#endif
+}
+
+QString DockView::launcherDiagnosticPage() const
+{
+    return m_launcherDiagnosticPage;
+}
+
+void DockView::traceLauncherUi(const QString &label, const QVariantMap &state) const
+{
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (!m_launcherDiagnosticPage.isEmpty()) {
+        QVariantMap details = state;
+        details.insert(QStringLiteral("label"), label);
+        qCInfo(lcDockView).noquote() << "[KDOCKW_LAUNCHER_UI]"
+                                     << QJsonDocument(QJsonObject::fromVariantMap(details)).toJson(QJsonDocument::Compact);
+    }
+#else
+    Q_UNUSED(label);
+    Q_UNUSED(state);
 #endif
 }
 

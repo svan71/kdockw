@@ -60,6 +60,7 @@ class DockView : public QQuickView
     /// grab (see PointerFocusTracker). False without a Wayland pointer.
     Q_PROPERTY(bool pointerInside READ isPointerInside NOTIFY pointerInsideChanged)
     Q_PROPERTY(bool performanceDiagnosticsEnabled READ performanceDiagnosticsEnabled CONSTANT)
+    Q_PROPERTY(QString launcherDiagnosticPage READ launcherDiagnosticPage CONSTANT)
 
 public:
     explicit DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *settings, QWindow *parent = nullptr);
@@ -148,6 +149,8 @@ public:
     /// See the pointerInside property.
     [[nodiscard]] bool isPointerInside() const;
     [[nodiscard]] bool performanceDiagnosticsEnabled() const;
+    [[nodiscard]] QString launcherDiagnosticPage() const;
+    Q_INVOKABLE void traceLauncherUi(const QString &label, const QVariantMap &state) const;
 
 public Q_SLOTS:
     void applyBackgroundStyle();
@@ -189,6 +192,7 @@ private:
     int m_tooltipReserve = 0;
     bool m_geometryTraceEnabled = false;
     QString m_geometryTraceAfterFrame;
+    QString m_launcherDiagnosticPage;
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     bool m_performanceDiagnosticsEnabled = false;
     QTimer *m_performanceReportTimer = nullptr;

@@ -180,6 +180,7 @@ Item {
 
         function test_launchpad_keeps_app_grid_separate_from_system_categories() {
             const page = makePage(launchpad)
+            compare(page.pageTransitionDuration, 380)
             compare(page.visibleItems.length, 2, "Launchpad uses the complete app catalog")
             verify(page.visibleItems.every(item => item.type === "application"),
                 "KDE XDG menu categories must not be presented as user-created Launchpad folders")

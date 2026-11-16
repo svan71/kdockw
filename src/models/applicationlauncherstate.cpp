@@ -174,14 +174,18 @@ QString ApplicationLauncherState::startFavoritesImportStatus() const
 
 bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favoriteIds,
                                                       const QStringList &availableApplicationIds,
-                                                      bool sourceAvailable)
+                                                      bool sourceAvailable,
+                                                      bool sourceReady)
 {
     if (m_startFavoritesImportAttempted) {
         return false;
     }
 
-    m_startFavoritesImportAttempted = true;
-    QString status = QStringLiteral("noMatchingApps");
+    if (!sourceReady) {
+        return false;
+    }
+
+    QString status;
     if (!sourceAvailable) {
         status = QStringLiteral("unavailable");
     } else if (!m_pinnedApplicationIds.isEmpty()) {
@@ -212,14 +216,17 @@ bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favorite
             }
         } else if (favoriteIds.isEmpty()) {
             status = QStringLiteral("noFavorites");
+        } else {
+            status = QStringLiteral("noMatchingApps");
         }
     }
+    m_startFavoritesImportAttempted = sourceAvailable;
     if (m_startFavoritesImportStatus != status) {
         m_startFavoritesImportStatus = status;
         Q_EMIT startFavoritesImportStatusChanged();
     }
     if (m_settings) {
-        m_settings->setStartFavoritesImportAttempted(true);
+        m_settings->setStartFavoritesImportAttempted(m_startFavoritesImportAttempted);
         m_settings->setStartFavoritesImportStatus(m_startFavoritesImportStatus);
     }
     return status == QLatin1String("imported");
