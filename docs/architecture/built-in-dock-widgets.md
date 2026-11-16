@@ -232,6 +232,26 @@ private test Sycoca cache and read-only system icon-theme provider produce
 reviewable screenshots without changing the user's configuration. The test
 runner retains mock providers for other QML tests.
 
+## Plasma Favorites source
+
+The standalone dock cannot construct Kicker's private `RootModel` with its
+Plasma applet interface, so that model may report an empty favorites list even
+when Kickoff has saved favorites. `PlasmaFavoritesReader` instead reads the
+configured Kickoff applet IDs from `plasma-org.kde.plasma.desktop-appletsrc`,
+asks ActivityManager for the current activity, and reads the matching and
+global Kickoff `ordering` entries from `kactivitymanagerd-statsrc`. It performs
+no writes to either Plasma file. The current activity entries are returned
+before global entries, with duplicates removed.
+
+Windows Start waits for the snapshot and catalog, preserves the current
+KDockW pin order, then appends matching Plasma favorites once. A legacy
+`existingPinsPreserved` marker permits a single migration retry because an
+older importer skipped all Plasma favorites when any KDockW pin existed. The
+reader's real-session snapshot was available and contained eight raw favorite
+references in the tested session; the diagnostic popup could not be opened
+without a real input event, so end-to-end UI import remains unverified pending
+owner acceptance.
+
 The fifth owner review reported 10/25 criteria. The old report's expected
 `visual-review-diagnostic` path differed from the standard v0.6.0 launcher
 path, but the precise executable used by that owner observation was not

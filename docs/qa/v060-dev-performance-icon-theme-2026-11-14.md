@@ -642,3 +642,94 @@ Adding apps directly from Favorites was explicitly not requested.
 - A bounded actual Wayland popup open was attempted through the diagnostic route. KWin rejected the synthetic programmatic popup because the parent surface had not received a real input event (`Failed to create grabbing popup` / `Cannot attach popup of unknown type`). No user input was synthesized and no Wayland visual acceptance is claimed. A test-only/offscreen render does not substitute for the owner's real session.
 - The final live TaskManager preflight was **INVALID**, not a performance sample: test-window insertion, title update, grouping and removal were observed, but no `DecorationRole` transition was recorded (`decorationRoleChanged=false`). The fixture icon pixels changed, but the dock model did not report the required role update. Do not use this run as evidence of TaskManager icon-transition functionality or performance.
 - The candidate was stopped and `/usr/bin/kdockw` v0.5.1 restored under `kdockw-v051-restored.service`. Production config remains unchanged at SHA-256 `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`; the permission-preserving backup is retained. No release, tag, or push was made. Launcher and built-in widget cards remain `review` pending owner visual/functional acceptance.
+
+## Seventh Launcher polish cycle — 2026-11-16
+
+The scope was limited to the owner's remaining context-menu/dialog issues,
+Plasma favorites discovery, and the previously invalid live TaskManager
+preflight. The owner has not visually accepted this new candidate.
+
+### Implementation
+
+- Windows Start now maps context-menu placement from the actual right-click
+  event point into the Qt Quick Controls overlay. Context menus no longer take
+  the launcher row width; their implicit size follows the content. The QML
+  regression clicks at a non-center row position and checks both compact width
+  and location relative to that event.
+- Launchpad menu items resolve selected/hover/pressed foregrounds and surfaces
+  from the current KDockW/Kirigami theme. The nested Move menu has an explicit
+  theme surface and palette. With no destination folders, Move remains disabled
+  and no empty submenu is opened; Create folder remains available.
+- Folder create/rename/delete dialogs use themed title and close controls,
+  localized Cancel/Delete labels, equal-height right-aligned actions, and
+  consistent spacing. QML tests cover these structures and selected text
+  contrast.
+- The original favorites source was a Kicker private `RootModel` without the
+  required Plasma applet interface. A read-only `PlasmaFavoritesReader` now
+  resolves configured Kickoff applet IDs and the current ActivityManager
+  activity, then reads activity-specific and global ordered favorites from
+  `kactivitymanagerd-statsrc`. It merges valid entries after existing pins and
+  has a single retry for the legacy `existingPinsPreserved` marker. The static
+  parser and asynchronous D-Bus reader both returned `available=true` with
+  eight raw favorite references in the current session. This does not prove
+  those references were imported into an interactive Launcher: the candidate
+  profile recorded `noFavorites`, and the diagnostic popup was refused by KWin
+  before a real input event. Treat the end-to-end import as **unverified**.
+
+### TaskManager preflight
+
+The isolated candidate path was
+`/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`,
+version `0.6.0-dev`, GNU Build ID
+`95d759e0b02e1e566080dad5a7193b224975d8eb`. Source and staged ELF Build IDs
+match; launcher metadata preflight passed while stable v0.5.1 remained active.
+The final live XWayland fixture preflight was **INVALID**:
+`protocolAndExistingWindows`, `testWindowAppeared`, `titleChanged`, and
+`testWindowDisappeared` passed; `decorationRoleChanged` and `groupingObserved`
+failed. The fixture's own icon pixel digest changed, but no matching
+TaskManager DecorationRole signal arrived during the isolated icon interval.
+The new diagnostic profile retained `SeparateLaunchers=true`, which
+intentionally prevents grouping, so grouping was not a valid expected
+transition in that profile. Do not treat this run as performance evidence or
+weaken the icon-role criterion. Evidence is in
+`diagnostics/v060-dev/logs/launcher-final-polish-20261116/taskmanager-preflight-final/`.
+
+### Test results and remaining limits
+
+- Full Diagnostic Release CTest: **228/228 passed**.
+- Full Production Release CTest: **220/221 passed**. `kdockw_integration_tests`
+  failed its preview miniature hover wait after an out-of-window mouse event;
+  the exact case passed in isolation (67 assertions). Preserve the original
+  full-run failure; do not report Production as fully passing.
+- Targeted Launcher QML CTest: **3/3 passed**. Favorites migration/reader unit
+  cases passed (9 and 16 assertions); the isolated production preview-hover
+  retry passed 67 assertions.
+- Stage preflight passed for the exact staged ELF above. The Russian MO file
+  was installed from the current source; translation, shell, Python, and
+  `git diff --check` results are recorded after the final documentation edit.
+- KWin refused the programmatic popup because its parent had not received a
+  real input event. No fake Wayland input was sent and no compositor screenshot
+  was obtained. Real menu/dialog theme checks and favorite import remain owner
+  acceptance items.
+- The candidate was stopped and `/usr/bin/kdockw` v0.5.1 restored. Its active
+  service is `kdockw-v051-restored.service`; production config and the
+  permission-preserving backup still match SHA-256
+  `68776cc4d3b766d91c9c09824f768f902ba2f53f82e340d7b314b74824b7a621`.
+  Cards remain `review`; no release, tag, or push was created.
+
+### Final stable-state verification — 2026-11-16
+
+After the diagnostic candidate had been stopped and the v0.6.0 launcher
+preflight completed without launching a second dock, the active stable process
+updated only its automatic-update metadata in the production config:
+`LastAutomaticUpdateAttempt`, `LastSuccessfulUpdateCheck`, and
+`ReleasesApiETag`. No pins or widget settings differed from the pre-run
+permission-preserving backup. The current production config was snapshotted
+without modification to
+`diagnostics/v060-dev/config-backups/kdockwrc.final-stable-state-20261116`
+(mode 0600); its SHA-256 matches the live file at capture time:
+`0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5`.
+The pre-run backup remains intact. Russian catalog source/stage SHA-256 both
+equal `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`;
+`msgfmt`, shell/Python checks, and `git diff --check` passed. Stable
+`/usr/bin/kdockw` remained active and the diagnostic service inactive.

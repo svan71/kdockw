@@ -16,7 +16,8 @@ carried forward from the Krema-based development period.
 - Added three switchable launcher views: a searchable Launchpad app grid, Windows Start with ordered persistent pins and the full app list, and KDE Hierarchical browsing of the original nested menu.
 - Added live launcher style settings, saved launcher icons, search and keyboard navigation, and popup dismissal on Escape, outside click, dock hide, output change, and successful launch.
 - Added Spring Magnification support for the Application Launcher dock icon while keeping spacers and separators at their configured size.
-- Added an optional one-time import of KDE Plasma launcher favorites into an empty Windows Start pin list, preserving the source order and KDockW-owned settings afterward.
+- Added a read-only Plasma Kickoff favorites reader that resolves the configured applet and current ActivityManager activity without relying on Kicker's private applet interface.
+- Added one-time Windows Start favorite migration that appends valid Plasma favorites after existing KDockW pins while preserving their order.
 - Added paginated Launchpad navigation and persistent user-created application folders.
 - Added a shared launcher favorites list to KDE Hierarchical, using the existing Windows Start favorites.
 - Added a 380 ms horizontal Launchpad page transition with bounded current/target page delegates and cancellation on search, layout changes, and popup close.
@@ -24,7 +25,7 @@ carried forward from the Krema-based development period.
 ### Changed
 
 - Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
-- Anchored Launcher context menus to the clicked item through the Qt Quick Controls overlay and applied the resolved KDockW/Kirigami theme palette to all three menus.
+- Anchored Launcher context menus to the actual click position through the Qt Quick Controls overlay, sized them from their contents, and applied the resolved KDockW/Kirigami theme to nested menus and states.
 - Rendered Launcher navigation buttons and context-menu actions with explicit theme-aware controls so their visibility and contrast do not depend on the active Qt Quick Controls style.
 
 ### Fixed
@@ -32,7 +33,7 @@ carried forward from the Krema-based development period.
 - Prevented a crash while creating a Launchpad folder by keeping the native move-to-folder menu stable while its folder model changes.
 - Synchronized both Launchpad page grids during the 220 ms slide and released the old page after the transition.
 - Kept the Windows Start navigation actions and KDE Hierarchical Back control visible in the loaded native popup, with regression coverage against the real popup and catalog.
-- Refreshed the read-only Plasma favorites source on initialization and kept favorite import pending until the Kicker model reports readiness.
+- Replaced the empty standalone Kicker model probe with a read-only ActivityManager/KConfig favorites snapshot and retained a readiness gate before importing pins.
 - Gave the Launchpad folder-name field an explicit theme-derived surface, text, placeholder, focus, and selection palette for readable light and dark themes.
 - Avoided reloading every dock icon when TaskManager updates one task's icon, reducing repeated icon work and preserving responsive dock updates.
 - Cleaned up the integration-test QObject fixture before `QApplication` teardown, preventing a post-test `std::bad_alloc` abort after all assertions had passed.
@@ -48,6 +49,7 @@ carried forward from the Krema-based development period.
 - Added accessible Launchpad folder actions, themed name validation and delete confirmation, and move/extract actions that preserve unique app membership.
 - Kept the Windows Start “All applications” action visible and actionable in the pinned home header; added geometry coverage for zero, one and many pins.
 - Disabled unintended horizontal GridView interaction in paginated Launchpad and constrained its grid width to the viewport; no explicit horizontal ScrollBar was present in the QML.
+- Localized the folder-dialog Cancel action, aligned equal-height actions at the right edge, and removed the empty Move to folder submenu when no destination exists.
 
 ### Changed
 

@@ -346,12 +346,14 @@ The signed tag and all five release assets were verified on the
   Hierarchical), clamped to the selected output. Popup surfaces and controls
   derive colors from the resolved KDockW dock theme. Folder previews read real
   descendant app records from QVariantList-backed KService groups. Windows
-  Start can seed an empty pin list once from the optional read-only Plasma
-  Kicker favorites model; existing pins are preserved, import attempts persist,
-  and unavailable private Kicker APIs leave the launcher usable. Favorites
-  mapping and visual corrections still require owner retest in Plasma/Wayland.
-  Local tests exercise native popup-window bounds, icons, and one-time import
-  state; they are not visual acceptance.
+  Start reads configured Kickoff favorite clients from the current ActivityManager
+  activity and global KConfig snapshot; the standalone dock does not rely on
+  Kicker's private applet interface. A one-time migration appends valid Plasma
+  entries after existing KDockW pins. Unit and QML tests cover ordering and
+  legacy state. A read-only live probe found eight source references, but the
+  programmatic Wayland popup was rejected before input and end-to-end import
+  remains unverified. Visual and functional acceptance in Plasma/Wayland
+  remains open.
   The new Launchpad model stores user folders, membership and root order in
   KDockW settings using stable folder IDs; it does not alter XDG entries or
   system favorites. Automated checks cover persistence, pagination, filtering,
@@ -453,6 +455,8 @@ The signed tag and all five release assets were verified on the
 The owner confirmed that Plasma's built-in KWin Scale/Genie effects already
 minimize windows to the correct KDockW icons. KDockW will not reimplement those
 effects.
+
+Seventh Launcher polish cycle (2026-11-16): Windows Start menus use the actual click point and content-sized surfaces; Launchpad nested menus and interaction states use the KDockW theme, and folder movement is disabled without destinations. Folder dialogs are aligned and localized. A read-only live source probe found eight Plasma favorite references, but KWin rejected programmatic popup opening before real input, so interactive import is unverified. Full Diagnostic CTest passed 228/228; Production finished 220/221 with one preview-hover failure in the full run and a passing isolated retry. Live TaskManager preflight remains INVALID (`decorationRoleChanged=false`); grouping was disabled by `SeparateLaunchers=true` in the new profile. Owner functional and visual acceptance remains open; the existing cards stay `review`.
 
 ## Technical debt — Classic Zoom Performance Profile
 
