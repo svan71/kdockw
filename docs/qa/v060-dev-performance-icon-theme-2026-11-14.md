@@ -733,3 +733,50 @@ The pre-run backup remains intact. Russian catalog source/stage SHA-256 both
 equal `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`;
 `msgfmt`, shell/Python checks, and `git diff --check` passed. Stable
 `/usr/bin/kdockw` remained active and the diagnostic service inactive.
+
+## Eighth Launcher visual refinement cycle — 2026-11-16
+
+### Implemented changes
+
+- The widget manager now clamps its preferred width to the usable screen
+  geometry and keeps its content width bound to the viewport with horizontal
+  scrolling disabled. Regression coverage checks the typical and narrow
+  output cases and verifies that controls remain reachable.
+- Each default Launcher style has a separate theme-aware dock icon:
+  Launchpad uses `view-grid`, Windows Start uses
+  `applications-all-symbolic`, and KDE Hierarchical uses `view-list-tree`.
+  Symbolic mask rendering chooses a foreground against the dock background;
+  a custom icon selection bypasses the generated style icon. Dock entry schema
+  v5 persists that override bit. Legacy v1–v4 Launcher entries infer a custom
+  override when their saved name is not the old `start-here-kde` default.
+- Folder Stack icons use the same indicator-aware cross-axis alignment as the
+  task icon for top, bottom, left, and right docks. Built-in separators now use
+  `Kirigami.Separator` with the adjacent TaskManager separator's geometry and
+  visual properties.
+
+### Verification
+
+- The first full Production Release CTest run ended **221/222**: all four
+  data rows of the new Folder Stack alignment test compared absolute
+  coordinates of neighboring items. The test was corrected to compare only
+  the cross-axis center, and the focused QML group passed **8/8**.
+- The final full Production Release CTest passed **222/222** in 325.00 s.
+- Full Diagnostic Release CTest passed **229/229** in 320.58 s.
+- `tools/kdockw-v060-dev-start --preflight-only` exited 0, installed the
+  current candidate into the isolated stage, resolved KService metadata, and
+  verified the required KWin grants. It printed a non-fatal Git message that
+  the current branch has no configured upstream; preflight still passed.
+- Build-tree and staged ELF GNU Build ID match:
+  `9616fae644d0b853d6eaa61a092993ec8c54e7b1`. The Russian catalog source and
+  staged MO have matching SHA-256
+  `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`.
+  `msgfmt --check --check-format`, `bash -n` for tracked shell scripts, Python
+  AST parsing under `tools/` and `tests/`, and `git diff --check` passed.
+
+The v0.6 candidate was not launched because stable `/usr/bin/kdockw` v0.5.1
+was active. The live production config still matches the permission-preserving
+0600 snapshot at SHA-256
+`0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5`. No real
+Plasma visual acceptance is claimed for this cycle. Built-in Dock Widgets,
+Built-in Dock Widget Model, and Application Launcher remain `review`; no
+release, tag, or push was created.

@@ -25,6 +25,8 @@ carried forward from the Krema-based development period.
 ### Changed
 
 - Improved Launcher text contrast across normal, hover and selected surfaces, and aligned the Windows Start home search, heading and pinned grid at the top.
+- Gave each default Launcher style its own theme-aware icon, selected for contrast against the dock, while retaining user-selected icon overrides across style changes and settings reloads.
+- Matched the built-in separator's line thickness, length, orientation, and opacity to the adjacent TaskManager separator.
 - Anchored Launcher context menus to the actual click position through the Qt Quick Controls overlay, sized them from their contents, and applied the resolved KDockW/Kirigami theme to nested menus and states.
 - Rendered Launcher navigation buttons and context-menu actions with explicit theme-aware controls so their visibility and contrast do not depend on the active Qt Quick Controls style.
 
@@ -50,6 +52,7 @@ carried forward from the Krema-based development period.
 - Kept the Windows Start “All applications” action visible and actionable in the pinned home header; added geometry coverage for zero, one and many pins.
 - Disabled unintended horizontal GridView interaction in paginated Launchpad and constrained its grid width to the viewport; no explicit horizontal ScrollBar was present in the QML.
 - Localized the folder-dialog Cancel action, aligned equal-height actions at the right edge, and removed the empty Move to folder submenu when no destination exists.
+- Sized the widget manager to the available screen width, removed horizontal overflow, and aligned Folder Stack icons to the same edge-based icon geometry as task and launcher icons.
 
 ### Changed
 

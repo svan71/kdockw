@@ -12,7 +12,7 @@ extensions can share the persisted item and presentation path.
   and built-in widget descriptors. TaskManager remains authoritative for live
   applications and windows.
 - `DockEntriesCodec` reads v1/v2 task and Folder Stack formats and v3 widget
-  descriptors, and writes v4. Widget descriptors store stable ID, kind,
+  descriptors, and writes v5. Widget descriptors store stable ID, kind,
   start/center/end slot, visibility, and supported size. Configuration cannot
   load an executable or QML component.
 - `DockPresentationModel` merges TaskManager rows with saved descriptors. A
@@ -26,7 +26,8 @@ extensions can share the persisted item and presentation path.
 - A QML manager operates directly on `DockEntriesModel`: add/remove, reorder,
   resize, change slot, and toggle visibility. Its persistent entry point is a
   dock-level right-click menu and does not depend on a built-in widget being
-  present. The manager is an adaptive, scrollable card list; left-clicking
+  present. The manager is an adaptive, scrollable card list with a
+  screen-clamped preferred width and no horizontal scrolling; left-clicking
   empty dock space has no manager side effect. Model changes use the existing
   `entriesChanged` persistence path.
 - `DockView` and Layer Shell continue to own output selection, surface
@@ -44,7 +45,11 @@ one newly added row because style and Start pins are global settings; loading
 does not remove or rewrite pre-existing duplicate rows.
 
 The v3 separator migrates to visible with automatic size (`size=0`). Version 4
-stores explicit size and visibility. Fixed spacers accept 4–512 logical
+stores explicit size and visibility. Version 5 stores whether an Application
+Launcher icon is a user override. Earlier launcher entries infer an override
+from their saved icon name; new entries use a style-specific theme icon until
+the user chooses an icon. The override is retained across style changes and
+configuration reloads. Fixed spacers accept 4–512 logical
 pixels; separators can use automatic size or an explicit 4–512 logical-pixel
 primary slot extent while keeping the same orientation-aware mark.
 

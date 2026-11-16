@@ -311,7 +311,11 @@ The signed tag and all five release assets were verified on the
   entries; dynamic tasks stay outside that reorder path. Stretching spacers are
   deferred because the current content-wrapping `Flow` has no safe free-space
   allocator. Unit and QML regressions pass; real Plasma/Wayland acceptance
-  remains in review. The internal model has no public plugin API.
+  remains in review. The current visual refinement keeps the widget manager
+  within the screen width, gives the three Launcher styles distinct
+  theme-aware default icons without replacing custom overrides, aligns Folder
+  Stack icons with dock icon bounds, and matches the built-in separator to the
+  adjacent TaskManager separator. The internal model has no public plugin API.
 - [ ] **Application Launcher Widget** (`5c079ef1a7384398`, review): retain the
   shared KService/KServiceGroup catalog, KApplicationTrader search, KIO launch
   path, persisted launcher/style/pin state, cached incremental catalog loading,
