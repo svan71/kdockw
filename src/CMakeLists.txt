@@ -63,6 +63,8 @@ add_library(kdockw_lib STATIC
     models/applicationcatalog.cpp
     models/applicationlauncherstate.h
     models/applicationlauncherstate.cpp
+    models/plasmafavoritesreader.h
+    models/plasmafavoritesreader.cpp
     models/dockentriesmodel.h
     models/dockentriesmodel.cpp
     models/dockpresentationmodel.h

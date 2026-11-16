@@ -1998,6 +1998,14 @@ msgid "Save"
 msgstr "Сохранить"
 
 #: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Cancel"
+msgstr "Отмена"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
+msgid "Delete"
+msgstr "Удалить"
+
+#: src/qml/ApplicationLauncherLaunchpad.qml
 msgid "Applications in %1 will return to Applications. They will not be removed from your system."
 msgstr "Приложения из папки «%1» вернутся в раздел приложений. Они не будут удалены из системы."
 

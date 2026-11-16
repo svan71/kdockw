@@ -91,7 +91,7 @@ ColumnLayout {
                 : down ? launcherPopup.selectedForeground
                     : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -132,10 +132,10 @@ ColumnLayout {
             objectName: "hierarchicalCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -223,7 +223,6 @@ ColumnLayout {
     QQC2.Menu {
         id: favoriteMenu
         objectName: "hierarchicalFavoriteContextMenu"
-        width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
         modal: false
         focus: true
         closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutside
@@ -251,12 +250,12 @@ ColumnLayout {
             objectName: "hierarchicalFavoriteToggle"
             text: page.launcherState.isPinned(page.contextEntry.id)
                 ? i18n("Remove from Favorites") : i18n("Add to Favorites")
-            palette.text: down ? launcherPopup.selectedForeground
+            palette.text: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -265,6 +264,8 @@ ColumnLayout {
             onTriggered: page.launcherState.togglePinned(page.contextEntry.id)
         }
         background: Rectangle {
+            implicitWidth: Kirigami.Units.gridUnit * 8
+            implicitHeight: Kirigami.Units.gridUnit * 2
             color: launcherPopup.surface
             border.color: launcherPopup.borderColor
             radius: Kirigami.Units.smallSpacing

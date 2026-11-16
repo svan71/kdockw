@@ -4,6 +4,7 @@
 #include "kdockw.h"
 #include "models/applicationcatalog.h"
 #include "models/applicationlauncherstate.h"
+#include "models/plasmafavoritesreader.h"
 #include "models/taskiconprovider.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -345,7 +346,7 @@ TEST_CASE("Windows Start imports valid Plasma favorites once without overwriting
     CHECK(restored.pinnedApplicationIds() == QStringList{QStringLiteral("org.example.one.desktop")});
 }
 
-TEST_CASE("Windows Start records unavailable Plasma favorites and preserves existing pins", "[application-launcher][state][favorites]")
+TEST_CASE("Windows Start records unavailable Plasma favorites and appends them after existing pins", "[application-launcher][state][favorites]")
 {
     {
         const ScopedConfigHome home;
@@ -365,10 +366,31 @@ TEST_CASE("Windows Start records unavailable Plasma favorites and preserves exis
         settings.load();
         settings.setStartPinnedApplications({QStringLiteral("existing.desktop")});
         kdockw::ApplicationLauncherState state(&settings);
-        CHECK_FALSE(state.importPlasmaFavorites({QStringLiteral("applications:new.desktop")},
-                                                 {QStringLiteral("new.desktop")}, true));
-        CHECK(state.pinnedApplicationIds() == QStringList{QStringLiteral("existing.desktop")});
+        CHECK(state.importPlasmaFavorites({QStringLiteral("applications:new.desktop")},
+                                           {QStringLiteral("new.desktop")}, true));
+        CHECK(state.pinnedApplicationIds() == QStringList{
+            QStringLiteral("existing.desktop"), QStringLiteral("new.desktop")});
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("imported"));
+    }
+    {
+        const ScopedConfigHome home;
+        KDockWSettings settings;
+        settings.load();
+        settings.setStartPinnedApplications({QStringLiteral("existing.desktop")});
+        settings.setStartFavoritesImportAttempted(true);
+        settings.setStartFavoritesImportStatus(QStringLiteral("existingPinsPreserved"));
+        kdockw::ApplicationLauncherState state(&settings);
+        CHECK(state.startFavoritesImportAttempted());
         CHECK(state.startFavoritesImportStatus() == QStringLiteral("existingPinsPreserved"));
+        CHECK(state.importPlasmaFavorites({QStringLiteral("applications:new.desktop")},
+                                           {QStringLiteral("new.desktop")}, true));
+        CHECK(state.pinnedApplicationIds() == QStringList{
+            QStringLiteral("existing.desktop"), QStringLiteral("new.desktop")});
+        CHECK(state.startFavoritesImportStatus() == QStringLiteral("existingPinsPlusPlasmaFavorites"));
+        CHECK_FALSE(state.importPlasmaFavorites({QStringLiteral("applications:later.desktop")},
+                                                 {QStringLiteral("later.desktop")}, true));
+        CHECK(state.pinnedApplicationIds() == QStringList{
+            QStringLiteral("existing.desktop"), QStringLiteral("new.desktop")});
     }
 }
 
@@ -390,6 +412,55 @@ TEST_CASE("Windows Start waits for Plasma favorites readiness and finalizes a re
                                              {QStringLiteral("later.desktop")}, true, true));
     CHECK(state.pinnedApplicationIds().isEmpty());
     CHECK(state.startFavoritesImportStatus() == QStringLiteral("noFavorites"));
+}
+
+TEST_CASE("Plasma favorites reader resolves the configured Kickoff instance and preserves activity order", "[application-launcher][favorites][plasma]")
+{
+    QTemporaryDir configHome;
+    REQUIRE(configHome.isValid());
+    QFile appletConfig(configHome.filePath(QStringLiteral("plasma-org.kde.plasma.desktop-appletsrc")));
+    REQUIRE(appletConfig.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray appletData = R"([Containments][1][Applets][75]
+plugin=org.kde.plasma.kickoff
+
+[Containments][1][Applets][76]
+plugin=org.kde.plasma.digitalclock
+)";
+    REQUIRE(appletConfig.write(appletData) == appletData.size());
+    appletConfig.close();
+
+    QFile statsConfig(configHome.filePath(QStringLiteral("kactivitymanagerd-statsrc")));
+    REQUIRE(statsConfig.open(QIODevice::WriteOnly | QIODevice::Text));
+    const QByteArray statsData = R"([Favorites-org.kde.plasma.kickoff.favorites.instance-75-activity-1]
+ordering=applications:org.example.one.desktop,applications:org.example.two.desktop
+
+[Favorites-org.kde.plasma.kickoff.favorites.instance-75-global]
+ordering=applications:org.example.two.desktop,applications:org.example.three.desktop,preferred://browser
+
+[Favorites-org.kde.plasma.kickoff.favorites.instance-76-activity-1]
+ordering=applications:org.example.must-not-leak.desktop
+)";
+    REQUIRE(statsConfig.write(statsData) == statsData.size());
+    statsConfig.close();
+
+    const QVariantMap snapshot = kdockw::PlasmaFavoritesReader::readSnapshot(
+        configHome.path(), QStringLiteral("activity-1"));
+    CHECK(snapshot.value(QStringLiteral("available")).toBool());
+    CHECK(snapshot.value(QStringLiteral("favoriteIds")).toStringList() == QStringList{
+        QStringLiteral("applications:org.example.one.desktop"),
+        QStringLiteral("applications:org.example.two.desktop"),
+        QStringLiteral("applications:org.example.three.desktop"),
+        QStringLiteral("preferred://browser"),
+    });
+
+    const QVariantMap globalOnly = kdockw::PlasmaFavoritesReader::readSnapshot(
+        configHome.path(), QStringLiteral("missing-activity"));
+    CHECK(globalOnly.value(QStringLiteral("available")).toBool());
+    CHECK(globalOnly.value(QStringLiteral("favoriteIds")).toStringList() == QStringList{
+        QStringLiteral("applications:org.example.two.desktop"),
+        QStringLiteral("applications:org.example.three.desktop"),
+        QStringLiteral("preferred://browser"),
+    });
 }
 
 TEST_CASE("Launchpad folders persist identity, membership, names, and root position", "[application-launcher][state][folders]")

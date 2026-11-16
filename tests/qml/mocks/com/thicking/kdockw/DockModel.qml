@@ -118,27 +118,34 @@ QtObject {
             return true
         }
         function importPlasmaFavorites(favoriteIds, availableApplicationIds, sourceAvailable) {
-            if (startFavoritesImportAttempted) return false
-            startFavoritesImportAttempted = true
+            const retryLegacyPreservedPins = startFavoritesImportAttempted
+                && startFavoritesImportStatus === "existingPinsPreserved"
+                && pinnedApplicationIds.length > 0
+            if (startFavoritesImportAttempted && !retryLegacyPreservedPins) return false
             if (!sourceAvailable) {
                 startFavoritesImportStatus = "unavailable"
                 return false
             }
-            if (pinnedApplicationIds.length) {
-                startFavoritesImportStatus = "existingPinsPreserved"
-                return false
-            }
+            startFavoritesImportAttempted = true
             const valid = new Set(availableApplicationIds)
-            const seen = new Set()
-            const imported = []
+            const seen = new Set(pinnedApplicationIds)
+            const imported = pinnedApplicationIds.slice()
+            let added = 0
             for (let id of favoriteIds) {
                 id = String(id).replace(/^applications:/, "")
-                if (valid.has(id) && !seen.has(id)) { seen.add(id); imported.push(id) }
+                if (valid.has(id) && !seen.has(id)) {
+                    seen.add(id)
+                    imported.push(id)
+                    added++
+                }
             }
-            pinnedApplicationIds = imported
-            startFavoritesImportStatus = imported.length ? "imported"
-                : favoriteIds.length ? "noMatchingApps" : "noFavorites"
-            return imported.length > 0
+            if (added) pinnedApplicationIds = imported
+            startFavoritesImportStatus = added
+                ? retryLegacyPreservedPins ? "existingPinsPlusPlasmaFavorites" : "imported"
+                : pinnedApplicationIds.length
+                    ? retryLegacyPreservedPins ? "existingPinsChecked" : "existingPinsPreserved"
+                    : favoriteIds.length ? "noMatchingApps" : "noFavorites"
+            return added > 0
         }
     }
     readonly property var dockEntriesModel: ListModel {

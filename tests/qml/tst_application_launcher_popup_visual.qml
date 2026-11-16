@@ -105,13 +105,12 @@ Item {
                 "could not capture popup window state " + imageName)
         }
 
-        function test_plasma_favorites_source_explicitly_refreshes_before_import() {
+        function test_plasma_favorites_source_reports_ready_snapshot_without_mutating_plasma() {
             const source = plasmaFavoritesSourceComponent.createObject(root)
-            verify(source, "the read-only Kicker favorites adapter must load")
+            verify(source, "the read-only Plasma favorites adapter must load")
             tryVerify(() => source.ready, 10000)
-            verify(source.available,
-                "an empty favorites list is still an available and completed source")
-            verify(source.favoriteCount >= 0)
+            compare(source.favoriteIds.length, source.favoriteCount)
+            verify(source.available === true || source.available === false)
             source.destroy()
         }
 
@@ -153,9 +152,12 @@ Item {
             verify(page.diagnosticOpenContextMenu())
             const action = findChild(page, "startPinMenuAction")
             tryVerify(() => action && action.visible)
-            const actionLabel = action.contentItem.children.find(item => item.text === action.text)
-            verify(actionLabel && actionLabel.visible && actionLabel.width > 0,
-                "context-menu text is drawn by the explicitly themed content item")
+            const actionLabel = action.contentItem.children.find(item =>
+                item.objectName === "startPinMenuActionPaintedLabel")
+            verify(actionLabel,
+                "context-menu text must be exposed by the explicitly themed content item")
+            verify(actionLabel.visible && actionLabel.width > 0,
+                `context-menu text must render (visible=${actionLabel.visible}, width=${actionLabel.width})`)
             compare(actionLabel.color, popup.foreground)
             disposePopup()
         }

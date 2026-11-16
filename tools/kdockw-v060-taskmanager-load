@@ -330,6 +330,11 @@ class Scenario:
         icon_after = first.send("setIcon", self.manifest["icons"]["beta"]).get("iconPixelSha256")
         icon_pixels_changed = bool(icon_before and icon_after and icon_before != icon_after)
         self.mark("functional-icon-changed", appId=app_id, pixelsChanged=icon_pixels_changed)
+        # Keep later group insertion dataChanged signals out of the icon-only
+        # observation window. They can legitimately report all roles and must
+        # not be mistaken for a window-icon update.
+        self.wait(2, "functional-icon-settle")
+        icon_log = log_path.read_text(encoding="utf-8", errors="replace")[icon_log_start:]
 
         second = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 2")
         third = self.open("alpha", f"KDockW P0 PREFLIGHT {run_id} GROUP 3")
@@ -340,7 +345,6 @@ class Scenario:
         self.wait(3, "functional-removal-settle")
 
         log = log_path.read_text(encoding="utf-8", errors="replace")[log_start:]
-        icon_log = log_path.read_text(encoding="utf-8", errors="replace")[icon_log_start:]
         return assess_taskmanager_transitions(log, run_id, existing_windows, icon_log, icon_pixels_changed)
 
     def run(self) -> None:

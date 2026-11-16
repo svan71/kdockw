@@ -398,6 +398,7 @@ controls_style_args=()
 if [[ -n "$controls_style" ]]; then
     controls_style_args+=(--setenv="QT_QUICK_CONTROLS_STYLE=${controls_style}")
 fi
+plasma_config_args=(--setenv="KDOCKW_PLASMA_CONFIG_HOME=${source_config_home}")
 runtime_observer_log="${diagnostic_root}/logs/runtime-${profile_name:-default}-$(date +%Y%m%d-%H%M%S).jsonl"
 runtime_observer_service="kdockw-v060-runtime-observer-$(date +%s)"
 if [[ "$performance_diagnostics" == true ]]; then
@@ -427,6 +428,7 @@ systemd-run --user --no-block --collect --unit="$service" \
     "${kservice_trace_args[@]}" \
     "${launcher_probe_args[@]}" \
     "${controls_style_args[@]}" \
+    "${plasma_config_args[@]}" \
     --setenv=KDOCKW_GEOMETRY_TRACE=1 \
     --setenv="XDG_DATA_HOME=${runtime_data_home}" \
     --setenv="XDG_DATA_DIRS=${runtime_data_dirs}" \

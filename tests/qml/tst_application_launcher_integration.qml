@@ -2,8 +2,10 @@
 // SPDX-FileCopyrightText: 2026 KDockW Contributors
 
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtTest
 import org.kde.kirigami as Kirigami
+import "../../src/qml/BadgeTextColor.js" as BadgeTextColor
 import "../../src/qml" as Launcher
 
 Item {
@@ -48,6 +50,7 @@ Item {
         property color focusColor: "#315f9b"
         property int requestedWidth: 900
         property int requestedHeight: 600
+        property rect screenGeometry: Qt.rect(0, 0, 1200, 800)
         property bool favoritesSourceReady: true
         property bool favoritesSourceAvailable: false
         property var favoritesSourceLoader: null
@@ -199,6 +202,18 @@ Item {
             page.openContextMenu(app, grid.itemAtIndex(0), Qt.point(32, 32))
             const create = findChild(page, "launchpadCreateFolderAction")
             verify(create && create.visible, "Create folder is a real menu action")
+            const emptyMoveMenu = findChild(page, "launchpadMoveToFolderMenu")
+            verify(emptyMoveMenu && !emptyMoveMenu.enabled,
+                "Move to folder must be disabled when no destination exists")
+            verify(!emptyMoveMenu.visible,
+                "the empty move action must not open a placeholder submenu")
+            const launchpadMenu = findChild(page, "launchpadContextMenu")
+            verify(launchpadMenu.width < 260,
+                "short context-menu content must not inherit Launcher width")
+            const menuItem = findChild(launchpadMenu, "launchpadCreateFolderActionPaintedLabel")
+            verify(menuItem)
+            compare(menuItem.color, popup.foreground)
+            verify(BadgeTextColor.contrastRatio(menuItem.color, popup.surface) >= 4.5)
             create.click()
             tryVerify(() => dialog.visible)
             verify(!findChild(page, "launchpadContextMenu").visible,
@@ -206,14 +221,23 @@ Item {
             compare(field.color, popup.foreground)
             compare(field.palette.base, popup.alternateSurface)
             compare(field.selectionColor, popup.focusColor)
+            const title = findChild(dialog, "launchpadFolderNameDialogTitle")
+            const close = findChild(dialog, "launchpadFolderNameClose")
+            verify(title && close && close.visible)
+            compare(title.color, popup.foreground)
+            const cancel = findChild(dialog, "launchpadFolderNameCancel")
+            verify(cancel && cancel.visible)
+            compare(cancel.text, i18n("Cancel"))
+            verify(Math.abs(cancel.height - save.height) < 1,
+                "dialog actions must have equal heights")
+            verify(cancel.x < save.x && save.x + save.width <= dialog.footer.width + 1,
+                "dialog actions must be adjacent and right aligned")
             capture(root, "launchpad-create-folder-dialog")
             dialog.submit()
             compare(ApplicationLauncherStateFixture.state.launchpadFolders.length, 0,
                 "empty names must not mutate the real state backend")
             verify(dialog.validationMessage.length > 0,
                 "empty folder names must show validation feedback")
-            const cancel = findChild(dialog, "launchpadFolderNameCancel")
-            verify(cancel && cancel.visible)
             cancel.click()
             tryVerify(() => !dialog.visible)
             compare(ApplicationLauncherStateFixture.state.launchpadFolders.length, 0)
@@ -319,6 +343,44 @@ Item {
             ApplicationLauncherStateFixture.reload()
             compare(ApplicationLauncherStateFixture.state.launchpadFolders.length, 0)
             disposePage(restoredPage)
+        }
+
+        function test_windows_start_context_menu_uses_actual_right_click_position_and_content_width() {
+            ApplicationLauncherStateFixture.reset()
+            const app = { id: "org.example.context.desktop", type: "application",
+                name: "Context app", icon: "applications-other" }
+            catalog.applications = [app]
+            catalog.menuTree = [app]
+            const page = makePage(startComponent, 900, 600)
+            page.showAllApplications()
+            const list = findChild(page, "startAllApplications")
+            tryVerify(() => list && list.count === 2)
+            list.positionViewAtIndex(1, ListView.Beginning)
+            wait(0)
+            const row = list.itemAtIndex(1)
+            tryVerify(() => list.itemAtIndex(1) !== null)
+            verify(row || list.itemAtIndex(1))
+            const targetRow = list.itemAtIndex(1)
+            const clickX = Math.min(18, targetRow.width - 1)
+            const clickY = Math.min(20, targetRow.height - 1)
+            const expected = targetRow.mapToItem(QQC2.Overlay.overlay, clickX, clickY)
+            mouseClick(targetRow, clickX, clickY, Qt.RightButton)
+            const menu = findChild(page, "startApplicationContextMenu")
+            tryVerify(() => menu && menu.visible)
+            verify(menu.width < 260,
+                "a one-action Start context menu should size to content")
+            verify(Math.abs(menu.x - expected.x) < 12 && Math.abs(menu.y - expected.y) < 12,
+                `context menu should open at the click point (${expected.x}, ${expected.y}), got (${menu.x}, ${menu.y})`)
+            const pinAction = findChild(menu, "startPinMenuAction")
+            menu.currentIndex = 0
+            tryVerify(() => pinAction && pinAction.highlighted)
+            const pinLabel = findChild(pinAction, "startPinMenuActionPaintedLabel")
+            verify(pinLabel)
+            compare(pinLabel.color, popup.selectedForeground)
+            verify(BadgeTextColor.contrastRatio(pinLabel.color, popup.selectedSurface) >= 4.5,
+                "keyboard-highlighted menu text must contrast with its selected surface")
+            menu.close()
+            disposePage(page)
         }
 
         function test_launchpad_page_animation_moves_two_complete_grids_together() {

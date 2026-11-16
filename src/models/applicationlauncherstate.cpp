@@ -177,7 +177,10 @@ bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favorite
                                                       bool sourceAvailable,
                                                       bool sourceReady)
 {
-    if (m_startFavoritesImportAttempted) {
+    const bool retryLegacyPreservedPins = m_startFavoritesImportAttempted
+        && m_startFavoritesImportStatus == QLatin1String("existingPinsPreserved")
+        && !m_pinnedApplicationIds.isEmpty();
+    if (m_startFavoritesImportAttempted && !retryLegacyPreservedPins) {
         return false;
     }
 
@@ -188,14 +191,15 @@ bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favorite
     QString status;
     if (!sourceAvailable) {
         status = QStringLiteral("unavailable");
-    } else if (!m_pinnedApplicationIds.isEmpty()) {
-        status = QStringLiteral("existingPinsPreserved");
     } else {
         QSet<QString> available;
         for (const QString &id : availableApplicationIds) {
             available.insert(id);
         }
         QSet<QString> seen;
+        for (const QString &id : m_pinnedApplicationIds) {
+            seen.insert(id);
+        }
         QStringList imported;
         for (QString id : favoriteIds) {
             if (id.startsWith(QLatin1String("applications:"))) {
@@ -208,12 +212,18 @@ bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favorite
             imported.append(id);
         }
         if (!imported.isEmpty()) {
-            m_pinnedApplicationIds = imported;
-            status = QStringLiteral("imported");
+            m_pinnedApplicationIds.append(imported);
+            status = retryLegacyPreservedPins
+                ? QStringLiteral("existingPinsPlusPlasmaFavorites")
+                : QStringLiteral("imported");
             Q_EMIT pinnedApplicationIdsChanged();
             if (m_settings) {
                 m_settings->setStartPinnedApplications(m_pinnedApplicationIds);
             }
+        } else if (!m_pinnedApplicationIds.isEmpty()) {
+            status = retryLegacyPreservedPins
+                ? QStringLiteral("existingPinsChecked")
+                : QStringLiteral("existingPinsPreserved");
         } else if (favoriteIds.isEmpty()) {
             status = QStringLiteral("noFavorites");
         } else {
@@ -229,7 +239,8 @@ bool ApplicationLauncherState::importPlasmaFavorites(const QStringList &favorite
         m_settings->setStartFavoritesImportAttempted(m_startFavoritesImportAttempted);
         m_settings->setStartFavoritesImportStatus(m_startFavoritesImportStatus);
     }
-    return status == QLatin1String("imported");
+    return status == QLatin1String("imported")
+        || status == QLatin1String("existingPinsPlusPlasmaFavorites");
 }
 
 bool ApplicationLauncherState::isPinned(const QString &serviceId) const

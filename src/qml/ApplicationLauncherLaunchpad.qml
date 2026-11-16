@@ -281,7 +281,7 @@ ColumnLayout {
                 : down ? launcherPopup.selectedForeground
                     : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -313,10 +313,10 @@ ColumnLayout {
             objectName: "launchpadCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -347,10 +347,10 @@ ColumnLayout {
             text: i18n("Back")
             icon.name: "go-previous"
             visible: page.currentFolderId.length > 0
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -576,7 +576,6 @@ ColumnLayout {
     QQC2.Menu {
         id: contextMenu
         objectName: "launchpadContextMenu"
-        width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
         property var entry: ({})
         modal: false
         focus: true
@@ -606,10 +605,8 @@ ColumnLayout {
             objectName: "launchpadCreateFolderAction"
             text: i18n("Create folder…")
             visible: page.canCreateFolder(contextMenu.entry)
-            palette.buttonText: down ? launcherPopup.selectedForeground
-                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -622,8 +619,6 @@ ColumnLayout {
             title: page.currentFolderId.length > 0
                 ? i18n("Move to another folder") : i18n("Move to folder")
             enabled: page.canMoveToFolder(contextMenu.entry)
-                || (contextMenu.entry && contextMenu.entry.type === "application"
-                    && page.folders.length === 0)
             delegate: ApplicationLauncherMenuItem {
                 foregroundColor: launcherPopup.foreground
                 disabledForegroundColor: launcherPopup.secondaryForeground
@@ -635,7 +630,6 @@ ColumnLayout {
                 showSubmenuArrow: true
             }
 
-            width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
             Kirigami.Theme.colorSet: Kirigami.Theme.Window
             Kirigami.Theme.inherit: false
             Kirigami.Theme.backgroundColor: launcherPopup.surface
@@ -649,6 +643,13 @@ ColumnLayout {
             palette.buttonText: launcherPopup.foreground
             palette.highlight: launcherPopup.selectedSurface
             palette.highlightedText: launcherPopup.selectedForeground
+            background: Rectangle {
+                implicitWidth: Kirigami.Units.gridUnit * 8
+                implicitHeight: Kirigami.Units.gridUnit * 2
+                color: launcherPopup.surface
+                border.color: launcherPopup.borderColor
+                radius: Kirigami.Units.smallSpacing
+            }
 
             ApplicationLauncherMenuItem {
                 foregroundColor: launcherPopup.foreground
@@ -658,9 +659,7 @@ ColumnLayout {
                 hoverBackgroundColor: launcherPopup.hoverSurface
                 selectedBackgroundColor: launcherPopup.selectedSurface
                 focusColor: launcherPopup.focusColor
-                text: i18n("No folders available")
-                visible: page.folders.length === 0
-                enabled: false
+                maximumTextWidth: Math.max(160, Math.min(launcherPopup.screenGeometry.width * 0.32, 360))
             }
             Repeater {
                 model: page.folders.filter(folder => folder.id !== page.currentFolderId)
@@ -675,10 +674,8 @@ ColumnLayout {
                     required property var modelData
                     objectName: "launchpadMoveToFolderAction-" + modelData.id
                     text: modelData.name
-                    palette.buttonText: down ? launcherPopup.selectedForeground
-                        : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
                     background: Rectangle {
-                        color: parent.down ? launcherPopup.selectedSurface
+                        color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                             : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                         border.width: parent.activeFocus ? 2 : 0
                         border.color: launcherPopup.focusColor
@@ -700,10 +697,8 @@ ColumnLayout {
             objectName: "launchpadExtractFromFolderAction"
             text: i18n("Extract from folder")
             visible: page.canExtractFromFolder(contextMenu.entry)
-            palette.buttonText: down ? launcherPopup.selectedForeground
-                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -723,10 +718,10 @@ ColumnLayout {
             objectName: "launchpadOpenFolderAction"
             text: i18n("Open")
             visible: page.isLaunchpadFolder(contextMenu.entry)
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -745,10 +740,10 @@ ColumnLayout {
             objectName: "launchpadRenameFolderAction"
             text: i18n("Rename folder…")
             visible: page.isLaunchpadFolder(contextMenu.entry)
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -767,10 +762,10 @@ ColumnLayout {
             objectName: "launchpadDeleteFolderAction"
             text: i18n("Delete folder")
             visible: page.isLaunchpadFolder(contextMenu.entry)
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -784,6 +779,8 @@ ColumnLayout {
             }
         }
         background: Rectangle {
+            implicitWidth: Kirigami.Units.gridUnit * 8
+            implicitHeight: Kirigami.Units.gridUnit * 2
             color: launcherPopup.surface
             border.color: launcherPopup.borderColor
             radius: Kirigami.Units.smallSpacing
@@ -830,6 +827,42 @@ ColumnLayout {
             }
             close()
         }
+        header: Rectangle {
+            implicitHeight: Math.max(Kirigami.Units.gridUnit * 3,
+                folderNameTitle.implicitHeight + Kirigami.Units.largeSpacing * 2)
+            color: launcherPopup.surface
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Kirigami.Units.largeSpacing
+                anchors.rightMargin: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+                QQC2.Label {
+                    id: folderNameTitle
+                    objectName: "launchpadFolderNameDialogTitle"
+                    Layout.fillWidth: true
+                    text: folderNameDialog.title
+                    color: launcherPopup.foreground
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+                ApplicationLauncherToolButton {
+                    objectName: "launchpadFolderNameClose"
+                    Accessible.name: i18n("Close")
+                    icon.name: "window-close"
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2
+                    foregroundColor: launcherPopup.foreground
+                    disabledForegroundColor: launcherPopup.secondaryForeground
+                    hoverForegroundColor: launcherPopup.hoverForeground
+                    selectedForegroundColor: launcherPopup.selectedForeground
+                    normalBackgroundColor: "transparent"
+                    hoverBackgroundColor: launcherPopup.hoverSurface
+                    selectedBackgroundColor: launcherPopup.selectedSurface
+                    focusColor: launcherPopup.focusColor
+                    onClicked: folderNameDialog.close()
+                }
+            }
+        }
         anchors.centerIn: QQC2.Overlay.overlay
         onOpened: folderNameField.forceActiveFocus()
         contentItem: ColumnLayout {
@@ -867,9 +900,13 @@ ColumnLayout {
             }
         }
         footer: RowLayout {
+            spacing: Kirigami.Units.smallSpacing
+            Item { Layout.fillWidth: true }
             ApplicationLauncherToolButton {
                 objectName: "launchpadFolderNameCancel"
                 text: i18n("Cancel")
+                Layout.preferredWidth: 96
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                 foregroundColor: launcherPopup.foreground
                 disabledForegroundColor: launcherPopup.secondaryForeground
                 hoverForegroundColor: launcherPopup.hoverForeground
@@ -883,6 +920,8 @@ ColumnLayout {
             ApplicationLauncherToolButton {
                 objectName: "launchpadFolderNameSubmit"
                 text: i18n("Save")
+                Layout.preferredWidth: 96
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                 enabled: folderNameField.text.trim().length > 0
                     && !folderNameDialog.duplicateName()
                 foregroundColor: launcherPopup.foreground
@@ -919,13 +958,55 @@ ColumnLayout {
         Kirigami.Theme.highlightedTextColor: launcherPopup.selectedForeground
         anchors.centerIn: QQC2.Overlay.overlay
         contentItem: QQC2.Label {
+            objectName: "launchpadDeleteFolderMessage"
             text: i18n("Applications in %1 will return to Applications. They will not be removed from your system.", deleteFolderDialog.folderName)
             wrapMode: Text.Wrap
             color: launcherPopup.foreground
         }
+        header: Rectangle {
+            implicitHeight: Math.max(Kirigami.Units.gridUnit * 3,
+                deleteFolderTitle.implicitHeight + Kirigami.Units.largeSpacing * 2)
+            color: launcherPopup.surface
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: Kirigami.Units.largeSpacing
+                anchors.rightMargin: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+                QQC2.Label {
+                    id: deleteFolderTitle
+                    objectName: "launchpadDeleteFolderDialogTitle"
+                    Layout.fillWidth: true
+                    text: deleteFolderDialog.title
+                    color: launcherPopup.foreground
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+                ApplicationLauncherToolButton {
+                    objectName: "launchpadDeleteFolderClose"
+                    Accessible.name: i18n("Close")
+                    icon.name: "window-close"
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2
+                    foregroundColor: launcherPopup.foreground
+                    disabledForegroundColor: launcherPopup.secondaryForeground
+                    hoverForegroundColor: launcherPopup.hoverForeground
+                    selectedForegroundColor: launcherPopup.selectedForeground
+                    normalBackgroundColor: "transparent"
+                    hoverBackgroundColor: launcherPopup.hoverSurface
+                    selectedBackgroundColor: launcherPopup.selectedSurface
+                    focusColor: launcherPopup.focusColor
+                    onClicked: deleteFolderDialog.close()
+                }
+            }
+        }
         footer: RowLayout {
+            spacing: Kirigami.Units.smallSpacing
+            Item { Layout.fillWidth: true }
             ApplicationLauncherToolButton {
+                objectName: "launchpadDeleteFolderCancel"
                 text: i18n("Cancel")
+                Layout.preferredWidth: 96
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                 foregroundColor: launcherPopup.foreground
                 disabledForegroundColor: launcherPopup.secondaryForeground
                 hoverForegroundColor: launcherPopup.hoverForeground
@@ -938,7 +1019,9 @@ ColumnLayout {
             }
             ApplicationLauncherToolButton {
                 objectName: "launchpadDeleteFolderConfirm"
-                text: i18n("Delete folder")
+                text: i18n("Delete")
+                Layout.preferredWidth: 96
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                 foregroundColor: launcherPopup.foreground
                 disabledForegroundColor: launcherPopup.secondaryForeground
                 hoverForegroundColor: launcherPopup.hoverForeground

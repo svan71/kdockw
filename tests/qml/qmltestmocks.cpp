@@ -376,6 +376,7 @@ void registerMockTypes()
     qmlRegisterType<MockScreencastingRequest>("org.kde.taskmanager", 0, 1, "ScreencastingRequest");
     qmlRegisterType<MockPipeWireSourceItem>("org.kde.pipewire", 0, 1, "PipeWireSourceItem");
     qmlRegisterType<MockClippedPipeWireSourceItem>("com.thicking.kdockw", 1, 0, "ClippedPipeWireSourceItem");
+    qmlRegisterType<MockPlasmaFavoritesReader>("com.thicking.kdockw", 1, 0, "PlasmaFavoritesReader");
     qmlRegisterSingletonType<MockPipeWireTracker>("kdockw.test", 1, 0, "PipeWireTracker", [](QQmlEngine *, QJSEngine *) -> QObject * {
         auto *tracker = MockPipeWireTracker::instance();
         QQmlEngine::setObjectOwnership(tracker, QQmlEngine::CppOwnership);

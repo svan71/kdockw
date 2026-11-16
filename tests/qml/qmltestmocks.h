@@ -20,11 +20,30 @@
 #include <QRectF>
 #include <QHash>
 #include <QStandardItemModel>
+#include <QStringList>
 #include <QUrl>
 #include <QVariantMap>
 
 namespace KDockWQmlTest
 {
+
+class MockPlasmaFavoritesReader : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool ready READ ready NOTIFY snapshotChanged)
+    Q_PROPERTY(bool available READ available NOTIFY snapshotChanged)
+    Q_PROPERTY(QStringList favoriteIds READ favoriteIds NOTIFY snapshotChanged)
+public:
+    using QObject::QObject;
+    bool ready() const { return m_ready; }
+    bool available() const { return false; }
+    QStringList favoriteIds() const { return {}; }
+    Q_INVOKABLE void requestSnapshot() { m_ready = true; Q_EMIT snapshotChanged(); }
+Q_SIGNALS:
+    void snapshotChanged();
+private:
+    bool m_ready = false;
+};
 
 class MockFolderStackModel : public QAbstractListModel
 {

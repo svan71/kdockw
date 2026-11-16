@@ -11,6 +11,7 @@
 #include "models/folderstackmodel.h"
 #include "models/launcherentrytracker.h"
 #include "models/notificationtracker.h"
+#include "models/plasmafavoritesreader.h"
 #include "models/taskiconprovider.h"
 #include "update/releaseupdatechecker.h"
 #include "scenegraph/clippedpipewiresourceitem.h"
@@ -383,6 +384,7 @@ int Application::run(const KAboutData &aboutData)
     qmlRegisterType<ClippedPipeWireSourceItem>("com.thicking.kdockw", 1, 0, "ClippedPipeWireSourceItem");
     qmlRegisterType<SpringZoomController>("com.thicking.kdockw", 1, 0, "SpringZoomController");
     qmlRegisterType<FolderStackModel>("com.thicking.kdockw", 1, 0, "FolderStackModel");
+    qmlRegisterType<PlasmaFavoritesReader>("com.thicking.kdockw", 1, 0, "PlasmaFavoritesReader");
 
     // Create and initialize the multi-dock manager (creates DockShell(s) based on monitor mode).
     // Placement uses the Plasma primary output (kde_output_order_v1); wait for

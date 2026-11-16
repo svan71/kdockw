@@ -45,8 +45,11 @@ ColumnLayout {
         return true
     }
     function importInitialFavorites() {
+        const shouldRetryPreservedPins = launcherState.startFavoritesImportAttempted
+            && launcherState.startFavoritesImportStatus === "existingPinsPreserved"
+            && toArray(launcherState.pinnedApplicationIds).length > 0
         if (!catalog.ready || !launcherPopup.favoritesSourceReady
-                || launcherState.startFavoritesImportAttempted)
+                || (launcherState.startFavoritesImportAttempted && !shouldRetryPreservedPins))
             return
         const applicationIds = toArray(catalog.applications)
             .map(app => app && app.id ? String(app.id) : "").filter(id => id.length > 0)
@@ -137,7 +140,9 @@ ColumnLayout {
     }
     function openContextMenu(app, sourceItem, localPoint) {
         contextMenu.targetApp = app
-        const point = sourceItem.mapToItem(QQC2.Overlay.overlay, localPoint.x, localPoint.y)
+        const point = sourceItem.mapToItem(QQC2.Overlay.overlay,
+            localPoint ? localPoint.x : sourceItem.width / 2,
+            localPoint ? localPoint.y : sourceItem.height / 2)
         contextMenu.popup(QQC2.Overlay.overlay, point)
     }
 
@@ -186,10 +191,10 @@ ColumnLayout {
             objectName: "startCloseButton"
             text: i18n("Close")
             icon.name: "window-close"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -215,10 +220,10 @@ ColumnLayout {
             text: i18n("Back")
             icon.name: "go-previous"
             visible: page.pageMode === "all"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -239,10 +244,10 @@ ColumnLayout {
             text: i18n("All applications")
             icon.name: "go-next"
             visible: page.pageMode === "home"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -260,10 +265,10 @@ ColumnLayout {
             objectName: "startAlphabetBackButton"
             text: i18n("Back")
             icon.name: "go-previous"
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -404,7 +409,7 @@ ColumnLayout {
                 Keys.onEnterPressed: if (enabled) page.chooseLetter(entry.letter)
                 background: Rectangle {
                     radius: Kirigami.Units.smallSpacing
-                    color: parent.down ? launcherPopup.selectedSurface
+                    color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                         : parent.enabled ? (parent.hovered ? launcherPopup.hoverSurface
                             : launcherPopup.alternateSurface)
                         : launcherPopup.surface
@@ -464,8 +469,8 @@ ColumnLayout {
                 }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: page.openContextMenu(searchRow.app, searchResultButton,
-                        Qt.point(searchResultButton.width / 2, searchResultButton.height / 2))
+                    onTapped: (eventPoint, button) => page.openContextMenu(
+                        searchRow.app, searchResultButton, eventPoint.position)
                 }
             }
             QQC2.ScrollBar.vertical: QQC2.ScrollBar { policy: QQC2.ScrollBar.AsNeeded }
@@ -490,10 +495,10 @@ ColumnLayout {
             text: rowData.letter
             font.bold: true
             Accessible.name: rowData.letter
-            palette.buttonText: down ? launcherPopup.selectedForeground
+            palette.buttonText: highlighted || down ? launcherPopup.selectedForeground
                 : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -571,8 +576,8 @@ ColumnLayout {
             }
             TapHandler {
                 acceptedButtons: Qt.RightButton
-                onTapped: page.openContextMenu(parent.rowData.app, appRow,
-                    Qt.point(appRow.width / 2, appRow.height / 2))
+                onTapped: (eventPoint, button) => page.openContextMenu(
+                    parent.rowData.app, appRow, eventPoint.position)
             }
         }
     }
@@ -580,7 +585,6 @@ ColumnLayout {
     QQC2.Menu {
         id: contextMenu
         objectName: "startApplicationContextMenu"
-        width: Math.min(320, launcherPopup.width - Kirigami.Units.largeSpacing * 2)
         property var targetApp: ({})
         modal: false
         focus: true
@@ -606,14 +610,11 @@ ColumnLayout {
             hoverBackgroundColor: launcherPopup.hoverSurface
             selectedBackgroundColor: launcherPopup.selectedSurface
             focusColor: launcherPopup.focusColor
+            maximumTextWidth: Math.max(160, Math.min(launcherPopup.screenGeometry.width * 0.32, 360))
             objectName: "startPinMenuAction"
             text: page.launcherState.isPinned(contextMenu.targetApp.id) ? i18n("Unpin") : i18n("Pin")
-            palette.text: down ? launcherPopup.selectedForeground
-                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
-            palette.buttonText: down ? launcherPopup.selectedForeground
-                : hovered ? launcherPopup.hoverForeground : launcherPopup.foreground
             background: Rectangle {
-                color: parent.down ? launcherPopup.selectedSurface
+                color: parent.highlighted || parent.down ? launcherPopup.selectedSurface
                     : parent.hovered ? launcherPopup.hoverSurface : "transparent"
                 border.width: parent.activeFocus ? 2 : 0
                 border.color: launcherPopup.focusColor
@@ -622,6 +623,8 @@ ColumnLayout {
             onTriggered: page.launcherState.togglePinned(contextMenu.targetApp.id)
         }
         background: Rectangle {
+            implicitWidth: Kirigami.Units.gridUnit * 8
+            implicitHeight: Kirigami.Units.gridUnit * 2
             color: launcherPopup.surface
             border.color: launcherPopup.borderColor
             radius: Kirigami.Units.smallSpacing
