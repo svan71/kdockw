@@ -808,3 +808,35 @@ The live preflight used the staged candidate at `build/v060-dev-diagnostic/stage
 ### Session and remaining acceptance
 
 The candidate was stopped after the live check. Stable `/usr/bin/kdockw` **0.5.1** is active through `kdockw-v051-restored.service`; only that stable process remains. Production config `/home/stout/.config/kdockwrc` retains mode `0600` and matches the verified backup SHA-256 `0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5`. No release, tag, or push was created. The separator needs a brief visual check by the owner; existing Built-in Dock Widgets, Built-in Dock Widget Model, and Application Launcher cards remain in `review`.
+
+## Tenth owner acceptance and TaskManager DecorationRole preflight — 2026-11-16
+
+The owner completed the tenth visual/functional acceptance cycle with **5/5** remaining checks accepted. The reviewed candidate ELF was `/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`, GNU Build ID `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`. The owner accepted the separator alignment and the full candidate interaction. No visual or feature behavior was changed during the diagnostic correction below.
+
+### Live A/B and cause of the prior INVALID result
+
+Stable A was `/usr/bin/kdockw` v0.5.1, Build ID `7c410e5c4355c330092377e082705df97e1baef6`. Candidate B used the accepted ELF above; both ran sequentially against the same live Plasma 6.6.6 / Wayland session, same XCB test fixture/run ID `dec-ab2-1611`, isolated copied profile and workload. Production config backup and current file both remained SHA-256 `0cbe1044143f84f50ab5be812fe9332caefdac0537b63bf17a987303836159a5` (mode 0600). The fixture changed icon pixels from SHA-256 `04ec46dd9bfed4916929cc67a17885c407696cb14a263050c81ed939674121b9` to `07817d712a25d7bd889bace882312d6949ee7bb777f268154033139dac492e15`.
+
+An independent observer attached to the live TaskManager source saw `DecorationRole` (`Qt role 1`) and the pixel-hash transition in both stable and candidate runs, including grouped rows. Candidate application diagnostics recorded `dataChangedRoles ... decoration:4`, three icon revision changes, and a TaskIconProvider interval with 4 `requestPixmap` calls and 4 unique URLs, all loaded. Thus the product update path was active. The previous `INVALID` was a diagnostic false negative: `DockPresentationModel` forwarded the DecorationRole-only event, but the diagnostic trace was gated by a predicate that intentionally excludes DecorationRole to avoid adding synthetic `DisplayRole` to the runtime-forwarded roles. The preflight parser also failed to interpret `incomingRoles=QList()` as all roles changed, as specified by Qt. There is no evidence from these runs that the product omitted icon updates or that an icon-cache defect caused this preflight failure.
+
+The minimal correction gates diagnostic logging on `presentationMayChange || DecorationRole` without changing forwarded role contents. The assessor recognizes an empty role list as an all-roles update, bounded by the icon-transition log interval. Its setup now falls back from systemd manager `XDG_CONFIG_HOME` to process environment and then `~/.config` when the manager environment omits the variable. A unit regression asserts that DecorationRole is forwarded exactly as DecorationRole and is traced; Python regressions cover empty roles and config-home fallback.
+
+The diagnostic source/tooling fix and focused regressions are recorded in local commit `5eea6d9db50b7a4bb9273551a2a1164845b10d3e`.
+
+### Corrected candidate and verification
+
+- Diagnostic candidate stage: `/home/stout/Documents/vibecoding/kdockw/build/v060-dev-diagnostic/stage/bin/kdockw`, version `0.6.0-dev`; source and stage ELF GNU Build ID `2fa8516ffcb730d00f29e5fe263f14b2acad98da`.
+- Live functional preflight: **PASS 6/6** (existing windows, fixture appearance, title update, DecorationRole/icon-pixel change, grouping, fixture disappearance). Evidence is under `diagnostics/v060-dev/logs/decoration-ab-20261116/` including `v051-observer-exact.jsonl`, `v051-kdockw.log`, observer traces for candidate, and `functional-preflight.json`.
+- Full Diagnostic Release CTest: **230/230 passed** (323.60 s). Targeted diagnostic CTest: 2/2. The preflight Python suite: 10 tests passed.
+- Full Production Release CTest: **222/223 failed** (332.55 s) in the integration case “Parabolic zoom in a settings preview matches the computed panel edge”; QTest hover did not satisfy the hovered/zoomAmount condition. The exact case passed when run alone: 67 assertions / 1 case. This isolated retry does not erase the full-run failure. No third full Production run was made.
+- Both production and diagnostic builds completed. Stage preflight passed. Source/stage version is `0.6.0-dev`; source/stage Russian MO SHA-256 is `f67163511c10936afea8123db36d452afa5cc4215c5c2d9c159fb496a280e8e3`; `msgfmt --check --check-format`, `bash -n`, Python compilation, and `git diff --check` passed. `clang-format` was unavailable and was not run.
+
+### Session safety and release readiness
+
+The candidate was stopped and stable `/usr/bin/kdockw` v0.5.1 was restored and is active as `kdockw-v051-restored.service` (PID 1890466), GNU Build ID `7c410e5c4355c330092377e082705df97e1baef6`. The production configuration still matches the verified 0600 backup SHA-256 above. The temporary TaskManager observer Desktop Entry was removed and the user Sycoca was refreshed. No release, tag, or push was created.
+
+Owner acceptance is complete for the reviewed visual/functionality items, but the v0.6.0 milestone is **not release-ready** because the full Production Release CTest failed. The parent `Built-in Dock Widgets` (`5491d7949a564380`) and children `Built-in Dock Widget Model` (`35353e13722e4769`) and `Application Launcher Widget` (`5c079ef1a7384398`) remain `review`; their IDs and dependency graph are unchanged. Historical high anonymous-PSS measurements and the earlier P0 are not reinterpreted by this preflight result. No exact cause for the historical PSS growth is claimed.
+
+### Release-infrastructure audit (read-only)
+
+The required release matrix currently lists Debian 13, Ubuntu 26.04 LTS, and Fedora 45 in `tests/distro/release-targets.txt` and `targets.tsv`. The existing Distro E2E workflow resolves `all` from that list, can bind a manual dispatch to `expected_sha`, builds and installs packages in target runtimes, and the release process requires a green full matrix on the exact tagged commit. The release CLI assembles only verified matrix packages, the GitHub source archive, release notes, and `SHA256SUMS`; GitHub Releases is the only publication channel. CI contains the CTest workflow and distro workflow, while the distro workflow is also manually dispatchable. This audit was static: no packages, source archive, checksum manifest, GitHub Actions run, tag, or release were produced for the current work. The working branch is a local `codex/` branch without an upstream, and the Production full-suite failure blocks release readiness. Distro E2E was therefore not run for this change.

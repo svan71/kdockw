@@ -189,6 +189,14 @@ source-level regression was not established.
 
 ## Verification status
 
+The live TaskManager icon-role preflight is diagnostic-only: `DockPresentationModel`
+forwards a DecorationRole-only notification with that same narrow role list. Its
+diagnostic trace gate must include DecorationRole independently of the broader
+presentation-change predicate, because that predicate also adds DisplayRole.
+Qt's empty `dataChanged` role list means all roles may have changed and must be
+interpreted accordingly by the preflight assessor. This observability correction
+does not change task presentation or icon invalidation behavior.
+
 Automated model, catalog-filtering, metadata, persistence, three-style QML,
 settings, icon-provider, magnification, and four-edge popup-bound checks pass
 in the current v0.6.0-dev builds. The measurable catalog test observed 112
