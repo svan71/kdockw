@@ -2,8 +2,11 @@
 // SPDX-FileCopyrightText: 2026 KDockW Contributors
 
 #include "models/dockentriesmodel.h"
+#include "models/dockpresentationmodel.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <QStandardItemModel>
+#include <QTest>
 
 TEST_CASE("Dock entries model exposes typed roles and retains mixed order", "[dock-entries]")
 {
@@ -40,6 +43,40 @@ TEST_CASE("Dock entries model syncs task order while preserving folder slots", "
     CHECK(entries.at(1).id == firstStack.id);
     CHECK(entries.at(2).url == first);
     CHECK(entries.at(3).id == secondStack.id);
+}
+
+TEST_CASE("Media player widget is a unique persisted entry and follows runtime visibility", "[dock-widgets][media-player]")
+{
+    kdockw::DockEntriesModel entries;
+    const QString id = entries.appendMediaPlayer();
+    REQUIRE_FALSE(id.isEmpty());
+    CHECK(entries.hasMediaPlayer());
+    CHECK(entries.appendMediaPlayer().isEmpty());
+    CHECK(entries.entries().size() == 1);
+
+    const QString saved = kdockw::DockEntriesCodec::encode(entries.entries());
+    const auto decoded = kdockw::DockEntriesCodec::decode(saved);
+    REQUIRE(decoded.validDocument);
+    REQUIRE(decoded.entries.size() == 1);
+    CHECK(decoded.entries.first().id == id);
+    CHECK(decoded.entries.first().widgetKind == QStringLiteral("mediaPlayer"));
+
+    QStandardItemModel tasks;
+    kdockw::DockPresentationModel presentation(&tasks, &entries);
+    CHECK(presentation.rowCount() == 0); // configured entry remains saved while no session is suitable
+    presentation.setMediaPlayerAvailable(true);
+    QTRY_COMPARE(presentation.rowCount(), 1);
+    CHECK(presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetKindRole).toString()
+          == QStringLiteral("mediaPlayer"));
+    presentation.setMediaPlayerAvailable(false);
+    QTRY_COMPARE(presentation.rowCount(), 0);
+    CHECK(entries.hasMediaPlayer());
+    presentation.setMediaPlayerAvailable(true);
+    QTRY_COMPARE(presentation.rowCount(), 1);
+    presentation.setMediaPlayerDisplayMode(2);
+    const auto zoomSpecs = presentation.zoomLayoutSpecs(48);
+    REQUIRE(zoomSpecs.size() == 1);
+    CHECK(zoomSpecs.first().toMap().value(QStringLiteral("size")).toDouble() == 192.0);
 }
 
 TEST_CASE("Dock entries model appends, moves, and removes only folder stacks", "[dock-entries]")

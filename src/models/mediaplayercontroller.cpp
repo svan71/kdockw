@@ -1,0 +1,710 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Krema Contributors
+
+#include "mediaplayercontroller.h"
+
+#include <QDBusMessage>
+#include <QDBusArgument>
+#include <QDBusObjectPath>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#include <QDBusVariant>
+#include <QLoggingCategory>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
+Q_LOGGING_CATEGORY(lcMediaPlayer, "kdockw.media")
+
+namespace kdockw
+{
+
+namespace
+{
+constexpr auto kMprisPrefix = "org.mpris.MediaPlayer2.";
+constexpr auto kMprisPath = "/org/mpris/MediaPlayer2";
+constexpr auto kPlayerInterface = "org.mpris.MediaPlayer2.Player";
+constexpr auto kRootInterface = "org.mpris.MediaPlayer2";
+constexpr auto kPropertiesInterface = "org.freedesktop.DBus.Properties";
+constexpr auto kBusService = "org.freedesktop.DBus";
+constexpr auto kBusPath = "/org/freedesktop/DBus";
+constexpr qint64 kPositionMaximumUs = 7LL * 24 * 60 * 60 * 1'000'000;
+
+QString objectPathString(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QDBusObjectPath>()) {
+        return value.value<QDBusObjectPath>().path();
+    }
+    return value.toString();
+}
+
+QVariant unbox(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QDBusVariant>()) {
+        return value.value<QDBusVariant>().variant();
+    }
+    return value;
+}
+
+QVariantMap variantMap(const QVariant &value)
+{
+    const QVariant unboxed = unbox(value);
+    if (unboxed.metaType() == QMetaType::fromType<QDBusArgument>()) {
+        QVariantMap result;
+        unboxed.value<QDBusArgument>() >> result;
+        return result;
+    }
+    return unboxed.toMap();
+}
+} // namespace
+
+MediaPlayerController::MediaPlayerController(QObject *parent)
+    : QAbstractListModel(parent)
+    , m_bus(QDBusConnection::sessionBus())
+{
+    m_clock.start();
+    m_progressTimer.setInterval(250);
+    m_progressTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_progressTimer, &QTimer::timeout, this, &MediaPlayerController::positionChanged);
+    m_stoppedHideTimer.setSingleShot(true);
+    m_stoppedHideTimer.setInterval(m_stoppedHideDelayMs);
+    connect(&m_stoppedHideTimer, &QTimer::timeout, this, [this] {
+        m_manualSelection = false;
+        Q_EMIT selectionModeChanged();
+        selectService({}, false);
+        updateAutomaticSelection();
+    });
+
+    if (!m_bus.isConnected()) {
+        qCWarning(lcMediaPlayer) << "The session D-Bus is unavailable; MPRIS discovery is disabled";
+        return;
+    }
+
+    const bool connected = m_bus.connect(QString::fromLatin1(kBusService),
+                                         QString::fromLatin1(kBusPath),
+                                         QStringLiteral("org.freedesktop.DBus"),
+                                         QStringLiteral("NameOwnerChanged"),
+                                         this,
+                                         SLOT(onNameOwnerChanged(QString,QString,QString)));
+    if (!connected) {
+        qCWarning(lcMediaPlayer) << "Could not subscribe to D-Bus owner changes" << m_bus.lastError().message();
+    }
+    enumerateServices();
+}
+
+MediaPlayerController::~MediaPlayerController()
+{
+    m_bus.disconnect(QString::fromLatin1(kBusService), QString::fromLatin1(kBusPath),
+                     QStringLiteral("org.freedesktop.DBus"), QStringLiteral("NameOwnerChanged"),
+                     this, SLOT(onNameOwnerChanged(QString,QString,QString)));
+    for (const Session &session : std::as_const(m_sessions)) {
+        m_bus.disconnect(session.service, QString::fromLatin1(kMprisPath),
+                         QString::fromLatin1(kPropertiesInterface), QStringLiteral("PropertiesChanged"),
+                         this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList,QDBusMessage)));
+        m_bus.disconnect(session.service, QString::fromLatin1(kMprisPath),
+                         QString::fromLatin1(kPlayerInterface), QStringLiteral("Seeked"),
+                         this, SLOT(onSeeked(qlonglong,QDBusMessage)));
+    }
+}
+
+int MediaPlayerController::rowCount(const QModelIndex &parent) const
+{
+    return parent.isValid() ? 0 : m_sessions.size();
+}
+
+QAbstractItemModel *MediaPlayerController::sessions() { return this; }
+
+QString MediaPlayerController::serviceAt(int row) const
+{
+    return row >= 0 && row < m_sessions.size() ? m_sessions.at(row).service : QString();
+}
+
+void MediaPlayerController::setProgressRequested(QObject *client, bool requested)
+{
+    if (!client) return;
+    if (requested) {
+        if (m_progressClients.contains(client)) return;
+        m_progressClients.insert(client);
+        connect(client, &QObject::destroyed, this, [this, client] {
+            m_progressClients.remove(client);
+            updateProgressTimer();
+        });
+    } else {
+        m_progressClients.remove(client);
+    }
+    updateProgressTimer();
+}
+
+QVariant MediaPlayerController::data(const QModelIndex &index, int role) const
+{
+    if (!index.isValid() || index.row() < 0 || index.row() >= m_sessions.size()) return {};
+    const Session &session = m_sessions.at(index.row());
+    switch (role) {
+    case Qt::DisplayRole: return session.identity;
+    case ServiceRole: return session.service;
+    case IdentityRole: return session.identity;
+    case DesktopEntryRole: return session.desktopEntry;
+    case TitleRole: return session.title;
+    case PlaybackStatusRole: return session.playbackStatus;
+    case SelectedRole: return session.service == m_selectedService;
+    default: return {};
+    }
+}
+
+QHash<int, QByteArray> MediaPlayerController::roleNames() const
+{
+    return {{Qt::DisplayRole, "display"}, {ServiceRole, "service"}, {IdentityRole, "identity"},
+            {DesktopEntryRole, "desktopEntry"}, {TitleRole, "title"},
+            {PlaybackStatusRole, "playbackStatus"}, {SelectedRole, "selected"}};
+}
+
+bool MediaPlayerController::available() const { return m_available; }
+bool MediaPlayerController::autoVisibility() const { return m_autoVisibility; }
+bool MediaPlayerController::showPaused() const { return m_showPaused; }
+int MediaPlayerController::stoppedHideDelayMs() const { return m_stoppedHideDelayMs; }
+QString MediaPlayerController::selectedService() const { return m_selectedService; }
+
+#define KDOCKW_CURRENT_GETTER(type, name, field, fallback) \
+    type MediaPlayerController::name() const { const Session *s = selected(); return s ? s->field : fallback; }
+KDOCKW_CURRENT_GETTER(QString, identity, identity, QString())
+KDOCKW_CURRENT_GETTER(QString, desktopEntry, desktopEntry, QString())
+KDOCKW_CURRENT_GETTER(QString, title, title, QString())
+KDOCKW_CURRENT_GETTER(QString, artist, artist, QString())
+KDOCKW_CURRENT_GETTER(QString, album, album, QString())
+KDOCKW_CURRENT_GETTER(QString, playbackStatus, playbackStatus, QString())
+KDOCKW_CURRENT_GETTER(QString, loopStatus, loopStatus, QStringLiteral("None"))
+KDOCKW_CURRENT_GETTER(QString, trackId, trackId, QString())
+KDOCKW_CURRENT_GETTER(QUrl, artUrl, artUrl, QUrl())
+KDOCKW_CURRENT_GETTER(QUrl, mediaUrl, mediaUrl, QUrl())
+KDOCKW_CURRENT_GETTER(qint64, durationUs, durationUs, qint64(-1))
+KDOCKW_CURRENT_GETTER(double, rate, rate, 1.0)
+KDOCKW_CURRENT_GETTER(double, volume, volume, 1.0)
+KDOCKW_CURRENT_GETTER(bool, shuffle, shuffle, false)
+KDOCKW_CURRENT_GETTER(bool, canControl, canControl, false)
+KDOCKW_CURRENT_GETTER(bool, canPlay, canPlay, false)
+KDOCKW_CURRENT_GETTER(bool, canPause, canPause, false)
+KDOCKW_CURRENT_GETTER(bool, canGoPrevious, canGoPrevious, false)
+KDOCKW_CURRENT_GETTER(bool, canGoNext, canGoNext, false)
+KDOCKW_CURRENT_GETTER(bool, canSeek, canSeek, false)
+KDOCKW_CURRENT_GETTER(bool, canRaise, canRaise, false)
+#undef KDOCKW_CURRENT_GETTER
+
+qint64 MediaPlayerController::positionUs() const
+{
+    const Session *session = selected();
+    return session ? estimatedPosition(*session) : 0;
+}
+
+bool MediaPlayerController::manualSelection() const { return m_manualSelection; }
+
+int MediaPlayerController::indexOf(const QString &service) const
+{
+    for (qsizetype i = 0; i < m_sessions.size(); ++i) {
+        if (m_sessions.at(i).service == service) return int(i);
+    }
+    return -1;
+}
+
+MediaPlayerController::Session *MediaPlayerController::selected()
+{
+    const int row = indexOf(m_selectedService);
+    return row >= 0 ? &m_sessions[row] : nullptr;
+}
+
+const MediaPlayerController::Session *MediaPlayerController::selected() const
+{
+    const int row = indexOf(m_selectedService);
+    return row >= 0 ? &m_sessions.at(row) : nullptr;
+}
+
+void MediaPlayerController::enumerateServices()
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(QString::fromLatin1(kBusService),
+                                                           QString::fromLatin1(kBusPath),
+                                                           QStringLiteral("org.freedesktop.DBus"),
+                                                           QStringLiteral("ListNames"));
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<QStringList> reply = *finished;
+        finished->deleteLater();
+        if (reply.isError()) {
+            qCWarning(lcMediaPlayer) << "Could not enumerate MPRIS services:" << reply.error().message();
+            return;
+        }
+        for (const QString &name : reply.value()) {
+            if (!name.startsWith(QLatin1String(kMprisPrefix))) continue;
+            QDBusMessage ownerRequest = QDBusMessage::createMethodCall(QString::fromLatin1(kBusService),
+                QString::fromLatin1(kBusPath), QStringLiteral("org.freedesktop.DBus"), QStringLiteral("GetNameOwner"));
+            ownerRequest << name;
+            auto *ownerWatcher = new QDBusPendingCallWatcher(m_bus.asyncCall(ownerRequest), this);
+            connect(ownerWatcher, &QDBusPendingCallWatcher::finished, this, [this, name](QDBusPendingCallWatcher *finishedOwner) {
+                const QDBusPendingReply<QString> ownerReply = *finishedOwner;
+                finishedOwner->deleteLater();
+                if (!ownerReply.isError()) addService(name, ownerReply.value());
+            });
+        }
+    });
+}
+
+void MediaPlayerController::onNameOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner)
+{
+    if (!name.startsWith(QLatin1String(kMprisPrefix))) return;
+    if (newOwner.isEmpty()) {
+        removeService(name);
+    } else {
+        addService(name, newOwner);
+    }
+    Q_UNUSED(oldOwner)
+}
+
+void MediaPlayerController::addService(const QString &service, const QString &owner)
+{
+    if (!service.startsWith(QLatin1String(kMprisPrefix)) || owner.isEmpty()) return;
+    const int existing = indexOf(service);
+    if (existing >= 0 && m_sessions.at(existing).owner == owner) return;
+    if (existing >= 0) removeService(service);
+
+    Session session;
+    session.service = service;
+    session.owner = owner;
+    const QString suffix = service.mid(int(strlen(kMprisPrefix)));
+    session.identity = suffix;
+    session.desktopEntry = suffix;
+    session.generation = ++m_generations[service];
+    const auto insertion = std::lower_bound(m_sessions.cbegin(), m_sessions.cend(), service,
+        [](const Session &entry, const QString &key) { return entry.service < key; });
+    const int row = int(std::distance(m_sessions.cbegin(), insertion));
+    beginInsertRows({}, row, row);
+    m_sessions.insert(row, session);
+    endInsertRows();
+    Q_EMIT countChanged();
+
+    const bool propertiesConnected = m_bus.connect(service, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("PropertiesChanged"),
+        this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList,QDBusMessage)));
+    const bool seekConnected = m_bus.connect(service, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPlayerInterface), QStringLiteral("Seeked"), this, SLOT(onSeeked(qlonglong,QDBusMessage)));
+    if (!propertiesConnected || !seekConnected) {
+        qCDebug(lcMediaPlayer) << "Could not subscribe to all MPRIS signals for" << service << m_bus.lastError().message();
+    }
+
+    requestProperties(service, owner, session.generation, QString::fromLatin1(kPlayerInterface));
+    requestProperties(service, owner, session.generation, QString::fromLatin1(kRootInterface));
+    updateAutomaticSelection();
+}
+
+void MediaPlayerController::removeService(const QString &service)
+{
+    const int row = indexOf(service);
+    if (row < 0) return;
+    m_bus.disconnect(service, QString::fromLatin1(kMprisPath), QString::fromLatin1(kPropertiesInterface),
+                     QStringLiteral("PropertiesChanged"), this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList,QDBusMessage)));
+    m_bus.disconnect(service, QString::fromLatin1(kMprisPath), QString::fromLatin1(kPlayerInterface),
+                     QStringLiteral("Seeked"), this, SLOT(onSeeked(qlonglong,QDBusMessage)));
+    beginRemoveRows({}, row, row);
+    m_sessions.removeAt(row);
+    endRemoveRows();
+    ++m_generations[service];
+    Q_EMIT countChanged();
+    if (m_selectedService == service) {
+        m_selectedService.clear();
+        m_manualSelection = false;
+        Q_EMIT selectionChanged();
+        Q_EMIT selectionModeChanged();
+        Q_EMIT currentSessionChanged();
+    }
+    updateAutomaticSelection();
+}
+
+void MediaPlayerController::requestProperties(const QString &service, const QString &owner, quint64 generation, const QString &interfaceName)
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(service, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("GetAll"));
+    message << interfaceName;
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, service, owner, generation, interfaceName](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<QVariantMap> reply = *finished;
+        finished->deleteLater();
+        const int row = indexOf(service);
+        if (row < 0 || m_sessions.at(row).owner != owner || m_sessions.at(row).generation != generation) return;
+        if (reply.isError()) {
+            qCDebug(lcMediaPlayer) << "GetAll failed for" << service << interfaceName << reply.error().message();
+            return;
+        }
+        applyProperties(m_sessions[row], interfaceName, reply.value());
+        notifySessionChanged(service);
+        updateAutomaticSelection();
+    });
+}
+
+void MediaPlayerController::applyProperties(Session &session, const QString &interfaceName, const QVariantMap &properties)
+{
+    const bool player = interfaceName == QLatin1String(kPlayerInterface);
+    qint64 preservedPosition = estimatedPosition(session);
+    bool positionReplaced = false;
+    for (auto it = properties.cbegin(); it != properties.cend(); ++it) {
+        const QVariant value = unbox(it.value());
+        const QString &key = it.key();
+        if (player) {
+            if (key == QLatin1String("PlaybackStatus")) session.playbackStatus = value.toString();
+            else if (key == QLatin1String("Metadata")) {
+                const QVariantMap metadata = variantMap(value);
+                const QString newTrackId = objectPathString(unbox(metadata.value(QStringLiteral("mpris:trackid"))));
+                if (session.trackId != newTrackId) {
+                    session.positionUs = 0;
+                    positionReplaced = true;
+                }
+                session.trackId = newTrackId;
+                session.durationUs = metadata.contains(QStringLiteral("mpris:length"))
+                    ? std::clamp(unbox(metadata.value(QStringLiteral("mpris:length"))).toLongLong(), qint64(-1), kPositionMaximumUs) : -1;
+                session.artUrl = QUrl(unbox(metadata.value(QStringLiteral("mpris:artUrl"))).toString());
+                session.mediaUrl = QUrl(unbox(metadata.value(QStringLiteral("xesam:url"))).toString());
+                session.title = unbox(metadata.value(QStringLiteral("xesam:title"))).toString();
+                const QVariant artist = unbox(metadata.value(QStringLiteral("xesam:artist")));
+                session.artist = artist.metaType().id() == QMetaType::QStringList
+                    ? artist.toStringList().join(QStringLiteral(", ")) : artist.toString();
+                session.album = unbox(metadata.value(QStringLiteral("xesam:album"))).toString();
+            }
+            else if (key == QLatin1String("Position")) {
+                session.positionUs = std::clamp(value.toLongLong(), qint64(0), kPositionMaximumUs);
+                positionReplaced = true;
+            }
+            else if (key == QLatin1String("Rate")) {
+                const double rate = value.toDouble();
+                session.rate = std::isfinite(rate) ? std::clamp(rate, 0.01, 16.0) : 1.0;
+            }
+            else if (key == QLatin1String("Volume")) {
+                const double volume = value.toDouble();
+                session.volume = std::isfinite(volume) ? std::clamp(volume, 0.0, 1.0) : 1.0;
+            }
+            else if (key == QLatin1String("Shuffle")) session.shuffle = value.toBool();
+            else if (key == QLatin1String("LoopStatus")) session.loopStatus = value.toString();
+            else if (key == QLatin1String("CanControl")) session.canControl = value.toBool();
+            else if (key == QLatin1String("CanPlay")) session.canPlay = value.toBool();
+            else if (key == QLatin1String("CanPause")) session.canPause = value.toBool();
+            else if (key == QLatin1String("CanGoPrevious")) session.canGoPrevious = value.toBool();
+            else if (key == QLatin1String("CanGoNext")) session.canGoNext = value.toBool();
+            else if (key == QLatin1String("CanSeek")) session.canSeek = value.toBool();
+        } else {
+            if (key == QLatin1String("Identity") && !value.toString().isEmpty()) session.identity = value.toString();
+            else if (key == QLatin1String("DesktopEntry") && !value.toString().isEmpty()) session.desktopEntry = value.toString();
+            else if (key == QLatin1String("CanRaise")) session.canRaise = value.toBool();
+        }
+    }
+    if (!positionReplaced) session.positionUs = preservedPosition;
+    session.positionTimestampMs = m_clock.elapsed();
+}
+
+void MediaPlayerController::onPropertiesChanged(const QString &interfaceName, const QVariantMap &changed,
+                                                const QStringList &invalidated, const QDBusMessage &signalMessage)
+{
+    const QString sender = signalMessage.service();
+    int row = indexOf(sender);
+    if (row < 0) {
+        for (qsizetype i = 0; i < m_sessions.size(); ++i) {
+            if (m_sessions.at(i).owner == sender) { row = int(i); break; }
+        }
+    }
+    if (row < 0) return;
+    const QString service = m_sessions.at(row).service;
+    applyProperties(m_sessions[row], interfaceName, changed);
+    Session &session = m_sessions[row];
+    const bool player = interfaceName == QLatin1String(kPlayerInterface);
+    for (const QString &property : invalidated) {
+        if (player) {
+            if (property == QLatin1String("PlaybackStatus")) session.playbackStatus.clear();
+            else if (property == QLatin1String("Metadata")) {
+                session.trackId.clear();
+                session.title.clear();
+                session.artist.clear();
+                session.album.clear();
+                session.artUrl.clear();
+                session.mediaUrl.clear();
+                session.durationUs = -1;
+                session.positionUs = 0;
+            } else if (property == QLatin1String("Position")) session.positionUs = 0;
+            else if (property == QLatin1String("Rate")) session.rate = 1.0;
+            else if (property == QLatin1String("Volume")) session.volume = 1.0;
+            else if (property == QLatin1String("Shuffle")) session.shuffle = false;
+            else if (property == QLatin1String("LoopStatus")) session.loopStatus = QStringLiteral("None");
+            else if (property == QLatin1String("CanControl")) session.canControl = false;
+            else if (property == QLatin1String("CanPlay")) session.canPlay = false;
+            else if (property == QLatin1String("CanPause")) session.canPause = false;
+            else if (property == QLatin1String("CanGoPrevious")) session.canGoPrevious = false;
+            else if (property == QLatin1String("CanGoNext")) session.canGoNext = false;
+            else if (property == QLatin1String("CanSeek")) session.canSeek = false;
+        } else {
+            if (property == QLatin1String("Identity")) session.identity = session.service.mid(int(strlen(kMprisPrefix)));
+            else if (property == QLatin1String("DesktopEntry")) session.desktopEntry.clear();
+            else if (property == QLatin1String("CanRaise")) session.canRaise = false;
+        }
+    }
+    session.positionTimestampMs = m_clock.elapsed();
+    notifySessionChanged(service);
+    if (!invalidated.isEmpty()) {
+        const Session &session = m_sessions.at(row);
+        requestProperties(service, session.owner, session.generation, interfaceName);
+    }
+    updateAutomaticSelection();
+}
+
+void MediaPlayerController::onSeeked(qlonglong newPositionUs, const QDBusMessage &signalMessage)
+{
+    const QString sender = signalMessage.service();
+    int row = indexOf(sender);
+    if (row < 0) {
+        for (qsizetype i = 0; i < m_sessions.size(); ++i) {
+            if (m_sessions.at(i).owner == sender) { row = int(i); break; }
+        }
+    }
+    if (row < 0) return;
+    const QString service = m_sessions.at(row).service;
+    Session &session = m_sessions[row];
+    session.positionUs = std::clamp(qint64(newPositionUs), qint64(0), kPositionMaximumUs);
+    session.positionTimestampMs = m_clock.elapsed();
+    if (service == m_selectedService) Q_EMIT positionChanged();
+}
+
+void MediaPlayerController::notifySessionChanged(const QString &service, const QList<int> &roles)
+{
+    const int row = indexOf(service);
+    if (row >= 0) Q_EMIT dataChanged(index(row), index(row), roles);
+    if (service == m_selectedService) {
+        Q_EMIT currentSessionChanged();
+        updateProgressTimer();
+        Q_EMIT positionChanged();
+    }
+}
+
+void MediaPlayerController::updateAutomaticSelection()
+{
+    QString nextService;
+    for (const Session &session : std::as_const(m_sessions)) {
+        if (session.playbackStatus == QLatin1String("Playing")) {
+            nextService = session.service;
+            break; // model order is deterministic (service names sorted below)
+        }
+        if (nextService.isEmpty() && m_showPaused && session.playbackStatus == QLatin1String("Paused")) nextService = session.service;
+    }
+    if (m_manualSelection && !m_selectedService.isEmpty() && indexOf(m_selectedService) >= 0) {
+        const Session *manual = selected();
+        if (manual && (manual->playbackStatus == QLatin1String("Playing")
+                       || (m_showPaused && manual->playbackStatus == QLatin1String("Paused")))) {
+            m_stoppedHideTimer.stop();
+            updateVisibility();
+            return;
+        }
+        if (manual && manual->playbackStatus == QLatin1String("Stopped") && m_stoppedHideDelayMs > 0) {
+            if (!m_stoppedHideTimer.isActive()) m_stoppedHideTimer.start(m_stoppedHideDelayMs);
+            updateVisibility();
+            return;
+        }
+        m_manualSelection = false;
+        Q_EMIT selectionModeChanged();
+    }
+    if (!m_manualSelection) {
+        const Session *current = selected();
+        if (current && current->playbackStatus == QLatin1String("Playing")) {
+            m_stoppedHideTimer.stop();
+            updateVisibility();
+            return;
+        }
+    }
+    if (!nextService.isEmpty()) {
+        m_stoppedHideTimer.stop();
+        selectService(nextService, false);
+    } else {
+        const Session *current = selected();
+        if (current && m_selectedService == current->service
+            && (current->playbackStatus == QLatin1String("Stopped")
+                || current->playbackStatus == QLatin1String("Paused"))) {
+            if (m_stoppedHideDelayMs > 0) {
+                if (!m_stoppedHideTimer.isActive()) m_stoppedHideTimer.start(m_stoppedHideDelayMs);
+                updateVisibility();
+                return;
+            }
+        }
+        m_stoppedHideTimer.stop();
+        selectService({}, false);
+    }
+    updateVisibility();
+}
+
+void MediaPlayerController::selectService(const QString &service, bool manual)
+{
+    if (!service.isEmpty() && indexOf(service) < 0) return;
+    const QString oldService = m_selectedService;
+    const bool oldManual = m_manualSelection;
+    if (oldService == service && oldManual == manual) return;
+    m_selectedService = service;
+    m_manualSelection = manual;
+    if (!oldService.isEmpty()) {
+        const int oldRow = indexOf(oldService);
+        if (oldRow >= 0) Q_EMIT dataChanged(index(oldRow), index(oldRow), {SelectedRole});
+    }
+    if (!service.isEmpty()) {
+        const int row = indexOf(service);
+        Q_EMIT dataChanged(index(row), index(row), {SelectedRole});
+    }
+    Q_EMIT selectionChanged();
+    Q_EMIT selectionModeChanged();
+    Q_EMIT currentSessionChanged();
+    Q_EMIT availabilityChanged();
+    updateProgressTimer();
+    updateVisibility();
+}
+
+bool MediaPlayerController::selectSession(const QString &service)
+{
+    if (indexOf(service) < 0) return false;
+    selectService(service, true);
+    return true;
+}
+
+void MediaPlayerController::selectAutomatic()
+{
+    m_manualSelection = false;
+    Q_EMIT selectionModeChanged();
+    const QString old = m_selectedService;
+    m_selectedService.clear();
+    updateAutomaticSelection();
+    if (old == m_selectedService) Q_EMIT currentSessionChanged();
+}
+
+void MediaPlayerController::setVisibilityPolicy(bool autoVisibility, bool showPaused, int hideDelayMs)
+{
+    hideDelayMs = std::clamp(hideDelayMs, 0, 30'000);
+    const bool changed = m_autoVisibility != autoVisibility || m_showPaused != showPaused
+        || m_stoppedHideDelayMs != hideDelayMs;
+    if (!changed) return;
+    m_autoVisibility = autoVisibility;
+    m_showPaused = showPaused;
+    m_stoppedHideDelayMs = hideDelayMs;
+    m_stoppedHideTimer.setInterval(hideDelayMs);
+    Q_EMIT visibilityPolicyChanged();
+    updateAutomaticSelection();
+}
+
+void MediaPlayerController::updateVisibility()
+{
+    const Session *session = selected();
+    const bool visible = !m_autoVisibility || (session &&
+        (session->playbackStatus == QLatin1String("Playing")
+         || (m_showPaused && session->playbackStatus == QLatin1String("Paused"))
+         || m_stoppedHideTimer.isActive()));
+    if (m_available == visible) return;
+    m_available = visible;
+    Q_EMIT availabilityChanged();
+}
+
+bool MediaPlayerController::sendPlayerMethod(const QString &method, const QVariantList &arguments)
+{
+    const Session *session = selected();
+    if (!session || !session->canControl) return false;
+    const QString service = session->service;
+    const QDBusMessage call = QDBusMessage::createMethodCall(session->owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPlayerInterface), method);
+    const QDBusMessage request = call;
+    QDBusMessage withArgs = request;
+    withArgs.setArguments(arguments);
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(withArgs), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service, method](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<> reply = *finished;
+        finished->deleteLater();
+        if (reply.isError()) Q_EMIT commandFailed(service, method + QStringLiteral(": ") + reply.error().message());
+    });
+    return true;
+}
+
+bool MediaPlayerController::playPause()
+{
+    const Session *s = selected();
+    return s && s->canControl && (s->playbackStatus == QLatin1String("Playing") ? s->canPause : s->canPlay)
+        ? sendPlayerMethod(QStringLiteral("PlayPause")) : false;
+}
+
+bool MediaPlayerController::previous() { const Session *s = selected(); return s && s->canGoPrevious && sendPlayerMethod(QStringLiteral("Previous")); }
+bool MediaPlayerController::next() { const Session *s = selected(); return s && s->canGoNext && sendPlayerMethod(QStringLiteral("Next")); }
+
+bool MediaPlayerController::seekTo(qint64 newPositionUs, const QString &expectedTrackId)
+{
+    const Session *s = selected();
+    if (!s || !s->canSeek || expectedTrackId.isEmpty() || expectedTrackId != s->trackId || s->durationUs <= 0) return false;
+    const qint64 bounded = std::clamp(newPositionUs, qint64(0), s->durationUs - 1);
+    return sendPlayerMethod(QStringLiteral("SetPosition"), {QVariant::fromValue(QDBusObjectPath(s->trackId)), QVariant::fromValue(bounded)});
+}
+
+bool MediaPlayerController::setPlayerProperty(const QString &name, const QVariant &value)
+{
+    const Session *s = selected();
+    if (!s || !s->canControl) return false;
+    QDBusMessage call = QDBusMessage::createMethodCall(s->owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("Set"));
+    call << QString::fromLatin1(kPlayerInterface) << name << QVariant::fromValue(QDBusVariant(value));
+    const QString service = s->service;
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service, name](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<> reply = *finished;
+        finished->deleteLater();
+        if (reply.isError()) Q_EMIT commandFailed(service, name + QStringLiteral(": ") + reply.error().message());
+    });
+    return true;
+}
+
+bool MediaPlayerController::setVolume(double value)
+{
+    const Session *s = selected();
+    return s && s->canControl && setPlayerProperty(QStringLiteral("Volume"), std::clamp(value, 0.0, 1.0));
+}
+
+bool MediaPlayerController::setShuffle(bool value)
+{
+    const Session *s = selected();
+    return s && s->canControl && setPlayerProperty(QStringLiteral("Shuffle"), value);
+}
+
+bool MediaPlayerController::setLoopStatus(const QString &value)
+{
+    if (value != QLatin1String("None") && value != QLatin1String("Track") && value != QLatin1String("Playlist")) return false;
+    const Session *s = selected();
+    return s && s->canControl && setPlayerProperty(QStringLiteral("LoopStatus"), value);
+}
+
+bool MediaPlayerController::raisePlayer()
+{
+    const Session *s = selected();
+    if (!s || !s->canRaise) return false;
+    QDBusMessage call = QDBusMessage::createMethodCall(s->owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kRootInterface), QStringLiteral("Raise"));
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
+    const QString service = s->service;
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<> reply = *finished;
+        finished->deleteLater();
+        if (reply.isError()) Q_EMIT commandFailed(service, reply.error().message());
+    });
+    return true;
+}
+
+qint64 MediaPlayerController::estimatedPosition(const Session &session) const
+{
+    qint64 position = session.positionUs;
+    if (session.playbackStatus == QLatin1String("Playing")) {
+        const qint64 elapsedUs = std::max<qint64>(0, m_clock.elapsed() - session.positionTimestampMs) * 1000;
+        position += qint64(double(elapsedUs) * session.rate);
+    }
+    if (session.durationUs > 0) position = std::min(position, session.durationUs);
+    return std::max<qint64>(0, position);
+}
+
+void MediaPlayerController::updateProgressTimer()
+{
+    const Session *s = selected();
+    if (s && s->playbackStatus == QLatin1String("Playing") && s->durationUs > 0
+        && !m_progressClients.isEmpty()) m_progressTimer.start();
+    else m_progressTimer.stop();
+}
+
+} // namespace kdockw

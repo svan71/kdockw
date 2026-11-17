@@ -659,7 +659,11 @@ Item {
             const dock = makeDock(1)
             const item = items(dock)[0]
             const spacer = T.findFirst(item, o => o.objectName === "builtInSpacer")
+            const mediaPlayerLoader = T.findFirst(item, o => o.objectName === "mediaPlayerWidgetLoader")
             verify(spacer && spacer.visible, "the spacer row should render without an icon")
+            verify(mediaPlayerLoader, "dock item should own the media widget loader")
+            compare(mediaPlayerLoader.status, Loader.Null,
+                    "non-media dock entries must not instantiate the media player UI")
             fuzzyCompare(DockView.isVertical ? item.height : item.width, 72, 0.01)
             DockModel.tasksModel.setTaskData(0, "widgetSize", 96)
             tryVerify(() => Math.abs((DockView.isVertical ? item.height : item.width) - 96) < 0.1,

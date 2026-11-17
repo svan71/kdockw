@@ -103,6 +103,15 @@ DockEntry DockEntry::applicationLauncher(DockWidgetSlot slot)
     return entry;
 }
 
+DockEntry DockEntry::mediaPlayer(DockWidgetSlot slot)
+{
+    const QString id = QStringLiteral("widget:media-player:%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    DockEntry entry{id, DockEntryType::BuiltInWidget};
+    entry.widgetKind = QStringLiteral("mediaPlayer");
+    entry.slot = slot;
+    return entry;
+}
+
 bool DockEntry::isValid() const
 {
     if (id.isEmpty()) {
@@ -124,7 +133,10 @@ bool DockEntry::isValid() const
                     && iconName.isEmpty() && widgetSize >= 4 && widgetSize <= 512)
                 || (widgetKind == QLatin1String("applicationLauncher")
                     && id.startsWith(QLatin1String("widget:application-launcher:")) && !iconName.isEmpty()
-                    && widgetSize == 0));
+                    && widgetSize == 0)
+                || (widgetKind == QLatin1String("mediaPlayer")
+                    && id.startsWith(QLatin1String("widget:media-player:"))
+                    && iconName.isEmpty() && widgetSize == 0));
     }
     return false;
 }

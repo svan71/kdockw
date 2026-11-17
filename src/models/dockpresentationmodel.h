@@ -54,6 +54,8 @@ public:
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
     [[nodiscard]] int pinnedEntryCount() const;
     void setSeparateLaunchers(bool separate);
+    void setMediaPlayerAvailable(bool available);
+    void setMediaPlayerDisplayMode(int mode);
 
     Q_INVOKABLE int taskIndexForDockIndex(int dockIndex) const;
     Q_INVOKABLE int dockIndexForTaskIndex(int taskIndex) const;
@@ -96,6 +98,8 @@ private:
     DockEntriesModel *m_entriesModel = nullptr;
     bool m_diagnosticsEnabled = false;
     bool m_separateLaunchers = true;
+    bool m_mediaPlayerAvailable = false;
+    int m_mediaPlayerDisplayMode = 0;
     QList<Row> m_rows;
     QVector<int> m_taskToDock;
     int m_pinnedEntryCount = 0;

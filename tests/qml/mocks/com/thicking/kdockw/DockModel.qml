@@ -9,6 +9,7 @@ import QtQuick
 import kdockw.test
 
 QtObject {
+    readonly property MockMediaPlayerController mediaPlayerController: MockMediaPlayerController {}
     function noteDockDelegateCreated() { }
     function noteDockDelegateDestroyed() { }
     readonly property MockTasksModel tasksModel: MockTasksModel {}

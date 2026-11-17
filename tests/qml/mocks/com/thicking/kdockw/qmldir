@@ -9,3 +9,5 @@ singleton PreviewController 1.0 PreviewController.qml
 singleton NotificationTracker 1.0 NotificationTracker.qml
 singleton LauncherEntryTracker 1.0 LauncherEntryTracker.qml
 singleton KDockWMocks 1.0 KDockWMocks.qml
+MockMediaPlayerController 1.0 MockMediaPlayerController.qml
+MediaArtworkItem 1.0 MediaArtworkItem.qml

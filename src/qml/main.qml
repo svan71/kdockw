@@ -1266,6 +1266,10 @@ Item {
                     item.openFolderStack()
                     return
                 }
+                if (item && item.isMediaPlayer) {
+                    item.openMediaPlayerPopup()
+                    return
+                }
                 const taskIndex = root.taskIndexAtDockIndex(root.hoveredIndex)
                 if (taskIndex < 0) return
                 let idx = DockModel.tasksModel.index(taskIndex, 0)
@@ -2637,6 +2641,7 @@ Item {
         standardButtons: QQC2.Dialog.Close
         readonly property bool showsEmptyState: DockModel.dockEntriesModel.count === 0
         readonly property bool hasApplicationLauncher: DockModel.dockEntriesModel.hasApplicationLauncher
+        readonly property bool hasMediaPlayer: DockModel.dockEntriesModel.hasMediaPlayer
         readonly property real screenWidth: DockView.screenGeometry.width > 0
             ? DockView.screenGeometry.width : root.width
         readonly property real screenHeight: DockView.screenGeometry.height > 0
@@ -2683,6 +2688,17 @@ Item {
                         onClicked: DockModel.dockEntriesModel.appendSeparator("center")
                     }
                     QQC2.Button {
+                        objectName: "addMediaPlayerWidgetButton"
+                        text: widgetManager.hasMediaPlayer
+                            ? i18n("Media player already added") : i18n("Add Media Player")
+                        icon.name: "audio-x-generic"
+                        enabled: !widgetManager.hasMediaPlayer
+                        Accessible.description: widgetManager.hasMediaPlayer
+                            ? i18n("The dock already has a media player widget.")
+                            : i18n("Add the single media player widget for all MPRIS sources.")
+                        onClicked: DockModel.dockEntriesModel.appendMediaPlayer("end")
+                    }
+                    QQC2.Button {
                         text: i18n("Add spacer")
                         icon.name: "go-next-view-page"
                         onClicked: DockModel.dockEntriesModel.appendSpacer(24, "center")
@@ -2706,6 +2722,13 @@ Item {
                     wrapMode: Text.Wrap
                     visible: widgetManager.hasApplicationLauncher
                     text: i18n("Only one Application Launcher is supported because its style and pinned applications are shared. Remove extra entries manually if this dock already has several.")
+                }
+                QQC2.Label {
+                    objectName: "mediaPlayerLimitNotice"
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    visible: widgetManager.hasMediaPlayer
+                    text: i18n("One media player widget serves all available MPRIS sources. Configure its display mode in Settings → Media Player.")
                 }
 
                 ColumnLayout {
@@ -2762,7 +2785,7 @@ Item {
                                     Layout.fillWidth: true
                                     text: widgetKind === "spacer" ? i18n("Spacer")
                                         : widgetKind === "applicationLauncher" ? i18n("Application Launcher")
-                                        : i18n("Separator")
+                                        : widgetKind === "mediaPlayer" ? i18n("Media Player") : i18n("Separator")
                                     font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                 }
@@ -2820,6 +2843,7 @@ Item {
                                     }
                                     ColumnLayout {
                                         visible: widgetKind !== "applicationLauncher"
+                                        && widgetKind !== "mediaPlayer"
                                         Layout.fillWidth: true
                                         spacing: Kirigami.Units.smallSpacing / 2
                                         QQC2.Label { text: i18n("Size") }

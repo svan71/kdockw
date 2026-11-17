@@ -3,6 +3,8 @@
 
 #include "dockmodel.h"
 
+#include "kdockw.h"
+
 #include "applicationcatalog.h"
 #include "applicationlauncherstate.h"
 #include "config/applicationconfig.h"
@@ -102,6 +104,7 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
     , m_dockEntriesModel(std::make_unique<DockEntriesModel>(this))
     , m_applicationCatalog(std::make_unique<ApplicationCatalog>(this))
     , m_applicationLauncherState(std::make_unique<ApplicationLauncherState>(settings, this))
+    , m_mediaPlayerController(std::make_unique<MediaPlayerController>(this))
     , m_tasksModel(std::make_unique<TaskManager::TasksModel>(this))
     , m_virtualDesktopInfo(std::make_shared<TaskManager::VirtualDesktopInfo>(this))
     , m_activityInfo(std::make_shared<TaskManager::ActivityInfo>(this))
@@ -377,6 +380,15 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
     m_dockPresentationModel = std::make_unique<DockPresentationModel>(
         m_tasksModel.get(), m_dockEntriesModel.get(), this, diagnosticTaskLoggingEnabled());
     m_dockPresentationModel->setSeparateLaunchers(m_separateLaunchers);
+    m_dockPresentationModel->setMediaPlayerAvailable(m_mediaPlayerEnabled && m_mediaPlayerController->available());
+    if (settings) m_dockPresentationModel->setMediaPlayerDisplayMode(settings->mediaPlayerDisplayMode());
+    if (settings) {
+        m_mediaPlayerController->setVisibilityPolicy(settings->mediaPlayerAutoVisibility(),
+            settings->mediaPlayerShowPaused(), settings->mediaPlayerStoppedHideDelay() * 1000);
+    }
+    connect(m_mediaPlayerController.get(), &MediaPlayerController::availabilityChanged, this, [this] {
+        m_dockPresentationModel->setMediaPlayerAvailable(m_mediaPlayerEnabled && m_mediaPlayerController->available());
+    });
     connect(m_dockPresentationModel.get(), &DockPresentationModel::pinnedEntryCountChanged, this, &DockModel::pinnedDockEntryCountChanged);
 }
 
@@ -405,6 +417,20 @@ ApplicationCatalog *DockModel::applicationCatalog() const
 ApplicationLauncherState *DockModel::applicationLauncherState() const
 {
     return m_applicationLauncherState.get();
+}
+
+MediaPlayerController *DockModel::mediaPlayerController() const
+{
+    return m_mediaPlayerController.get();
+}
+
+void DockModel::setMediaPlayerEnabled(bool enabled)
+{
+    if (m_mediaPlayerEnabled == enabled) return;
+    m_mediaPlayerEnabled = enabled;
+    if (m_dockPresentationModel) {
+        m_dockPresentationModel->setMediaPlayerAvailable(enabled && m_mediaPlayerController->available());
+    }
 }
 
 int DockModel::pinnedDockEntryCount() const

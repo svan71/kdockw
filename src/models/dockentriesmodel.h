@@ -16,6 +16,7 @@ class DockEntriesModel : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(bool hasApplicationLauncher READ hasApplicationLauncher NOTIFY entriesChanged)
+    Q_PROPERTY(bool hasMediaPlayer READ hasMediaPlayer NOTIFY entriesChanged)
 
 public:
     enum Role {
@@ -36,6 +37,7 @@ public:
 
     [[nodiscard]] int count() const;
     [[nodiscard]] bool hasApplicationLauncher() const;
+    [[nodiscard]] bool hasMediaPlayer() const;
     [[nodiscard]] int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     [[nodiscard]] QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
@@ -49,6 +51,7 @@ public:
     Q_INVOKABLE QString appendSeparator(const QString &slot = QStringLiteral("center"));
     Q_INVOKABLE QString appendSpacer(int size = 24, const QString &slot = QStringLiteral("center"));
     Q_INVOKABLE QString appendApplicationLauncher(const QString &slot = QStringLiteral("center"));
+    Q_INVOKABLE QString appendMediaPlayer(const QString &slot = QStringLiteral("end"));
     Q_INVOKABLE bool removeBuiltInWidget(const QString &entryId);
     Q_INVOKABLE bool setBuiltInWidgetSize(const QString &entryId, int size);
     Q_INVOKABLE bool setBuiltInWidgetIcon(const QString &entryId, const QString &iconName);

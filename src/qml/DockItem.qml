@@ -31,10 +31,12 @@ Item {
     readonly property string displayName: isBuiltInWidget
         ? (model.widgetKind === "spacer" ? i18n("Dock spacer")
             : model.widgetKind === "applicationLauncher" ? i18n("Application Launcher")
+            : model.widgetKind === "mediaPlayer" ? i18n("Media Player")
             : i18n("Separator")) : display || ""
     readonly property bool isFolderStack: model.entryType === "folderStack"
     readonly property bool isBuiltInWidget: model.entryType === "builtInWidget"
     readonly property bool isApplicationLauncher: isBuiltInWidget && model.widgetKind === "applicationLauncher"
+    readonly property bool isMediaPlayer: isBuiltInWidget && model.widgetKind === "mediaPlayer"
     readonly property bool usesDefaultLauncherIcon: isApplicationLauncher && !(model.iconIsCustom ?? false)
     readonly property string defaultLauncherIconName: {
         switch (DockModel.applicationLauncherState.style) {
@@ -61,6 +63,11 @@ Item {
 
     function openFolderContextMenu() {
         folderStackDelegate.openContextMenu()
+    }
+
+    function openMediaPlayerPopup() {
+        if (mediaPlayerWidgetLoader.item)
+            mediaPlayerWidgetLoader.item.openPinned()
     }
 
     // Accessible description for screen readers (state summary)
@@ -820,7 +827,9 @@ Item {
 
     // Size: base icon size + fixed indicator space (toward screen edge)
     readonly property int _primaryExtent: isBuiltInWidget && model.widgetSize > 0
-        ? Math.max(4, model.widgetSize) : iconSize
+        ? Math.max(4, model.widgetSize) : (isMediaPlayer
+            ? Math.max(iconSize, DockSettings.mediaPlayerDisplayMode === 2 ? 192
+                : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : iconSize) : iconSize)
     width: DockView.isVertical ? (iconSize + _indicatorSpace) : _primaryExtent
     height: DockView.isVertical ? _primaryExtent : (iconSize + _indicatorSpace)
 
@@ -1083,6 +1092,20 @@ Item {
         objectName: "builtInSpacer"
         visible: dockItem.isBuiltInWidget && model.widgetKind === "spacer"
         Accessible.ignored: true
+    }
+
+    Loader {
+        id: mediaPlayerWidgetLoader
+        objectName: "mediaPlayerWidgetLoader"
+        active: dockItem.isMediaPlayer
+        anchors.fill: parent
+        sourceComponent: Component {
+            MediaPlayerWidget {
+                anchors.fill: parent
+                dockItem: dockItem
+                dockHovered: dockItem.dockRoot && dockItem.dockRoot.hoveredIndex === dockItem.index
+            }
+        }
     }
 
     // Attention glow effect (type 4) — MultiEffect shadow pulse on iconImage

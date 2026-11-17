@@ -3,6 +3,7 @@
         <file>fixtures/preview-clip-pattern.svg</file>
         <file>main.qml</file>
         <file>DockItem.qml</file>
+        <file>MediaPlayerWidget.qml</file>
         <file>DockSeparator.qml</file>
         <file>FolderStackItem.qml</file>
         <file>ApplicationLauncherPopup.qml</file>
@@ -39,6 +40,7 @@
         <file>settings/MonitorsPage.qml</file>
         <file>settings/PreviewPage.qml</file>
         <file>settings/ApplicationLauncherPage.qml</file>
+        <file>settings/MediaPlayerPage.qml</file>
         <file>settings/PreviewSizePresets.js</file>
     </qresource>
 </RCC>

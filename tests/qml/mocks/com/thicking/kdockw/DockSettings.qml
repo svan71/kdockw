@@ -91,6 +91,16 @@ QtObject {
     property int screenTransition: 0
     property int virtualDesktopMode: 1
     property string applicationLauncherStyle: "launchpad"
+    property bool mediaPlayerEnabled: true
+    property int mediaPlayerDisplayMode: 0
+    property bool mediaPlayerUseArtwork: true
+    property bool mediaPlayerAutoVisibility: true
+    property bool mediaPlayerShowPaused: true
+    property int mediaPlayerStoppedHideDelay: 5
+    property bool mediaPlayerHoverPopup: true
+    property int mediaPlayerHoverDelay: 30
+    property bool mediaPlayerShowVolume: true
+    property bool mediaPlayerShowSource: true
     property bool shadowEnabled: true
     property int shadowElevation: 1
     property int shadowLightX: 65

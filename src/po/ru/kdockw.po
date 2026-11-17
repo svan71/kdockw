@@ -2064,3 +2064,134 @@ msgstr "Открепить %1"
 #: src/qml/ApplicationLauncherStart.qml
 msgid "Pin %1"
 msgstr "Закрепить %1"
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Media Player"
+msgstr "Медиаплеер"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Control media sessions provided by MPRIS-compatible applications"
+msgstr "Управление медиасеансами приложений, совместимых с MPRIS"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Dock widget"
+msgstr "Виджет дока"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Enable the media player widget"
+msgstr "Включить виджет медиаплеера"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "One widget follows available media sessions and keeps its saved dock position."
+msgstr "Один виджет отображает доступные медиасеансы и сохраняет положение в доке."
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "The same selected media session is used in every mode."
+msgstr "Во всех режимах отображается выбранный медиасеанс."
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Compact icon"
+msgstr "Компактный значок"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Playback controls"
+msgstr "Кнопки управления воспроизведением"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Expanded media widget"
+msgstr "Расширенный медиавиджет"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Use album artwork in the dock"
+msgstr "Показывать обложку в доке"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Automatically show and hide the widget"
+msgstr "Автоматически показывать и скрывать виджет"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "When disabled, an inactive compact widget remains available without a player."
+msgstr "Если отключено, компактный виджет остаётся в доке и без активного плеера."
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Show resumable paused sessions"
+msgstr "Показывать приостановленные сессии"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Stopped session hide delay"
+msgstr "Задержка скрытия остановленной сессии"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Keep a stopped session visible briefly before it leaves the dock."
+msgstr "Ненадолго оставить остановленную сессию в доке перед скрытием."
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Open the player on hover"
+msgstr "Открывать плеер при наведении"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "The full popup is also available by clicking the media widget."
+msgstr "Полный плеер также открывается нажатием на медиавиджет."
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Hover popup delay"
+msgstr "Задержка открытия при наведении"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Show media source"
+msgstr "Показывать источник воспроизведения"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Show the volume slider"
+msgstr "Показывать регулятор громкости"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Previous track"
+msgstr "Предыдущая композиция"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Next track"
+msgstr "Следующая композиция"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Pause"
+msgstr "Пауза"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Play"
+msgstr "Воспроизвести"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "No media session"
+msgstr "Нет медиасессии"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "No track information"
+msgstr "Нет информации о композиции"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Play or pause"
+msgstr "Воспроизвести или приостановить"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Auto"
+msgstr "Авто"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Return to automatic media source selection"
+msgstr "Вернуться к автоматическому выбору источника"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Raise media player"
+msgstr "Показать окно медиаплеера"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Shuffle"
+msgstr "Перемешать"
+
+#: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
+msgid "Repeat"
+msgstr "Повтор"
+
+#: src/qml/MediaPlayerWidget.qml
+msgid "Unknown track"
+msgstr "Неизвестная композиция"

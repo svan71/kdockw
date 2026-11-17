@@ -646,4 +646,56 @@
       <default>notAttempted</default>
     </entry>
   </group>
+  <group name="MediaPlayer">
+    <entry name="MediaPlayerWidgetConfigured" type="Bool">
+      <label>Media player widget initialized in dock entries</label>
+      <default>false</default>
+    </entry>
+    <entry name="MediaPlayerEnabled" type="Bool">
+      <label>Enable the media player widget</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerDisplayMode" type="Int">
+      <label>Media player widget display mode (0=Compact, 1=Controls, 2=Expanded)</label>
+      <default>0</default>
+      <min>0</min>
+      <max>2</max>
+    </entry>
+    <entry name="MediaPlayerUseArtwork" type="Bool">
+      <label>Use album artwork in the dock widget</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerAutoVisibility" type="Bool">
+      <label>Automatically show and hide the media player widget</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerShowPaused" type="Bool">
+      <label>Show a resumable paused media session</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerStoppedHideDelay" type="Int">
+      <label>Delay before hiding a stopped media player, in seconds</label>
+      <default>5</default>
+      <min>0</min>
+      <max>30</max>
+    </entry>
+    <entry name="MediaPlayerHoverPopup" type="Bool">
+      <label>Open the media player popup on hover</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerHoverDelay" type="Int">
+      <label>Media player hover popup delay in milliseconds</label>
+      <default>300</default>
+      <min>0</min>
+      <max>1500</max>
+    </entry>
+    <entry name="MediaPlayerShowVolume" type="Bool">
+      <label>Show the media volume control in the popup</label>
+      <default>true</default>
+    </entry>
+    <entry name="MediaPlayerShowSource" type="Bool">
+      <label>Show the selected media source</label>
+      <default>true</default>
+    </entry>
+  </group>
 </kcfg>

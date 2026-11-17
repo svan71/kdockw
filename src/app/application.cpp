@@ -8,6 +8,7 @@
 #include "models/dockactions.h"
 #include "models/dockentry.h"
 #include "models/dockmodel.h"
+#include "models/mediaartworkitem.h"
 #include "models/folderstackmodel.h"
 #include "models/launcherentrytracker.h"
 #include "models/notificationtracker.h"
@@ -215,6 +216,16 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::ReserveScreenSpaceChanged, context, saveSettings);
     connect(settings, &KDockWSettings::SeparateLaunchersChanged, context, saveSettings);
     connect(settings, &KDockWSettings::ApplicationLauncherStyleChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerEnabledChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerDisplayModeChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerUseArtworkChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerAutoVisibilityChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerShowPausedChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerStoppedHideDelayChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerHoverPopupChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerHoverDelayChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerShowVolumeChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerShowSourceChanged, context, saveSettings);
     connect(settings, &KDockWSettings::StartPinnedApplicationsChanged, context, saveSettings);
     connect(settings, &KDockWSettings::LaunchpadFoldersChanged, context, saveSettings);
     connect(settings, &KDockWSettings::LaunchpadItemOrderChanged, context, saveSettings);
@@ -347,7 +358,17 @@ int Application::run(const KAboutData &aboutData)
     m_dockModel = std::make_unique<DockModel>(nullptr, m_settings.get());
     m_dockModel->setPinnedLaunchers(m_settings->pinnedLaunchers());
     m_dockModel->loadDockEntries(m_settings->dockEntries());
+    if (!m_settings->mediaPlayerWidgetConfigured()) {
+        if (m_settings->mediaPlayerEnabled() && !m_dockModel->dockEntriesModel()->hasMediaPlayer()) {
+            m_dockModel->dockEntriesModel()->appendMediaPlayer(QStringLiteral("end"));
+        }
+        m_settings->setMediaPlayerWidgetConfigured(true);
+        m_settings->setDockEntries(m_dockModel->dockEntries());
+        m_settings->save();
+    }
     m_dockModel->setSeparateLaunchers(m_settings->separateLaunchers());
+    m_dockModel->setMediaPlayerEnabled(m_settings->mediaPlayerEnabled());
+    m_dockModel->dockPresentationModel()->setMediaPlayerDisplayMode(m_settings->mediaPlayerDisplayMode());
 
     // Create notification trackers (before QML loading)
     m_notificationTracker = std::make_unique<NotificationTracker>();
@@ -385,6 +406,7 @@ int Application::run(const KAboutData &aboutData)
     qmlRegisterType<SpringZoomController>("com.thicking.kdockw", 1, 0, "SpringZoomController");
     qmlRegisterType<FolderStackModel>("com.thicking.kdockw", 1, 0, "FolderStackModel");
     qmlRegisterType<PlasmaFavoritesReader>("com.thicking.kdockw", 1, 0, "PlasmaFavoritesReader");
+    qmlRegisterType<MediaArtworkItem>("com.thicking.kdockw", 1, 0, "MediaArtworkItem");
 
     // Create and initialize the multi-dock manager (creates DockShell(s) based on monitor mode).
     // Placement uses the Plasma primary output (kde_output_order_v1); wait for
@@ -427,6 +449,23 @@ int Application::run(const KAboutData &aboutData)
     connect(s, &KDockWSettings::SeparateLaunchersChanged, this, [this]() {
         m_dockModel->setSeparateLaunchers(m_settings->separateLaunchers());
     });
+    connect(s, &KDockWSettings::MediaPlayerDisplayModeChanged, this, [this]() {
+        m_dockModel->dockPresentationModel()->setMediaPlayerDisplayMode(m_settings->mediaPlayerDisplayMode());
+    });
+    connect(s, &KDockWSettings::MediaPlayerEnabledChanged, this, [this]() {
+        if (m_settings->mediaPlayerEnabled() && !m_dockModel->dockEntriesModel()->hasMediaPlayer()) {
+            m_dockModel->dockEntriesModel()->appendMediaPlayer(QStringLiteral("end"));
+        }
+        m_dockModel->setMediaPlayerEnabled(m_settings->mediaPlayerEnabled());
+    });
+    const auto updateMediaVisibilityPolicy = [this] {
+        m_dockModel->mediaPlayerController()->setVisibilityPolicy(
+            m_settings->mediaPlayerAutoVisibility(), m_settings->mediaPlayerShowPaused(),
+            m_settings->mediaPlayerStoppedHideDelay() * 1000);
+    };
+    connect(s, &KDockWSettings::MediaPlayerAutoVisibilityChanged, this, updateMediaVisibilityPolicy);
+    connect(s, &KDockWSettings::MediaPlayerShowPausedChanged, this, updateMediaVisibilityPolicy);
+    connect(s, &KDockWSettings::MediaPlayerStoppedHideDelayChanged, this, updateMediaVisibilityPolicy);
 
     // Monitor mode change
     connect(s, &KDockWSettings::MonitorModeChanged, this, [this]() {

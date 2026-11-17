@@ -20,6 +20,8 @@ add_executable(kdockw_unit_tests
     test_settings_migration.cpp
     test_dock_entries.cpp
     test_dock_entries_model.cpp
+    test_media_artwork.cpp
+    test_mpris_backend.cpp
     test_application_launcher.cpp
     test_dock_presentation_model.cpp
     test_folder_stack_model.cpp
@@ -62,3 +64,15 @@ catch_discover_tests(kdockw_unit_tests
         FIXTURES_REQUIRED application_catalog_cache
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session)
+if(DBUS_RUN_SESSION_EXECUTABLE)
+    add_test(NAME kdockw_mpris_backend_integration
+        COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:kdockw_unit_tests> "[mpris-integration]"
+    )
+    set_tests_properties(kdockw_mpris_backend_integration PROPERTIES
+        FIXTURES_REQUIRED application_catalog_cache
+        TIMEOUT 30
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endif()

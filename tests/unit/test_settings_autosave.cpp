@@ -25,9 +25,10 @@
 namespace
 {
 
-// Saved by Application::run()'s dock model change handlers, not by
-// connectSettingsAutoSave().
-const QSet<QString> kSeparatelySaved{QStringLiteral("PinnedLaunchers"), QStringLiteral("DockEntries")};
+// Persisted with the dock model by Application::run(), not through the
+// connectSettingsAutoSave() UI-setting path.
+const QSet<QString> kSeparatelySaved{QStringLiteral("PinnedLaunchers"), QStringLiteral("DockEntries"),
+                                    QStringLiteral("MediaPlayerWidgetConfigured")};
 // Internal update-check cache fields are written in batches by
 // ReleaseUpdateChecker::save(), not individually through the settings UI.
 const QSet<QString> kCheckerCacheSettings{

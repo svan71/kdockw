@@ -253,6 +253,21 @@ void DockPresentationModel::setSeparateLaunchers(bool separate)
     rebuild();
 }
 
+void DockPresentationModel::setMediaPlayerAvailable(bool available)
+{
+    if (m_mediaPlayerAvailable == available) return;
+    m_mediaPlayerAvailable = available;
+    scheduleRebuild();
+}
+
+void DockPresentationModel::setMediaPlayerDisplayMode(int mode)
+{
+    mode = std::clamp(mode, 0, 2);
+    if (m_mediaPlayerDisplayMode == mode) return;
+    m_mediaPlayerDisplayMode = mode;
+    scheduleRebuild();
+}
+
 int DockPresentationModel::taskIndexForDockIndex(int dockIndex) const
 {
     if (dockIndex < 0 || dockIndex >= m_rows.size()) {
@@ -302,9 +317,11 @@ QVariantList DockPresentationModel::zoomLayoutSpecs(int iconSize) const
     for (const Row &row : m_rows) {
         const bool widget = row.entryType == QLatin1String("builtInWidget");
         const bool launcher = widget && row.widgetKind == QLatin1String("applicationLauncher");
-        const double size = widget && row.widgetSize > 0
-            ? std::max(4, row.widgetSize) : std::max(1, iconSize);
-        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget || launcher}});
+        const bool media = widget && row.widgetKind == QLatin1String("mediaPlayer");
+        const double size = media && m_mediaPlayerDisplayMode == 2 ? std::max(192, iconSize)
+            : media && m_mediaPlayerDisplayMode == 1 ? std::max(96, iconSize)
+            : widget && row.widgetSize > 0 ? std::max(4, row.widgetSize) : std::max(1, iconSize);
+        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget || launcher || (media && m_mediaPlayerDisplayMode == 0)}});
     }
     return specs;
 }
@@ -312,8 +329,9 @@ QVariantList DockPresentationModel::zoomLayoutSpecs(int iconSize) const
 QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
 {
     QList<Row> rows;
-    const auto appendBuiltIn = [&rows](const DockEntry &entry) {
+    const auto appendBuiltIn = [this, &rows](const DockEntry &entry) {
         if (!entry.widgetVisible) return;
+        if (entry.widgetKind == QLatin1String("mediaPlayer") && !m_mediaPlayerAvailable) return;
         Row row;
         row.entryId = entry.id;
         row.entryType = QStringLiteral("builtInWidget");
@@ -321,6 +339,9 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         row.iconName = entry.iconName;
         row.iconUrl = entry.iconUrl;
         row.widgetSize = entry.widgetSize;
+        if (entry.widgetKind == QLatin1String("mediaPlayer") && m_mediaPlayerDisplayMode == 2) {
+            row.widgetSize = 192;
+        }
         row.widgetVisible = entry.widgetVisible;
         row.iconIsCustom = entry.iconIsCustom;
         row.placementSlot = entry.slot == DockWidgetSlot::Start ? QStringLiteral("start")

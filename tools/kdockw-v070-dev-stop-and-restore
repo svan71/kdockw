@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
+diagnostic_root="${repo_root}/diagnostics/v070-dev"
+state_dir="${diagnostic_root}/launcher-state"
+desktop_candidate="${state_dir}/candidate.desktop"
+state_file="${state_dir}/restore-state"
+service="kdockw-v070-diagnostic-release.service"
+restore_service="kdockw-v051-restored.service"
+
+fail() { printf 'KDockW v0.7.0-dev restore refused: %s\n' "$1" >&2; exit 1; }
+
+[[ -f "$state_file" ]] || fail "no restore state is recorded"
+mapfile -t restore_values < "$state_file"
+(( ${#restore_values[@]} == 7 )) || fail "restore state is incomplete; preserving it at $state_dir"
+test_binary="${restore_values[0]}"
+desktop_file="${restore_values[1]}"
+stable_binary="${restore_values[2]}"
+runtime_data_home="${restore_values[3]}"
+runtime_cache_home="${restore_values[4]}"
+data_home="${restore_values[5]}"
+desktop_id="${restore_values[6]}"
+expected_binary="$(readlink -f -- "${repo_root}/build/v070-diagnostic-release/stage/bin/kdockw" 2>/dev/null || true)"
+[[ -n "$expected_binary" && "$test_binary" == "$expected_binary" ]] || fail "restore state does not match this diagnostic binary"
+[[ "$desktop_file" == "${data_home}/applications/${desktop_id}" \
+    && "$desktop_id" == "kdockw-v070-diagnostic-release.desktop" \
+    && "$runtime_data_home" == "${state_dir}/runtime-data" \
+    && "$runtime_cache_home" == "${state_dir}/runtime-cache" \
+    && -f "$desktop_candidate" ]] || fail "isolated candidate Desktop Entry record is invalid"
+[[ "$("$stable_binary" --version 2>/dev/null || true)" == 'kdockw 0.6.0' ]] \
+    || fail "installed stable binary is no longer KDockW v0.6.0: $stable_binary"
+
+if systemctl --user is-active --quiet "$service"; then
+    main_pid="$(systemctl --user show "$service" -p MainPID --value 2>/dev/null || true)"
+    [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] || fail "diagnostic service has no valid MainPID"
+    [[ "$(readlink -f "/proc/${main_pid}/exe" 2>/dev/null || true)" == "$test_binary" ]] \
+        || fail "active diagnostic service is not running the expected candidate"
+    systemctl --user stop "$service"
+fi
+for _ in {1..50}; do
+    systemctl --user is-active --quiet "$service" || break
+    sleep 0.1
+done
+systemctl --user is-active --quiet "$service" && fail "diagnostic service did not stop"
+
+mapfile -t remaining_pids < <(pgrep -x kdockw || true)
+stable_already_running=false
+for pid in "${remaining_pids[@]}"; do
+    exe="$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
+    [[ "$exe" != "$test_binary" ]] || fail "diagnostic process $pid remains outside its service; preserving restore records"
+    if [[ "$exe" == "$stable_binary" ]]; then
+        stable_already_running=true
+    else
+        fail "another KDockW process ($pid, $exe) is running; preserving restore records"
+    fi
+done
+
+manager_env="$(systemctl --user show-environment)" || fail "cannot read Plasma user-manager environment"
+manager_data_home="$(sed -n 's/^XDG_DATA_HOME=//p' <<<"$manager_env")"
+[[ -n "$manager_data_home" ]] || manager_data_home="${HOME}/.local/share"
+[[ "$data_home" == "$manager_data_home" ]] || fail "restore data home does not match KWin's current user data home"
+data_dirs="$(sed -n 's/^XDG_DATA_DIRS=//p' <<<"$manager_env")"
+manager_cache_home="$(sed -n 's/^XDG_CACHE_HOME=//p' <<<"$manager_env")"
+[[ -n "$manager_cache_home" ]] || manager_cache_home="${HOME}/.cache"
+
+# Remove only the exact diagnostic entry recorded by this launch, then refresh
+# the same user Sycoca once so KWin stops authorizing the staged executable.
+if [[ -e "$desktop_file" ]]; then
+    cmp -s "$desktop_candidate" "$desktop_file" \
+        || fail "KWin authorization Desktop Entry changed; preserving it and restore state"
+    rm -- "$desktop_file"
+fi
+dbus_address="$(sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' <<<"$manager_env")"
+env DBUS_SESSION_BUS_ADDRESS="$dbus_address" XDG_DATA_HOME="$data_home" \
+    XDG_DATA_DIRS="$data_dirs" XDG_CACHE_HOME="$manager_cache_home" kbuildsycoca6 >/dev/null \
+    || fail "could not refresh user Sycoca after removing the owned diagnostic Desktop Entry"
+rm -f -- "$desktop_candidate" "$state_file"
+
+mapfile -t running_pids < <(pgrep -x kdockw || true)
+if ((${#running_pids[@]} > 0)); then
+    stable_running="$stable_already_running"
+    for pid in "${running_pids[@]}"; do
+        exe="$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
+        if [[ "$exe" == "$stable_binary" ]]; then
+            stable_running=true
+        else
+            fail "another KDockW process ($pid, $exe) started during restore; candidate remains stopped"
+        fi
+    done
+    if [[ "$stable_running" == true ]]; then
+        printf 'Stopped the diagnostic candidate; installed KDockW v0.6.0 is already running and was left untouched.\n'
+        exit 0
+    fi
+fi
+
+systemctl --user is-active --quiet "$restore_service" && fail "$restore_service is already active"
+systemd-run --user --no-block --collect --unit="$restore_service" \
+    --property=Type=exec \
+    --setenv="XDG_DATA_HOME=${data_home}" \
+    --setenv="XDG_DATA_DIRS=${data_dirs}" \
+    "$stable_binary"
+restored=false
+for _ in {1..50}; do
+    if systemctl --user is-active --quiet "$restore_service"; then
+        main_pid="$(systemctl --user show "$restore_service" -p MainPID --value 2>/dev/null || true)"
+        if [[ "$main_pid" =~ ^[1-9][0-9]*$ ]] \
+                && [[ "$(readlink -f "/proc/${main_pid}/exe" 2>/dev/null || true)" == "$stable_binary" ]]; then
+            restored=true
+            break
+        fi
+    fi
+    sleep 0.1
+done
+[[ "$restored" == true ]] || fail "installed KDockW v0.6.0 did not become active"
+printf 'Stopped the diagnostic candidate and started installed KDockW v0.6.0: %s\n' "$stable_binary"

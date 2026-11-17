@@ -14,6 +14,7 @@
 // Must run under run-with-kwin.sh.
 
 #include "kdockw.h"
+#include "../dockqmltypes.h"
 #include "models/dockmodel.h"
 #include "models/folderstackmodel.h"
 #include "models/launcherentrytracker.h"
@@ -306,9 +307,7 @@ int main(int argc, char *argv[])
     KAboutData aboutData(QStringLiteral("kdockw"), QStringLiteral("KDockW"), QStringLiteral("test"));
     KAboutData::setApplicationData(aboutData);
     initResources();
-    qmlRegisterType<kdockw::ClippedPipeWireSourceItem>("com.thicking.kdockw", 1, 0, "ClippedPipeWireSourceItem");
-    qmlRegisterType<kdockw::SpringZoomController>("com.thicking.kdockw", 1, 0, "SpringZoomController");
-    qmlRegisterType<kdockw::FolderStackModel>("com.thicking.kdockw", 1, 0, "FolderStackModel");
+    registerDockQmlTypes();
 
     return Catch::Session().run(argc, argv);
 }

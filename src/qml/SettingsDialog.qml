@@ -128,6 +128,14 @@ Kirigami.AbstractApplicationWindow {
                 i18n("Pinned applications"), i18n("Launcher style")]
         },
         {
+            moduleId: "mediaplayer",
+            text: i18n("Media Player"),
+            iconName: "audio-x-generic",
+            group: "",
+            keywords: [i18n("MPRIS"), i18n("Playback controls"), i18n("Album artwork"),
+                i18n("Automatic visibility"), i18n("Hover popup"), i18n("Media session source")]
+        },
+        {
             moduleId: "about",
             text: i18n("About KDockW"),
             iconName: "help-about",
@@ -153,7 +161,8 @@ Kirigami.AbstractApplicationWindow {
         "behavior": "settings/BehaviorPage.qml",
         "monitors": "settings/MonitorsPage.qml",
         "preview": "settings/PreviewPage.qml",
-        "applicationlauncher": "settings/ApplicationLauncherPage.qml"
+        "applicationlauncher": "settings/ApplicationLauncherPage.qml",
+        "mediaplayer": "settings/MediaPlayerPage.qml"
     })
 
     // Page components created on first use, keyed by module id.
