@@ -68,6 +68,8 @@ https://github.com/user-attachments/assets/da075b0f-4fcf-4d15-a608-a3b91eddcfcf
 - **Плавная работа** — Classic Zoom, настраиваемая анимация, анимация запуска приложений и индикаторы запущенных приложений.
 - **Предпросмотр окон** — миниатюры открытых и свёрнутых окон, группы приложений и активация окна щелчком.
 - **Настраиваемый внешний вид** — оформление панели, прозрачность значков, счётчики уведомлений и размеры карточек предпросмотра.
+- **Встроенные виджеты дока** — добавление, сортировка, настройка размера и размещение фиксированных spacer и разделителей в начале, центре или конце дока.
+- **Меню приложений** — Launchpad, Windows Start или KDE Hierarchical; поиск, папки Launchpad и управление избранным.
 - **Проверенные пакеты для Linux** — пакеты KDockW публикуются в GitHub Releases. Начиная с v0.3.2 обязательная матрица выпуска охватывает Debian 13, Ubuntu 26.04 LTS и Fedora 45.
 
 Об устройстве предпросмотра и устранении неполадок читайте в материалах: [архитектура и диагностика предпросмотра окон](docs/architecture/window-previews.md), [модели KDE TaskManager](docs/kde/taskmanager-models.md) и [NVIDIA PRIME / Wayland](docs/troubleshooting/nvidia-prime-wayland.md). Дополнительная диагностика модели задач записывает изменения строк и ролей, но не заголовки окон.
@@ -156,11 +158,11 @@ https://github.com/user-attachments/assets/da075b0f-4fcf-4d15-a608-a3b91eddcfcf
 
 ## Установка
 
-KDockW 0.5.1 — последняя стабильная версия. Исходный архив, пакеты и контрольные суммы доступны на странице [релиза KDockW 0.5.1 в GitHub](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.5.1). Подробнее — в [политике версий](docs/releasing/versioning.md) и [инструкции по выпуску](docs/releasing/release-process.md), а также в [инструкции по сборке на TUXEDO OS](docs/building/tuxedo-os.md).
+KDockW 0.6.0 — последняя стабильная версия. Исходный архив, пакеты и контрольные суммы доступны на странице [релиза KDockW 0.6.0 в GitHub](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.6.0). Подробнее — в [политике версий](docs/releasing/versioning.md) и [инструкции по выпуску](docs/releasing/release-process.md), а также в [инструкции по сборке на TUXEDO OS](docs/building/tuxedo-os.md).
 
 ### Целевые Linux-дистрибутивы
 
-В релиз v0.5.1 входят пакеты для Debian 13, Ubuntu 26.04 LTS и Fedora 45. Это обязательные цели сборки и Distro E2E; рецепты для проверки совместимости со старыми выпусками доступны для ручных запусков, но не входят в релиз. KDockW распространяется только через GitHub Releases.
+В релиз v0.6.0 входят пакеты для Debian 13, Ubuntu 26.04 LTS и Fedora 45. Это обязательные цели сборки и Distro E2E; рецепты для проверки совместимости со старыми выпусками доступны для ручных запусков, но не входят в релиз. KDockW распространяется только через GitHub Releases.
 
 Для сборки KDockW из исходников требуются Qt версии 6.8 или новее и KDE Frameworks 6 версии 6.0 или новее.
 
@@ -172,9 +174,9 @@ KDockW 0.5.1 — последняя стабильная версия. Исхо�
 Установите загруженный пакет штатным менеджером:
 
 ```bash
-sudo apt install ./kdockw-0.5.1-debian-13.deb
-sudo apt install ./kdockw-0.5.1-ubuntu-26.04.deb
-sudo dnf install ./kdockw-0.5.1-fedora-45.rpm
+sudo apt install ./kdockw-0.6.0-debian-13.deb
+sudo apt install ./kdockw-0.6.0-ubuntu-26.04.deb
+sudo dnf install ./kdockw-0.6.0-fedora-45.rpm
 ```
 
 ```bash

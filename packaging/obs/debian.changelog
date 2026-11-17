@@ -1,3 +1,11 @@
+kdockw (0.6.0-1) unstable; urgency=medium
+
+  * Add persistent built-in dock widgets and three KDE application launcher styles.
+  * Add Launchpad folders, Start pins, KDE hierarchy, shared favorites, and search.
+  * Improve task icon updates, widget ordering, and separator alignment.
+
+ -- thicking <thicking@gmail.com>  Tue, 17 Nov 2026 00:00:00 +0500
+
 kdockw (0.5.1-1) unstable; urgency=medium
 
   * Release KDockW 0.5.1 with stable maximized-window geometry after unlock.

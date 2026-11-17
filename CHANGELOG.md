@@ -8,6 +8,8 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-17
+
 ### Added
 
 - Added built-in dock separators and fixed-size spacers with saved identity, order, start/center/end placement, visibility, resizing, and a dock widget manager.
@@ -30,6 +32,12 @@ carried forward from the Krema-based development period.
 - Centered built-in separators on the actual TaskManager separator geometry using one shared dock-axis component, including the running-indicator band.
 - Anchored Launcher context menus to the actual click position through the Qt Quick Controls overlay, sized them from their contents, and applied the resolved KDockW/Kirigami theme to nested menus and states.
 - Rendered Launcher navigation buttons and context-menu actions with explicit theme-aware controls so their visibility and contrast do not depend on the active Qt Quick Controls style.
+
+- Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
+- Organized Windows Start into a pinned-app home grid, a separate locale-sorted full list, and an alphabet index that returns to the unfiltered list at the selected section.
+- Kept Launchpad as an adaptive grid of all applications with persisted user folders and confined XDG menu categories to KDE Hierarchical, whose tiles show real descendant app icons.
+- Tuned the preferred Launcher viewports to 900×600 for Launchpad, 680×600 for Start, and 800×600 for KDE Hierarchical, with dimensions clamped to the available output area.
+- Made built-in dock widgets available as long-press drag sources among pinned entries, persisting their target slot and order while keeping dynamic TaskManager rows outside widget reordering.
 
 ### Fixed
 
@@ -56,13 +64,6 @@ carried forward from the Krema-based development period.
 - Sized the widget manager to the available screen width, removed horizontal overflow, and aligned Folder Stack icons to the same edge-based icon geometry as task and launcher icons.
 - Recomputed the TaskManager task-zone separator after same-count row moves so it remains visible when pinned and running task zones are reordered.
 
-### Changed
-
-- Limited newly added Application Launcher widgets to one because style and pinned-app settings are shared; existing duplicate entries are preserved and can be removed manually.
-- Organized Windows Start into a pinned-app home grid, a separate locale-sorted full list, and an alphabet index that returns to the unfiltered list at the selected section.
-- Kept Launchpad as an adaptive grid of all applications with persisted user folders and confined XDG menu categories to KDE Hierarchical, whose tiles show real descendant app icons.
-- Tuned the preferred Launcher viewports to 900×600 for Launchpad, 680×600 for Start, and 800×600 for KDE Hierarchical, with dimensions clamped to the available output area.
-- Made built-in dock widgets available as long-press drag sources among pinned entries, persisting their target slot and order while keeping dynamic TaskManager rows outside widget reordering.
 
 ## [0.5.1] - 2026-11-13
 
