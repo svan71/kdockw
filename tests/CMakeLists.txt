@@ -4,6 +4,15 @@
 find_package(Catch2 3 REQUIRED)
 include(Catch)
 
+# ApplicationCatalog tests use KService's real catalog. Seed a private XDG
+# data home so the same test applications are available on developer systems
+# and in the minimal CI image.
+set(KDOCKW_TEST_CATALOG_ROOT "${CMAKE_BINARY_DIR}/tests/application-catalog")
+set(KDOCKW_TEST_CATALOG_CONFIG_HOME "${KDOCKW_TEST_CATALOG_ROOT}/config")
+set(KDOCKW_TEST_CATALOG_CACHE_HOME "${KDOCKW_TEST_CATALOG_ROOT}/cache")
+set(KDOCKW_TEST_CATALOG_DATA_HOME "${KDOCKW_TEST_CATALOG_ROOT}/data")
+set(KDOCKW_TEST_CATALOG_DATA_DIRS "/usr/local/share:/usr/share")
+
 # The manual Update Checker launcher has no third-party Python dependencies.
 # Register its regression suite when a Python 3 interpreter is available, while
 # keeping Python optional for distribution builds that do not run CTest.

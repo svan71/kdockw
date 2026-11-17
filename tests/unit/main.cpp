@@ -113,6 +113,10 @@ int main(int argc, char *argv[])
     }
 
     KLocalizedString::setApplicationDomain(QByteArrayLiteral("kdockw"));
+    qputenv("XDG_CONFIG_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CONFIG_HOME));
+    qputenv("XDG_CACHE_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CACHE_HOME));
+    qputenv("XDG_DATA_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_HOME));
+    qputenv("XDG_DATA_DIRS", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_DIRS));
     // Catch2 discovery launches each case as its own process. Set locale before
     // QApplication caches QLocale so the desktop-action locale test is stable.
     bool germanDesktopActionCase = false;

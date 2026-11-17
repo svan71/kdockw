@@ -1,0 +1,23 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<Menu>
+  <Name>Applications</Name>
+  <Directory>applications.directory</Directory>
+  <DefaultAppDirs/>
+  <DefaultDirectoryDirs/>
+  <Menu>
+    <Name>Internet</Name>
+    <Directory>network.directory</Directory>
+    <Include><Category>Network</Category></Include>
+  </Menu>
+  <Menu>
+    <Name>Utilities</Name>
+    <Directory>utilities.directory</Directory>
+    <Include><Category>Utility</Category></Include>
+  </Menu>
+  <Menu>
+    <Name>Settings</Name>
+    <Directory>settings.directory</Directory>
+    <Include><Category>Settings</Category></Include>
+  </Menu>
+</Menu>

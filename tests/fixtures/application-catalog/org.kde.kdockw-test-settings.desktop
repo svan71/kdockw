@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=KDockW Test Settings
+Exec=/usr/bin/true
+Icon=preferences-system
+NoDisplay=false
+Categories=Settings;

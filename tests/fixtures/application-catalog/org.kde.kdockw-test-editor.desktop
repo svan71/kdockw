@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=KDockW Test Editor
+GenericName=Text Editor
+Exec=/usr/bin/true
+Icon=accessories-text-editor
+NoDisplay=false
+Categories=Utility;TextEditor;

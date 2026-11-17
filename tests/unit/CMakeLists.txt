@@ -39,6 +39,10 @@ add_executable(kdockw_unit_tests
 target_compile_definitions(kdockw_unit_tests PRIVATE
     KDOCKW_TEST_LOCALE_DIR="${CMAKE_BINARY_DIR}/src/locale"
     KDOCKW_TEST_INSTALL_LOCALE_DIR="${KDE_INSTALL_FULL_LOCALEDIR}"
+    KDOCKW_TEST_CATALOG_CONFIG_HOME="${KDOCKW_TEST_CATALOG_CONFIG_HOME}"
+    KDOCKW_TEST_CATALOG_CACHE_HOME="${KDOCKW_TEST_CATALOG_CACHE_HOME}"
+    KDOCKW_TEST_CATALOG_DATA_HOME="${KDOCKW_TEST_CATALOG_DATA_HOME}"
+    KDOCKW_TEST_CATALOG_DATA_DIRS="${KDOCKW_TEST_CATALOG_DATA_DIRS}"
 )
 
 target_link_libraries(kdockw_unit_tests PRIVATE
@@ -54,5 +58,7 @@ target_include_directories(kdockw_unit_tests PRIVATE
 )
 
 catch_discover_tests(kdockw_unit_tests
-    PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    PROPERTIES
+        FIXTURES_REQUIRED application_catalog_cache
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
