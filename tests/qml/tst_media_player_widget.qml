@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtTest
+import org.kde.kirigami as Kirigami
 import com.thicking.kdockw 1.0
 import "../../src/qml" as KDockW
 
@@ -17,6 +18,14 @@ Item {
         x: 360; y: 560; width: 192; height: 64
         property Item dockRoot: stage
         property bool dockHovered: false
+        function previewAnchorGeometry() {
+            return {
+                currentEdgeInSurface: DockView.edge === 0 ? mapToItem(null, 0, height).y
+                    : DockView.edge === 1 ? mapToItem(null, 0, 0).y
+                    : DockView.edge === 2 ? mapToItem(null, width, 0).x
+                    : mapToItem(null, 0, 0).x
+            }
+        }
     }
 
     KDockW.MediaPlayerWidget {
@@ -36,6 +45,12 @@ Item {
         when: windowShown
 
         function init() {
+            const existingPopup = findChild(widget, "mediaPlayerPopup")
+            if (existingPopup && existingPopup.visible)
+                existingPopup.close()
+            widget.popupPinned = false
+            widget.popupHovered = false
+            widget.interactionHeld = false
             DockSettings.mediaPlayerEnabled = true
             DockSettings.mediaPlayerDisplayMode = 0
             DockSettings.mediaPlayerHoverPopup = true
@@ -44,6 +59,13 @@ Item {
             DockView.edge = 1
             DockView.screenGeometry = Qt.rect(0, 0, stage.width, stage.height)
             dockAnchor.dockHovered = false
+        }
+
+        function popupBoundsInDockSurface(popup) {
+            const popupWindow = popup.contentItem.Window.window
+            const dockWindow = dockAnchor.dockRoot.Window.window
+            return Qt.rect(popupWindow.x - dockWindow.x, popupWindow.y - dockWindow.y,
+                popupWindow.width, popupWindow.height)
         }
 
         function test_compact_mode_is_an_icon_with_shared_art_fallback() {
@@ -63,6 +85,105 @@ Item {
             mouseClick(playPause)
             compare(widget.controller.calls[widget.controller.calls.length - 1].name, "playPause")
             compare(findChild(widget, "mediaPlayerPopup").visible, false)
+        }
+
+        function test_rendered_media_icons_have_visible_pixels_in_controls_and_popup() {
+            function hasPaintedPixels(item) {
+                const image = grabImage(item)
+                let count = 0
+                for (let y = 0; y < image.height; ++y) {
+                    for (let x = 0; x < image.width; ++x) {
+                        if (image.red(x, y) > 24 && image.blue(x, y) > 24)
+                            ++count
+                    }
+                }
+                return count
+            }
+
+            DockSettings.mediaPlayerDisplayMode = 1
+            tryVerify(() => widget.displayMode === 1)
+            const dockPlay = findChild(widget, "mediaPlayerControlsPlayPause")
+            verify(dockPlay && dockPlay.contentItem)
+            dockPlay.mediaForeground = "#ff00ff"
+            verify(hasPaintedPixels(dockPlay.contentItem) > 8,
+                "dock Play/Pause symbol has no rendered pixels")
+
+            widget.openPinned()
+            const popup = findChild(widget, "mediaPlayerPopup")
+            tryVerify(() => popup && popup.visible)
+            const popupPlay = findChild(widget, "mediaPlayerPlayPause")
+            const shuffle = findChild(widget, "mediaPlayerShuffle")
+            const sourceArrow = findChild(widget, "mediaPlayerSourceArrow")
+            const volumeLow = findChild(widget, "mediaPlayerVolumeLowIcon")
+            const volumeHigh = findChild(widget, "mediaPlayerVolumeHighIcon")
+            verify(popupPlay && popupPlay.prominent && shuffle && sourceArrow && volumeLow && volumeHigh)
+            popupPlay.mediaForeground = "#ff00ff"
+            shuffle.mediaForeground = "#ff00ff"
+            sourceArrow.color = "#ff00ff"
+            volumeLow.color = "#ff00ff"
+            volumeHigh.color = "#ff00ff"
+            verify(hasPaintedPixels(popupPlay.contentItem) > 8,
+                "popup primary Play/Pause symbol has no rendered pixels")
+            verify(hasPaintedPixels(shuffle.contentItem) > 8,
+                "popup Shuffle symbol has no rendered pixels")
+            verify(hasPaintedPixels(sourceArrow) > 3,
+                "source selector arrow has no rendered pixels")
+            verify(hasPaintedPixels(volumeLow) > 3 && hasPaintedPixels(volumeHigh) > 3,
+                "volume symbols have no rendered pixels")
+            popup.close()
+        }
+
+        function test_hover_popup_can_open_for_all_dock_modes() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            for (const mode of [0, 1, 2]) {
+                DockSettings.mediaPlayerDisplayMode = mode
+                tryVerify(() => widget.displayMode === mode)
+                dockAnchor.dockHovered = true
+                tryVerify(() => popup.visible, 2000)
+                compare(widget.popupPinned, false)
+                popup.close()
+                tryVerify(() => !popup.visible)
+                dockAnchor.dockHovered = false
+                wait(220)
+            }
+        }
+
+        function test_hoverPopupPinsInPlaceAndSourceListHoldsItsLifecycle() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const selector = findChild(widget, "mediaPlayerSourceSelector")
+            dockAnchor.dockHovered = true
+            tryVerify(() => popup.visible, 2000)
+            const popupWindow = popup.contentItem.Window.window
+            widget.openPinned()
+            verify(popup.visible && widget.popupPinned,
+                "pinning a hover popup closed or recreated it")
+            compare(popup.contentItem.Window.window, popupWindow)
+            selector.popup.open()
+            tryVerify(() => widget.interactionHeld)
+            dockAnchor.dockHovered = false
+            widget.popupHovered = false
+            wait(250)
+            verify(popup.visible, "source list interaction did not retain its popup")
+            selector.popup.close()
+            tryVerify(() => !widget.interactionHeld)
+            widget.openPinned()
+            tryVerify(() => !popup.visible)
+        }
+
+        function test_hoverPopupClosesAfterLeavingDockAndSourceList() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const selector = findChild(widget, "mediaPlayerSourceSelector")
+            dockAnchor.dockHovered = true
+            tryVerify(() => popup.visible, 2000)
+            selector.popup.open()
+            tryVerify(() => widget.interactionHeld)
+            dockAnchor.dockHovered = false
+            widget.popupHovered = false
+            wait(250)
+            verify(popup.visible, "open source list lost its parent popup")
+            selector.popup.close()
+            tryVerify(() => !widget.interactionHeld)
+            tryVerify(() => !popup.visible, 2000)
         }
 
         function test_expanded_mode_keeps_metadata_inside_fixed_extent() {
@@ -88,6 +209,11 @@ Item {
                 if (!vertical) compare(widget.width, 192)
                 compare(title.elide, Text.ElideRight)
                 tryVerify(() => controls.width > 0)
+                if (!vertical) {
+                    const artwork = findChild(widget, "mediaPlayerExpandedArtwork")
+                    verify(artwork && artwork.width >= DockSettings.iconSize * 0.85,
+                        "expanded artwork is smaller than the neighboring app icon")
+                }
                 for (const child of [title, artist, controls, previous, playPause, next]) {
                     if (!child) continue
                     const rect = child.mapToItem(widget, 0, 0)
@@ -152,13 +278,25 @@ Item {
                 widget.positionPopup()
                 widget.openPinned()
                 tryVerify(() => popup.visible, 2000)
-                verify(popup.x >= 0 && popup.y >= 0)
-                verify(popup.x + popup.width <= stage.width)
-                verify(popup.y + popup.height <= stage.height)
-                if (placement.edge === 0) verify(popup.y >= dockAnchor.y + dockAnchor.height)
-                if (placement.edge === 1) verify(popup.y + popup.height <= dockAnchor.y)
-                if (placement.edge === 2) verify(popup.x >= dockAnchor.x + dockAnchor.width)
-                if (placement.edge === 3) verify(popup.x + popup.width <= dockAnchor.x)
+                const bounds = popupBoundsInDockSurface(popup)
+                verify(bounds.x >= 0 && bounds.y >= 0)
+                verify(bounds.x + bounds.width <= stage.width)
+                verify(bounds.y + bounds.height <= stage.height)
+                verify(bounds.height <= widget.popupPreferredHeight + 1,
+                    "popup window reserves excessive vertical space below its content")
+                if (placement.edge === 0) verify(bounds.y >= dockAnchor.y + dockAnchor.height)
+                if (placement.edge === 1) verify(bounds.y + bounds.height <= dockAnchor.y)
+                if (placement.edge === 2) verify(bounds.x >= dockAnchor.x + dockAnchor.width)
+                if (placement.edge === 3) verify(bounds.x + bounds.width <= dockAnchor.x)
+                const gap = Kirigami.Units.smallSpacing * 2
+                if (placement.edge === 0)
+                    verify(Math.abs(bounds.y - (dockAnchor.y + dockAnchor.height + gap)) < 1)
+                if (placement.edge === 1)
+                    verify(Math.abs(dockAnchor.y - (bounds.y + bounds.height) - gap) < 1)
+                if (placement.edge === 2)
+                    verify(Math.abs(bounds.x - (dockAnchor.x + dockAnchor.width + gap)) < 1)
+                if (placement.edge === 3)
+                    verify(Math.abs(dockAnchor.x - (bounds.x + bounds.width) - gap) < 1)
                 popup.close()
                 tryVerify(() => !popup.visible, 2000)
             }

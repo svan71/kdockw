@@ -2478,6 +2478,29 @@ Item {
             compare(DockVisibility.hovered, false)
         }
 
+        function test_mediaPopupHandoffKeepsMagnificationUntilPopupCloses() {
+            DockSettings.previewEnabled = false
+            addTasks(["A", "B", "C"])
+            const dock = makeDock(3)
+            const its = items(dock)
+            hoverItem(its[1])
+            tryCompare(its[1], "currentScale", DockSettings.maxZoomFactor)
+            compare(dock.hoveredIndex, 1)
+
+            dock.holdMediaPopup(1)
+            dock._pointerLeft()
+            compare(dock.hoveredIndex, 1, "media popup handoff lost the anchor item")
+            verify(dock._zoomActive, "media popup handoff reset Spring Magnification")
+            compare(its[1].currentScale, DockSettings.maxZoomFactor)
+            compare(DockVisibility.hovered, true)
+
+            DockView.pointerInside = false
+            dock.releaseMediaPopup(1)
+            tryCompare(dock, "hoveredIndex", -1)
+            verify(!dock._zoomActive, "closing the popup left magnification stuck")
+            compare(DockVisibility.hovered, false)
+        }
+
         // The pointer rests on item 1's preview (the preview keeps the dock
         // hovered), the Focus Dock shortcut starts keyboard navigation and
         // the Menu key opens the menu, whose hold hides that preview.

@@ -559,6 +559,11 @@ Item {
     // Pointer on the dock as the dock tracks it. Replaces
     // dockMouseArea.containsMouse, which stays false after the fake leave.
     property bool _pointerOnDock: false
+    // A detached media Popup.Window temporarily takes pointer ownership away
+    // from the layer-shell dock. Keep its originating delegate as the zoom
+    // anchor during that handoff, then reconcile against KWin pointer state
+    // after the popup closes.
+    property int _mediaPopupHoldIndex: -1
     // Explicit activation hides the preview and prevents hover-triggered
     // reopening until the pointer leaves that task's icon.
     function dismissPreviewAfterTaskAction(index, dispatched, action) {
@@ -1035,6 +1040,13 @@ Item {
     // Pointer left the dock: release zoom and hover unless the preview keeps
     // them (dock→preview transition), and end a drag as a drag-out.
     function _pointerLeft() {
+        if (_mediaPopupHoldIndex >= 0) {
+            _pointerOnDock = false
+            _hoverReconciling = false
+            PreviewController.cancelHide()
+            DockVisibility.setHovered(true)
+            return
+        }
         _pointerOnDock = false
         _hoverReconciling = false
         PreviewController.clearDismissedTask()
@@ -1063,6 +1075,29 @@ Item {
         if (!PreviewController.visible) {
             DockVisibility.setHovered(false)
         }
+    }
+
+    function holdMediaPopup(index) {
+        if (index >= 0 && index < dockRepeater.count)
+            _mediaPopupHoldIndex = index
+    }
+
+    function releaseMediaPopup(index) {
+        if (_mediaPopupHoldIndex !== index)
+            return
+        _mediaPopupHoldIndex = -1
+        Qt.callLater(() => {
+            if (!DockView.pointerInside) {
+                root._pointerLeft()
+                return
+            }
+            root._pointerOnDock = true
+            PreviewController.cancelHide()
+            DockVisibility.setHovered(true)
+            if (!root._menuHeld && !root.keyboardNavigating
+                    && root._pointerRootX >= 0 && root._pointerRootY >= 0)
+                root.trackPointer(root._pointerRootX, root._pointerRootY)
+        })
     }
 
     // Popup.Window can take pointer focus from the layer-shell surface. When

@@ -25,6 +25,9 @@ Item {
     property real requestedPopupY: 0
     property real popupWidth: Math.max(1, Math.min(420, DockView.screenGeometry.width - Kirigami.Units.largeSpacing * 2))
     property real popupHeight: Math.max(1, Math.min(480, DockView.screenGeometry.height - Kirigami.Units.largeSpacing * 2))
+    readonly property real popupPreferredHeight: popup.contentItem
+        ? Math.min(480, popup.contentItem.implicitHeight + popup.padding * 2)
+        : 480
     readonly property color surface: DockView.backgroundColor.a > 0
         ? BadgeTextColor.composite(DockView.backgroundColor, Kirigami.Theme.backgroundColor)
         : BadgeTextColor.composite(Qt.alpha(Kirigami.Theme.backgroundColor, DockSettings.backgroundOpacity),
@@ -56,8 +59,16 @@ Item {
     }
 
     function openPinned() {
-        if (popup.visible && popupPinned) {
-            popup.close()
+        if (popup.visible) {
+            if (popupPinned) {
+                popup.close()
+            } else {
+                // Hover → pinned is a state transition on the existing window;
+                // reopening it would flash and briefly release the dock anchor.
+                popupPinned = true
+                popup.forceActiveFocus()
+                logPopupState("pin-hover-popup")
+            }
             return
         }
         if (!positionPopup())
@@ -82,47 +93,55 @@ Item {
         const surfaceY = screen.y + (DockView.edge === 1 && win ? screen.height - win.height : 0)
         const rootX = surfaceX + rootOrigin.x
         const rootY = surfaceY + rootOrigin.y
-        const margin = Kirigami.Units.largeSpacing
-        const corners = [
-            dockDelegate.mapToItem(dockDelegate.dockRoot, 0, 0),
-            dockDelegate.mapToItem(dockDelegate.dockRoot, dockDelegate.width, 0),
-            dockDelegate.mapToItem(dockDelegate.dockRoot, 0, dockDelegate.height),
-            dockDelegate.mapToItem(dockDelegate.dockRoot, dockDelegate.width, dockDelegate.height)
-        ]
-        let left = Infinity, top = Infinity, rightOfDock = -Infinity, bottomOfDock = -Infinity
-        for (const corner of corners) {
-            left = Math.min(left, corner.x)
-            top = Math.min(top, corner.y)
-            rightOfDock = Math.max(rightOfDock, corner.x)
-            bottomOfDock = Math.max(bottomOfDock, corner.y)
-        }
-        const anchor = Qt.rect(left, top, rightOfDock - left, bottomOfDock - top)
-        const centerX = rootX + anchor.x + anchor.width / 2
-        const centerY = rootY + anchor.y + anchor.height / 2
+        // Share Window Preview's visual anchor: the icon's live cross-axis
+        // edge includes Spring Magnification, while the centre remains aligned
+        // along the dock. A fixed rest-size delegate rectangle misses the
+        // transformed edge and can leave a visibly large gap.
+        const centerInSurface = dockDelegate.mapToItem(null,
+            dockDelegate.width / 2, dockDelegate.height / 2)
+        const visualAnchor = typeof dockDelegate.previewAnchorGeometry === "function"
+            ? dockDelegate.previewAnchorGeometry() : null
+        const edgeInSurface = visualAnchor ? visualAnchor.currentEdgeInSurface
+            : (DockView.edge === 0 ? dockDelegate.mapToItem(null, 0, dockDelegate.height).y
+                : DockView.edge === 1 ? dockDelegate.mapToItem(null, 0, 0).y
+                : DockView.edge === 2 ? dockDelegate.mapToItem(null, dockDelegate.width, 0).x
+                : dockDelegate.mapToItem(null, 0, 0).x)
+        const anchorInRoot = dockDelegate.dockRoot.mapFromItem(null,
+            verticalDock ? edgeInSurface : centerInSurface.x,
+            verticalDock ? centerInSurface.y : edgeInSurface)
+        const centerX = rootX + anchorInRoot.x
+        const centerY = rootY + anchorInRoot.y
         const right = screen.x + screen.width
         const bottom = screen.y + screen.height
+        const margin = Kirigami.Units.smallSpacing * 2
         popupWidth = Math.max(1, Math.min(420, screen.width - margin * 2))
-        popupHeight = Math.max(1, Math.min(480, screen.height - margin * 2))
+        popupHeight = Math.max(1, Math.min(popupPreferredHeight, screen.height - margin * 2))
         let screenX = centerX - popupWidth / 2
         let screenY = centerY - popupHeight / 2
         if (verticalDock) {
-            const rightSpace = right - (rootX + anchor.x + anchor.width) - margin
-            const leftSpace = rootX + anchor.x - screen.x - margin
+            const rightSpace = right - centerX - margin
+            const leftSpace = centerX - screen.x - margin
             const toRight = DockView.edge === 2 ? rightSpace >= leftSpace : !(leftSpace >= rightSpace)
             popupWidth = Math.max(1, Math.min(popupWidth, toRight ? rightSpace : leftSpace))
-            screenX = toRight ? rootX + anchor.x + anchor.width + margin : rootX + anchor.x - popupWidth - margin
+            screenX = toRight ? centerX + margin : centerX - popupWidth - margin
         } else {
-            const below = bottom - (rootY + anchor.y + anchor.height) - margin
-            const above = rootY + anchor.y - screen.y - margin
+            const below = bottom - centerY - margin
+            const above = centerY - screen.y - margin
             const toBelow = DockView.edge === 0 ? below >= above : !(above >= below)
             popupHeight = Math.max(1, Math.min(popupHeight, toBelow ? below : above))
-            screenY = toBelow ? rootY + anchor.y + anchor.height + margin : rootY + anchor.y - popupHeight - margin
+            screenY = toBelow ? centerY + margin : centerY - popupHeight - margin
         }
         screenX = Math.max(screen.x + margin, Math.min(right - popupWidth - margin, screenX))
         screenY = Math.max(screen.y + margin, Math.min(bottom - popupHeight - margin, screenY))
         requestedPopupX = screenX - rootX
         requestedPopupY = screenY - rootY
         return true
+    }
+
+    function syncInteractionHeld() {
+        interactionHeld = (seekSlider && seekSlider.pressed)
+            || (volumeSlider && volumeSlider.pressed)
+            || (selector && selector.popup.visible)
     }
 
     function closeAfterHover() {
@@ -232,10 +251,11 @@ Item {
             spacing: Kirigami.Units.smallSpacing
             visible: root.displayMode === 2 && !root.verticalDock
             Item {
-                Layout.preferredWidth: Math.min(28, parent.height - Kirigami.Units.smallSpacing * 2)
+                Layout.preferredWidth: Math.min(DockSettings.iconSize, parent.height - Kirigami.Units.smallSpacing * 2)
                 Layout.preferredHeight: Layout.preferredWidth
                 MediaArtworkItem {
                     id: expandedArtwork
+                    objectName: "mediaPlayerExpandedArtwork"
                     anchors.fill: parent
                     source: DockSettings.mediaPlayerUseArtwork ? controller.artUrl : ""
                 }
@@ -492,6 +512,7 @@ Item {
                     Layout.preferredHeight: 24
                 }
                 QQC2.ComboBox {
+                    id: selector
                     objectName: "mediaPlayerSourceSelector"
                     Layout.fillWidth: true
                     model: controller.sessions
@@ -510,7 +531,57 @@ Item {
                     onActivated: index => {
                         if (index >= 0) controller.selectSession(controller.serviceAt(index))
                     }
+                    palette.text: root.foreground
+                    palette.buttonText: root.foreground
+                    palette.base: root.surface
+                    palette.window: root.surface
+                    palette.highlight: Kirigami.Theme.highlightColor
+                    palette.highlightedText: Kirigami.Theme.highlightedTextColor
+                    background: Rectangle {
+                        radius: Kirigami.Units.smallSpacing
+                        color: root.surface
+                        border.color: Qt.alpha(root.foreground, 0.35)
+                    }
+                    contentItem: QQC2.Label {
+                        leftPadding: Kirigami.Units.smallSpacing
+                        rightPadding: selectorIndicator.width + Kirigami.Units.smallSpacing
+                        text: selector.displayText
+                        color: root.foreground
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    indicator: Kirigami.Icon {
+                        id: selectorIndicator
+                        objectName: "mediaPlayerSourceArrow"
+                        source: "arrow-down"
+                        color: root.foreground
+                        width: 16
+                        height: 16
+                        x: selector.mirrored ? Kirigami.Units.smallSpacing
+                            : selector.width - width - Kirigami.Units.smallSpacing
+                        y: (selector.height - height) / 2
+                    }
+                    popup: QQC2.Popup {
+                        y: selector.height
+                        width: selector.width
+                        implicitHeight: Math.min(contentItem.implicitHeight, 280)
+                        padding: Kirigami.Units.smallSpacing
+                        background: Rectangle {
+                            color: root.surface
+                            radius: Kirigami.Units.smallSpacing
+                            border.color: Qt.alpha(root.foreground, 0.35)
+                        }
+                        onOpened: root.syncInteractionHeld()
+                        onClosed: root.syncInteractionHeld()
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: contentHeight
+                            model: selector.popup.visible ? selector.delegateModel : null
+                            currentIndex: selector.highlightedIndex
+                        }
+                    }
                     delegate: QQC2.ItemDelegate {
+                        id: sourceDelegate
                         required property string identity
                         required property string title
                         required property bool selected
@@ -519,6 +590,18 @@ Item {
                             ? identity + (title.length > 0 ? " · " + title : "")
                             : (title || i18n("Unknown track"))
                         highlighted: selected
+                        background: Rectangle {
+                            radius: Kirigami.Units.smallSpacing
+                            color: sourceDelegate.highlighted
+                                ? Qt.alpha(Kirigami.Theme.highlightColor, 0.32)
+                                : sourceDelegate.hovered ? Qt.alpha(root.foreground, 0.08) : "transparent"
+                        }
+                        contentItem: QQC2.Label {
+                            text: sourceDelegate.text
+                            color: root.foreground
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
                 MediaPlayerControlButton {
@@ -605,13 +688,12 @@ Item {
                     property string pressedTrackId: ""
                     property string pressedService: ""
                     onPressedChanged: {
+                        root.syncInteractionHeld()
                         if (pressed) {
-                            root.interactionHeld = true
                             pressedTrackId = controller.trackId
                             pressedService = controller.selectedService
                         }
                         else {
-                            root.interactionHeld = false
                             if (pressedTrackId === controller.trackId && pressedService === controller.selectedService)
                                 controller.seekTo(Math.round(value), pressedTrackId)
                             else
@@ -661,6 +743,7 @@ Item {
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
                     objectName: "mediaPlayerPlayPause"
+                    prominent: true
                     icon.name: controller.playbackStatus === "Playing" ? "media-playback-pause" : "media-playback-start"
                     enabled: controller.canControl && (controller.canPlay || controller.canPause)
                     onClicked: controller.playPause()
@@ -689,19 +772,21 @@ Item {
             RowLayout {
                 visible: DockSettings.mediaPlayerShowVolume && controller.canControl
                 Layout.fillWidth: true
-                Kirigami.Icon { source: "audio-volume-low"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                Kirigami.Icon { objectName: "mediaPlayerVolumeLowIcon"; source: "audio-volume-low"; color: root.foreground; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
                 QQC2.Slider {
                     id: volumeSlider
                     objectName: "mediaPlayerVolumeSlider"
                     Layout.fillWidth: true
                     from: 0; to: 1
                     value: controller.volume
+                    palette.highlight: Kirigami.Theme.highlightColor
+                    palette.windowText: root.foreground
                     onPressedChanged: {
-                        if (pressed) root.interactionHeld = true
-                        else { root.interactionHeld = false; controller.setVolume(value) }
+                        root.syncInteractionHeld()
+                        if (!pressed) controller.setVolume(value)
                     }
                 }
-                Kirigami.Icon { source: "audio-volume-high"; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                Kirigami.Icon { objectName: "mediaPlayerVolumeHighIcon"; source: "audio-volume-high"; color: root.foreground; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
             }
         }
 
@@ -713,8 +798,16 @@ Item {
             root.popupPinned = false
             root.popupHovered = false
             root.interactionHeld = false
+            const dockRoot = root.dockDelegate && root.dockDelegate.dockRoot
+            if (dockRoot && dockRoot.releaseMediaPopup)
+                dockRoot.releaseMediaPopup(root.dockDelegate.index)
         }
-        onOpened: root.logPopupState("opened")
+        onOpened: {
+            const dockRoot = root.dockDelegate && root.dockDelegate.dockRoot
+            if (!root.popupPinned && dockRoot && dockRoot.holdMediaPopup)
+                dockRoot.holdMediaPopup(root.dockDelegate.index)
+            root.logPopupState("opened")
+        }
     }
 
     function formatTime(usec) {

@@ -218,6 +218,14 @@ QVariant DockPresentationModel::data(const QModelIndex &index, int role) const
         return {};
     }
 
+    // ChildCount can lag the tree structure during TaskManager's group
+    // collapse/expand notifications. The preview already uses rowCount() as
+    // the authoritative window count; expose the same event-driven value to
+    // QML so its indicator delegates cannot retain a stale aggregate role.
+    if (role == TaskManager::AbstractTasksModel::ChildCount) {
+        return m_tasksModel->rowCount(m_tasksModel->index(row.taskIndex, 0));
+    }
+
     return m_tasksModel->data(m_tasksModel->index(row.taskIndex, 0), role);
 }
 
@@ -675,7 +683,11 @@ void DockPresentationModel::forwardTaskRowsChanged(const QModelIndex &parent, in
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
             if (m_performanceDiagnosticsEnabled) ++m_forwardedRows;
 #endif
-            Q_EMIT dataChanged(index(dockRow, 0), index(dockRow, 0));
+            QList<int> changedRoles = m_tasksModel->roleNames().keys();
+            if (!changedRoles.contains(TaskManager::AbstractTasksModel::ChildCount)) {
+                changedRoles.append(TaskManager::AbstractTasksModel::ChildCount);
+            }
+            Q_EMIT dataChanged(index(dockRow, 0), index(dockRow, 0), changedRoles);
         }
         return;
     }

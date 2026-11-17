@@ -1111,7 +1111,8 @@ Item {
             MediaPlayerWidget {
                 anchors.fill: parent
                 dockDelegate: dockItem
-                dockHovered: dockItem.dockRoot && dockItem.dockRoot.hoveredIndex === dockItem.index
+                dockHovered: dockItem.dockRoot && dockItem.dockRoot._pointerOnDock
+                    && dockItem.dockRoot.hoveredIndex === dockItem.index
             }
         }
     }

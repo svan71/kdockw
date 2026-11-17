@@ -94,6 +94,44 @@ Item {
             tryVerify(() => T.indicatorDots(item).length === 0)
         }
 
+        function test_groupedWindowDotsTrackLiveChildRowsInBothDirections() {
+            let item = makeItem({ IsWindow: false, IsGroupParent: false, ChildCount: 0 })
+            compare(T.indicatorDots(item).length, 0)
+            for (let expected = 1; expected <= 3; ++expected) {
+                DockModel.tasksModel.addChildTask(0, { display: "Konsole " + expected, IsWindow: true })
+                DockModel.tasksModel.setTaskData(0, "IsWindow", true)
+                DockModel.tasksModel.setTaskData(0, "IsGroupParent", expected > 1)
+                tryCompare(T.indicatorDots(item), "length", expected)
+            }
+            DockModel.tasksModel.removeChildTask(0, 1)
+            tryCompare(T.indicatorDots(item), "length", 2)
+            DockModel.tasksModel.removeChildTask(0, 0)
+            tryCompare(T.indicatorDots(item), "length", 1)
+            DockModel.tasksModel.removeChildTask(0, 0)
+            DockModel.tasksModel.setTaskData(0, "IsGroupParent", false)
+            DockModel.tasksModel.setTaskData(0, "IsWindow", false)
+            tryCompare(T.indicatorDots(item), "length", 0)
+        }
+
+        function test_windowIndicatorCountRemainsCappedDuringRapidChanges() {
+            let item = makeItem({ IsWindow: false, IsGroupParent: false, ChildCount: 0 })
+            for (let expected = 1; expected <= 6; ++expected) {
+                DockModel.tasksModel.addChildTask(0, { display: "Window " + expected, IsWindow: true })
+                DockModel.tasksModel.setTaskData(0, "IsWindow", true)
+                DockModel.tasksModel.setTaskData(0, "IsGroupParent", expected > 1)
+                tryCompare(T.indicatorDots(item), "length", Math.min(expected, 3))
+            }
+            for (let expected = 5; expected >= 1; --expected) {
+                DockModel.tasksModel.removeChildTask(0, 0)
+                tryCompare(T.indicatorDots(item), "length", Math.min(expected, 3))
+            }
+            DockModel.tasksModel.removeChildTask(0, 0)
+            tryCompare(T.indicatorDots(item), "length", 1)
+            DockModel.tasksModel.setTaskData(0, "IsWindow", false)
+            DockModel.tasksModel.setTaskData(0, "IsGroupParent", false)
+            tryCompare(T.indicatorDots(item), "length", 0)
+        }
+
         function test_activeWindowHasLargerDot() {
             let item = makeItem({ IsWindow: true, IsActive: false })
             let dot = T.indicatorDots(item)[0]

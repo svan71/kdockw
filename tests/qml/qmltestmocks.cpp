@@ -136,6 +136,7 @@ int MockTasksModel::addChildTask(int parentRow, const QVariantMap &roles)
     auto *child = new QStandardItem;
     applyRoles(child, roles);
     parentItem->appendRow(child);
+    setData(index(parentRow, 0), parentItem->rowCount(), MockAbstractTasksModel::ChildCount);
     return child->row();
 }
 
@@ -147,6 +148,7 @@ void MockTasksModel::removeChildTask(int parentRow, int childRow)
         return;
     }
     parentItem->removeRow(childRow);
+    setData(index(parentRow, 0), parentItem->rowCount(), MockAbstractTasksModel::ChildCount);
 }
 
 void MockTasksModel::setTaskData(int row, const QString &roleName, const QVariant &value)

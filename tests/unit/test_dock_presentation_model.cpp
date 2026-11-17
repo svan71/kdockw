@@ -97,6 +97,52 @@ TEST_CASE("DecorationRole stays narrow while diagnostic traces record icon updat
     CHECK(capturedQtMessages.join(QLatin1Char('\n')).contains(QStringLiteral("incomingRoles= QList(1)")));
 }
 
+TEST_CASE("Dock presentation derives grouped window count from live child rows",
+          "[dock-presentation][taskmanager-regression][indicators]")
+{
+    const QUrl launcherUrl(QStringLiteral("applications:org.kde.konsole"));
+    QStandardItemModel tasks;
+    auto group = makeTask(QStringLiteral("Konsole"), launcherUrl, {});
+    group->setData(true, TaskManager::AbstractTasksModel::IsWindow);
+    group->setData(true, TaskManager::AbstractTasksModel::IsGroupParent);
+    // Model this known failure shape: TaskManager's aggregate role is stale,
+    // while the child rows used by grouped previews are already current.
+    group->setData(3, TaskManager::AbstractTasksModel::ChildCount);
+    for (int i = 0; i < 3; ++i) {
+        group->appendRow(new QStandardItem(QStringLiteral("Konsole %1").arg(i + 1)));
+    }
+    tasks.appendRow(group.release());
+
+    kdockw::DockEntriesModel entries;
+    kdockw::DockPresentationModel presentation(&tasks, &entries);
+    QTRY_COMPARE_WITH_TIMEOUT(presentation.rowCount(), 1, 2000);
+    const QModelIndex dockIndex = presentation.index(0, 0);
+    const int childCountRole = TaskManager::AbstractTasksModel::ChildCount;
+    QSignalSpy changes(&presentation, &QAbstractItemModel::dataChanged);
+
+    CHECK(presentation.data(dockIndex, childCountRole).toInt() == 3);
+    for (int expected = 2; expected >= 0; --expected) {
+        REQUIRE(tasks.item(0)->rowCount() > 0);
+        tasks.item(0)->removeRow(0);
+        QTRY_COMPARE_WITH_TIMEOUT(presentation.data(dockIndex, childCountRole).toInt(), expected, 2000);
+        REQUIRE(changes.count() > 0);
+        const QList<int> roles = changes.takeLast().at(2).value<QList<int>>();
+        CHECK(roles.contains(childCountRole));
+    }
+
+    // Exercise the inverse 0 -> 1 -> 2 -> 3 transition without relying on
+    // manually mutating the stale ChildCount role.
+    for (int expected = 1; expected <= 3; ++expected) {
+        tasks.item(0)->appendRow(new QStandardItem(QStringLiteral("Konsole %1").arg(expected)));
+        QTRY_COMPARE_WITH_TIMEOUT(presentation.data(dockIndex, childCountRole).toInt(), expected, 2000);
+        REQUIRE(changes.count() > 0);
+        const QList<int> roles = changes.takeLast().at(2).value<QList<int>>();
+        CHECK(roles.contains(childCountRole));
+    }
+    CHECK(presentation.data(dockIndex, childCountRole).toInt()
+          == tasks.rowCount(tasks.index(0, 0)));
+}
+
 TEST_CASE("Dock presentation model merges pinned entries in stable order and leaves running tasks after them", "[dock-presentation]")
 {
     const QUrl appA(QStringLiteral("applications:org.example.A"));
