@@ -119,3 +119,38 @@ name, identity, playback status, selection, and capabilities without metadata
 URLs. In the live session only one real MPRIS service was present and it was
 Stopped, so concurrent real-player behavior and the visible popup remain
 unverified.
+
+## Third review follow-up — 2026-11-17
+
+`MediaPlayerControlButton` supplies a `Kirigami.Icon` as the button content
+instead of relying on each QQC2 Controls style to paint `ToolButton.icon`. The
+resolved foreground/secondary colors are applied to the actual icon item;
+popup play/pause uses the prominent circular variant. The source selector,
+its arrow and delegates, and the volume symbols/slider use the same resolved
+surface and foreground colors. A rendered-image QML regression checks visible
+icon pixels as well as control state. The existing theme icon files and color
+values were present. The previous implementation delegated `ToolButton.icon`
+painting to the active Controls style, while its regression test checked color
+properties rather than rendered pixels. That style-owned content path could
+still produce an empty or incorrect glyph despite valid icon names and colors.
+The replacement is covered by a rendered-image pixel test; comparing that exact
+visual failure against the old ELF remains unverified.
+
+Popup positioning now takes its cross-axis edge from the same transformed
+anchor geometry used by Window Preview, keeps its center aligned along the
+dock, chooses the available side and clamps within the output. The preferred
+height follows the popup content up to the existing cap. Hover-to-pinned is a
+state transition on the existing window. A dock-level hold preserves the
+hovered item and magnification while the pointer crosses into the detached
+popup, and source/seek/volume interaction keeps the popup open until the
+interaction ends. Offscreen QML tests verify transformed-edge placement on all
+four sides, visible rendered icons, mode hover entry, pin transition, and the
+popup hold lifecycle. Real Wayland pointer transitions still need owner review.
+
+The grouped TaskManager indicator now derives `ChildCount` from the live child
+rows rather than trusting a stale aggregate role during structural updates.
+`DockPresentationModel` explicitly forwards the child-count role along with
+the source model roles when grouped children change. Unit and rendered QML
+regressions exercise count sequences in both directions, the three-dot cap,
+group collapse to one window, and removal of the final task. This remains
+event-driven and does not add polling or global icon-cache invalidation.

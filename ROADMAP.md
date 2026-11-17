@@ -491,19 +491,24 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   metadata/artwork, and capability-gated playback and seeking. It depends on the
   completed Built-in Dock Widget Model (`35353e13722e4769`). Browser support is
   limited to the single MPRIS session a browser publishes; no tab-level control
-  or site inference is promised. The first owner review was 21/42 and found
-  popup binding, expanded-layout, contrast, and compact magnification defects;
-  implementation fixes are now in place. Live TaskManager preflight passed 6/6
+  or site inference is promised. The first owner review was 21/42; the second
+  was 27/35 (5 errors, 3 unchecked). The second review accepted MPRIS source
+  selection and commands, metadata/artwork, automatic visibility, overall popup
+  composition, and normal performance. The third correction cycle covers actual
+  media icon pixels, hover-to-popup magnification handoff, transformed popup
+  placement, themed source/volume controls, and event-driven TaskManager child
+  count indicators. Live TaskManager preflight passed 6/6
   on Build ID `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. Only one real MPRIS
   service was present and it was stopped; two mock services passed the selected
-  owner command test. Production full CTest passed 229/229, had an earlier
-  228/229 run with an intermittent MPRIS integration SIGSEGV, and then passed
-  229/229 again on the final source state; the isolated case passed ten
-  consecutive repetitions. Diagnostic full CTest passed 233/233 on the final
-  source state. Final staged Build ID is
-  `8b829d27264ee48e32575b8c3004d72d5f7ceb2c`. Real popup appearance, pointer
-  handoff, and visible geometry in Plasma/Wayland still need owner review; the
-  card remains `review`.
+  owner command test. Production full CTest passed 230/230. The latest Diagnostic
+  full CTest ended 233/234 when the concurrent MPRIS source-model test terminated
+  with SIGSEGV; its isolated retry passed, so the intermittent failure remains
+  unresolved. The current diagnostic stage is version `0.7.0-dev`, with matching
+  source and staged GNU Build ID `6c675083442fc5d1ab01710e1868717be600fad0`;
+  Russian catalog validation and stage preflight passed. Stable v0.6.0 remained
+  active, so live candidate TaskManager/MPRIS preflights and a stable-versus-dev
+  window-count A/B were not run. Plasma/Wayland visual behavior still needs
+  owner review; the card remains `review`.
 
 ## Technical debt — Classic Zoom Performance Profile
 

@@ -17,6 +17,9 @@ carried forward from the Krema-based development period.
 
 - Fixed the media widget popup's dock-root binding so its parent geometry resolves, and guarded popup setup while the dock delegate is unavailable.
 - Kept expanded media controls and progress inside the dock item's allocated bounds on every edge, derived control contrast from the active dock/theme colors, and included the compact media icon in existing magnification.
+- Rendered media control symbols directly with Kirigami icons so their visible glyphs and contrast do not depend on the active Qt Quick Controls style; emphasized popup play/pause and themed the source selector and volume controls.
+- Kept the media popup anchored to the transformed dock item during hover handoff, aligned it to the dock edge with screen clamping, and preserved the same popup when changing from hover to pinned mode.
+- Derived grouped TaskManager indicator counts from live child rows and forwarded the explicit child-count role when group rows change, preventing stale running-window dots.
 - Fixed a preview-prefetch retry callback that dereferenced a QML-local timer through the root object.
 
 ## [0.6.0] - 2026-11-17

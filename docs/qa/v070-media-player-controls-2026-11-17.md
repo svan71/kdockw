@@ -98,6 +98,33 @@ The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance3
 
 The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
 
+## Third owner-review correction cycle — 2026-11-17
+
+The second owner review scored **27/35** (5 errors, 3 not checked). The owner accepted automatic visibility, compact magnification, expanded widget containment, popup appearance/composition, metadata/artwork, transport, seeking, volume, and switching between two real MPRIS sources (5/5). The MPRIS backend and visibility/source-selection policy were left unchanged.
+
+### Media glyphs and popup interaction
+
+The previous controls delegated icon painting to the active QQC2 `ToolButton` style. Icon names and resolved colors were present, but existing tests asserted only those properties and did not inspect rendered pixels. `MediaPlayerControlButton` now paints a Kirigami icon directly, applies the resolved dock foreground/secondary color, and gives popup Play/Pause a prominent circular control. The source selector, arrow, menu rows, volume symbols, and slider use the popup's resolved surface and foreground. QML image tests verify non-background pixels for media glyphs; the old ELF was not rerun for a pixel-by-pixel comparison, so the exact visual symptom is not independently reproduced against it.
+
+The detached popup previously could lose the dock's sole hover/magnification state while the pointer crossed its separate window; the dock root cleared the hovered item as soon as it observed pointer leave. The popup now holds that existing state during the handoff, then releases it on close using current pointer state. Hover opening applies across display modes and content, while direct controls keep their handlers. Hover-to-pinned changes state on the existing popup; selector and sliders contribute to one interaction-held state. Popup placement takes the transformed edge from the Window Preview anchor helper, uses the same small spacing, chooses the side with room, follows content height, and clamps to the output. Offscreen QML tests cover all four edges, rendered controls, hover entry, pin transition, selector hold, outside/leave cleanup, and dock magnification retention. Real pointer behavior in Wayland remains NOT VERIFIED.
+
+Expanded artwork now scales up to the configured dock icon extent within its allocated row; the existing metadata, controls, and progress layout remain bounded. Automated geometry/rendering checks pass, but second-cycle owner acceptance remains the only live visual evidence and this third cycle still needs rechecking.
+
+### TaskManager grouped-window indicators
+
+The source comparison inside v0.7 confirms a mismatch: PreviewPopup obtains the number of windows from current child rows, while DockItem's indicator Repeater binds to `DockPresentationModel.ChildCount`, which had been forwarded from a stale aggregate role on top-level notifications. `DockPresentationModel::data()` now derives ChildCount from the current TaskManager child-row count, and group-structure notifications explicitly include that role. This is event-driven; no polling or global icon-cache invalidation was introduced.
+
+Unit and rendered QML regressions cover 0→1→2→3 and 3→2→1→0, grouping/ungrouping, the three-dot cap, singleton after group collapse, and final removal of an unpinned task. A stable-v0.6.0 versus dev live A/B has **NOT BEEN RUN**: the stable `/usr/bin/kdockw` v0.6.0 process (PID 3701690) remained active, and no authorization to stop it for this comparison was given in this task. Therefore whether the symptom first appeared in v0.7 remains unknown, and pinned/unpinned live-window behavior is not yet confirmed in Plasma.
+
+### Current verification
+
+- Production Release CTest: **230/230 passed**.
+- Diagnostic Release CTest: **233/234; failed** because `MPRIS source model selects among concurrent services and targets the selected owner` terminated with SIGSEGV. Its isolated retry passed (including its catalog-cache setup), but that does not replace the failed full result. No core/backtrace was produced by this run; the intermittent SIGSEGV remains technical debt.
+- Targeted media QML tests, TaskManager indicator tests, media backend tests, and magnification checks passed as part of the full suites. The changed C++/QML was built in both configurations.
+- Read-only stage preflight passed with stable v0.6.0 still active. Build and staged executables both report `kdockw 0.7.0-dev`; GNU Build ID is `6c675083442fc5d1ab01710e1868717be600fad0`. Russian PO validation passed; staged MO SHA-256 is `d5bff1abeb1ed834237a8d6fa70daf10ef4dc2b7d8a6a2ceb623fb14f80a2897`.
+- `bash -n`, Python `compileall`, and `git diff --check` passed. Production config was not modified; its mode-0600 backup remains at `/home/stout/.local/state/kdockw/diagnostic-config-backups/v070-third-cycle-20261117T164325-3706657.kdockwrc` with the same SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f`.
+- No v0.7 candidate runtime, live TaskManager/MPRIS preflight, or stable/dev A/B was run. Stable v0.6.0 remains PID 3701690. Owner visual/functional review is still required; both the media task and v0.7 parent stay `review` with their IDs and dependency unchanged.
+
 ## First owner review follow-up — 2026-11-17
 
 The owner’s first review scored **21/42** (15 errors, 6 not checked). The owner-confirmed baseline behaviors listed above remain in scope and were not intentionally changed. This section records implementation fixes and evidence; it does not claim the visually affected paths are accepted.
