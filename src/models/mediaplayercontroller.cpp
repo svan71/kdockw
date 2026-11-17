@@ -292,6 +292,7 @@ void MediaPlayerController::addService(const QString &service, const QString &ow
     requestProperties(service, owner, session.generation, QString::fromLatin1(kPlayerInterface));
     requestProperties(service, owner, session.generation, QString::fromLatin1(kRootInterface));
     updateAutomaticSelection();
+    logDiagnosticSources(QStringLiteral("service-added"));
 }
 
 void MediaPlayerController::removeService(const QString &service)
@@ -315,6 +316,7 @@ void MediaPlayerController::removeService(const QString &service)
         Q_EMIT currentSessionChanged();
     }
     updateAutomaticSelection();
+    logDiagnosticSources(QStringLiteral("service-removed"));
 }
 
 void MediaPlayerController::requestProperties(const QString &service, const QString &owner, quint64 generation, const QString &interfaceName)
@@ -336,6 +338,7 @@ void MediaPlayerController::requestProperties(const QString &service, const QStr
         applyProperties(m_sessions[row], interfaceName, reply.value());
         notifySessionChanged(service);
         updateAutomaticSelection();
+        logDiagnosticSources(QStringLiteral("initial-properties"));
     });
 }
 
@@ -443,6 +446,14 @@ void MediaPlayerController::onPropertiesChanged(const QString &interfaceName, co
     }
     session.positionTimestampMs = m_clock.elapsed();
     notifySessionChanged(service);
+    const auto diagnosticProperty = [](const QString &name) {
+        return name == QLatin1String("Identity") || name == QLatin1String("PlaybackStatus")
+            || name == QLatin1String("Metadata") || name.startsWith(QLatin1String("Can"));
+    };
+    const bool diagnosticsRelevant = std::any_of(changed.keyBegin(), changed.keyEnd(), diagnosticProperty)
+        || std::any_of(invalidated.cbegin(), invalidated.cend(), diagnosticProperty);
+    if (diagnosticsRelevant)
+        logDiagnosticSources(QStringLiteral("properties-changed"));
     if (!invalidated.isEmpty()) {
         const Session &session = m_sessions.at(row);
         requestProperties(service, session.owner, session.generation, interfaceName);
@@ -554,6 +565,31 @@ void MediaPlayerController::selectService(const QString &service, bool manual)
     Q_EMIT availabilityChanged();
     updateProgressTimer();
     updateVisibility();
+    logDiagnosticSources(QStringLiteral("selection-changed"));
+}
+
+void MediaPlayerController::logDiagnosticSources(const QString &event) const
+{
+    if (!qEnvironmentVariableIsSet("KDOCKW_MEDIA_DIAGNOSTICS"))
+        return;
+
+    qCInfo(lcMediaPlayer).noquote() << "MPRIS sources" << event
+                                   << "count=" << m_sessions.size()
+                                   << "selected=" << m_selectedService;
+    for (const Session &session : m_sessions) {
+        qCInfo(lcMediaPlayer).noquote() << "MPRIS source"
+                                        << "service=" << session.service
+                                        << "identity=" << session.identity
+                                        << "playbackStatus=" << session.playbackStatus
+                                        << "selected=" << (session.service == m_selectedService)
+                                        << "canControl=" << session.canControl
+                                        << "canPlay=" << session.canPlay
+                                        << "canPause=" << session.canPause
+                                        << "canGoPrevious=" << session.canGoPrevious
+                                        << "canGoNext=" << session.canGoNext
+                                        << "canSeek=" << session.canSeek
+                                        << "canRaise=" << session.canRaise;
+    }
 }
 
 bool MediaPlayerController::selectSession(const QString &service)

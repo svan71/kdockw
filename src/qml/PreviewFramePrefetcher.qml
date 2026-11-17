@@ -481,6 +481,7 @@ Item {
 
     Loader {
         id: requestLoader
+        objectName: "previewScreencastRequestLoader"
         active: root.useKWinScreencastRequest && root.requestUuid.length > 0
         sourceComponent: root.requestComponent
     }
@@ -490,7 +491,7 @@ Item {
         ignoreUnknownSignals: true
         function onNodeIdChanged() {
             if (root.sourceNodeId > 0) {
-                root.nodeRetryTimer.stop()
+                nodeRetryTimer.stop()
                 root.log("screencast-node-ready", { nodeId: root.sourceNodeId })
                 root.onSourceStateChanged()
             }

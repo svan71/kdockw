@@ -174,6 +174,7 @@ private:
     void updateProgressTimer();
     void updateVisibility();
     void notifySessionChanged(const QString &service, const QList<int> &roles = {});
+    void logDiagnosticSources(const QString &event) const;
 
     QDBusConnection m_bus;
     QList<Session> m_sessions;

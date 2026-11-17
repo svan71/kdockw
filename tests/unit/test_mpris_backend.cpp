@@ -109,9 +109,10 @@ public:
 class MprisRegistration final
 {
 public:
-    MprisRegistration(QDBusConnection bus, QString service)
+    MprisRegistration(QDBusConnection bus, QString service, QString connectionName = {})
         : m_bus(std::move(bus))
         , m_service(std::move(service))
+        , m_connectionName(std::move(connectionName))
     {
     }
 
@@ -119,11 +120,14 @@ public:
     {
         m_bus.unregisterObject(QString::fromLatin1(kPath));
         m_bus.unregisterService(m_service);
+        if (!m_connectionName.isEmpty())
+            QDBusConnection::disconnectFromBus(m_connectionName);
     }
 
 private:
     QDBusConnection m_bus;
     QString m_service;
+    QString m_connectionName;
 };
 
 template<typename Predicate>
@@ -138,6 +142,51 @@ bool waitUntil(Predicate predicate, int timeoutMs)
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     return predicate();
+}
+
+TEST_CASE("MPRIS source model selects among concurrent services and targets the selected owner", "[media-player][mpris-integration]")
+{
+    QDBusConnection primaryBus = QDBusConnection::sessionBus();
+    if (!primaryBus.isConnected()) SKIP("A D-Bus session bus is required for the MPRIS fixture test");
+
+    const QString suffix = QString::number(QCoreApplication::applicationPid());
+    const QString firstService = QStringLiteral("org.mpris.MediaPlayer2.kdockw_first_%1").arg(suffix);
+    const QString secondService = QStringLiteral("org.mpris.MediaPlayer2.kdockw_second_%1").arg(suffix);
+    const QString secondConnectionName = QStringLiteral("kdockw-mpris-second-%1").arg(suffix);
+    QDBusConnection secondBus = QDBusConnection::connectToBus(QDBusConnection::SessionBus,
+                                                               secondConnectionName);
+    REQUIRE(secondBus.isConnected());
+    REQUIRE(primaryBus.registerService(firstService));
+    MprisFixture firstFixture;
+    firstFixture.title = QStringLiteral("First source");
+    REQUIRE(primaryBus.registerVirtualObject(QString::fromLatin1(kPath), &firstFixture,
+                                             QDBusConnection::SingleNode));
+    MprisRegistration firstRegistration(primaryBus, firstService);
+
+    REQUIRE(secondBus.registerService(secondService));
+    MprisFixture secondFixture;
+    secondFixture.title = QStringLiteral("Second source");
+    secondFixture.playbackStatus = QStringLiteral("Paused");
+    REQUIRE(secondBus.registerVirtualObject(QString::fromLatin1(kPath), &secondFixture,
+                                            QDBusConnection::SingleNode));
+    MprisRegistration secondRegistration(secondBus, secondService, secondConnectionName);
+
+    kdockw::MediaPlayerController controller;
+    REQUIRE(waitUntil([&] {
+        bool firstFound = false;
+        bool secondFound = false;
+        for (int row = 0; row < controller.rowCount(); ++row) {
+            firstFound = firstFound || controller.serviceAt(row) == firstService;
+            secondFound = secondFound || controller.serviceAt(row) == secondService;
+        }
+        return firstFound && secondFound;
+    }, 3000));
+    REQUIRE(controller.selectSession(secondService));
+    REQUIRE(waitUntil([&] { return controller.title() == QStringLiteral("Second source"); }, 3000));
+    CHECK(controller.selectedService() == secondService);
+    REQUIRE(controller.previous());
+    REQUIRE(waitUntil([&] { return secondFixture.methods.contains(QStringLiteral("Previous")); }, 3000));
+    CHECK(firstFixture.methods.empty());
 }
 }
 

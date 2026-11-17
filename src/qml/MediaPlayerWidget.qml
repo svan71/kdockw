@@ -11,7 +11,7 @@ import "BadgeTextColor.js" as BadgeTextColor
 Item {
     id: root
     objectName: "mediaPlayerWidget"
-    required property Item dockItem
+    required property Item dockDelegate
     property bool dockHovered: false
     readonly property var controller: DockModel.mediaPlayerController
     readonly property bool verticalDock: DockView.isVertical
@@ -26,40 +26,68 @@ Item {
     property real popupWidth: Math.max(1, Math.min(420, DockView.screenGeometry.width - Kirigami.Units.largeSpacing * 2))
     property real popupHeight: Math.max(1, Math.min(480, DockView.screenGeometry.height - Kirigami.Units.largeSpacing * 2))
     readonly property color surface: DockView.backgroundColor.a > 0
-        ? Qt.rgba(DockView.backgroundColor.r, DockView.backgroundColor.g, DockView.backgroundColor.b, 1)
-        : Kirigami.Theme.backgroundColor
+        ? BadgeTextColor.composite(DockView.backgroundColor, Kirigami.Theme.backgroundColor)
+        : BadgeTextColor.composite(Qt.alpha(Kirigami.Theme.backgroundColor, DockSettings.backgroundOpacity),
+                                   Kirigami.Theme.backgroundColor)
     readonly property color foreground: BadgeTextColor.choose(surface, Kirigami.Theme.textColor)
     readonly property color secondary: BadgeTextColor.secondary(surface, Kirigami.Theme.disabledTextColor)
+
+    function logPopupState(phase) {
+        if (!DockModel.taskDiagnosticsEnabled)
+            return
+        const popupWindow = popup.contentItem ? popup.contentItem.Window.window : null
+        const ownerWindow = dockDelegate && dockDelegate.dockRoot
+            ? dockDelegate.dockRoot.Window.window : null
+        console.info("[KDOCKW_MEDIA_POPUP]", JSON.stringify({
+            phase: phase,
+            dockHovered: dockHovered,
+            popupHovered: popupHovered,
+            pinned: popupPinned,
+            requested: { x: requestedPopupX, y: requestedPopupY, width: popupWidth, height: popupHeight },
+            visible: popup.visible,
+            windowVisible: popupWindow ? popupWindow.visible : false,
+            windowActive: popupWindow ? popupWindow.active : false,
+            transientForDock: popupWindow && ownerWindow
+                ? popupWindow.transientParent === ownerWindow : false,
+            windowGeometry: popupWindow
+                ? { x: popupWindow.x, y: popupWindow.y, width: popupWindow.width, height: popupWindow.height }
+                : null
+        }))
+    }
 
     function openPinned() {
         if (popup.visible && popupPinned) {
             popup.close()
             return
         }
+        if (!positionPopup())
+            return
         popupPinned = true
-        positionPopup()
         popup.open()
         popup.forceActiveFocus()
+        logPopupState("open-pinned-request")
     }
 
     function positionPopup() {
+        if (!dockDelegate || !dockDelegate.dockRoot)
+            return false
         const reported = DockView.screenGeometry
-        const win = dockItem.dockRoot.Window.window
+        const win = dockDelegate.dockRoot.Window.window
         const screen = reported.width > 0 && reported.height > 0
-            ? reported : Qt.rect(0, 0, win ? win.width : dockItem.dockRoot.width,
-                win ? win.height : dockItem.dockRoot.height)
+            ? reported : Qt.rect(0, 0, win ? win.width : dockDelegate.dockRoot.width,
+                win ? win.height : dockDelegate.dockRoot.height)
         const content = win ? win.contentItem : null
-        const rootOrigin = content ? dockItem.dockRoot.mapToItem(content, 0, 0) : Qt.point(0, 0)
+        const rootOrigin = content ? dockDelegate.dockRoot.mapToItem(content, 0, 0) : Qt.point(0, 0)
         const surfaceX = screen.x + (DockView.edge === 3 && win ? screen.width - win.width : 0)
         const surfaceY = screen.y + (DockView.edge === 1 && win ? screen.height - win.height : 0)
         const rootX = surfaceX + rootOrigin.x
         const rootY = surfaceY + rootOrigin.y
         const margin = Kirigami.Units.largeSpacing
         const corners = [
-            dockItem.mapToItem(dockItem.dockRoot, 0, 0),
-            dockItem.mapToItem(dockItem.dockRoot, dockItem.width, 0),
-            dockItem.mapToItem(dockItem.dockRoot, 0, dockItem.height),
-            dockItem.mapToItem(dockItem.dockRoot, dockItem.width, dockItem.height)
+            dockDelegate.mapToItem(dockDelegate.dockRoot, 0, 0),
+            dockDelegate.mapToItem(dockDelegate.dockRoot, dockDelegate.width, 0),
+            dockDelegate.mapToItem(dockDelegate.dockRoot, 0, dockDelegate.height),
+            dockDelegate.mapToItem(dockDelegate.dockRoot, dockDelegate.width, dockDelegate.height)
         ]
         let left = Infinity, top = Infinity, rightOfDock = -Infinity, bottomOfDock = -Infinity
         for (const corner of corners) {
@@ -94,6 +122,7 @@ Item {
         screenY = Math.max(screen.y + margin, Math.min(bottom - popupHeight - margin, screenY))
         requestedPopupX = screenX - rootX
         requestedPopupY = screenY - rootY
+        return true
     }
 
     function closeAfterHover() {
@@ -102,6 +131,7 @@ Item {
     }
 
     onDockHoveredChanged: {
+        logPopupState(dockHovered ? "dock-hover-enter" : "dock-hover-leave")
         if (dockHovered) {
             hideTimer.stop()
             if (DockSettings.mediaPlayerHoverPopup && !popup.visible)
@@ -125,8 +155,10 @@ Item {
         onTriggered: {
             if (root.dockHovered && DockSettings.mediaPlayerHoverPopup && !popup.visible) {
                 root.popupPinned = false
-                root.positionPopup()
-                popup.open()
+                if (root.positionPopup()) {
+                    popup.open()
+                    root.logPopupState("open-hover-request")
+                }
             }
         }
     }
@@ -171,11 +203,13 @@ Item {
             Repeater {
                 model: ["media-skip-backward", controller.playbackStatus === "Playing"
                     ? "media-playback-pause" : "media-playback-start", "media-skip-forward"]
-                delegate: QQC2.ToolButton {
+                delegate: MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     required property int index
                     required property string modelData
-                    objectName: index === 0 ? "mediaPlayerPrevious"
-                        : index === 2 ? "mediaPlayerNext" : "mediaPlayerDockPlayPause"
+                    objectName: index === 0 ? "mediaPlayerControlsPrevious"
+                        : index === 2 ? "mediaPlayerControlsNext" : "mediaPlayerControlsPlayPause"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     icon.name: modelData
@@ -191,92 +225,104 @@ Item {
             }
         }
 
-        ColumnLayout {
+        RowLayout {
+            objectName: "mediaPlayerExpandedLayout"
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
-            spacing: 1
+            spacing: Kirigami.Units.smallSpacing
             visible: root.displayMode === 2 && !root.verticalDock
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-                Item {
-                    Layout.preferredWidth: Math.min(28, parent.height)
-                    Layout.preferredHeight: Layout.preferredWidth
-                    MediaArtworkItem {
-                        id: expandedArtwork
-                        anchors.fill: parent
-                        source: DockSettings.mediaPlayerUseArtwork ? controller.artUrl : ""
-                    }
-                    Kirigami.Icon {
-                        anchors.fill: parent
-                        source: controller.desktopEntry || "audio-x-generic-symbolic"
-                        fallback: "media-playback-start"
-                        visible: !expandedArtwork.ready
-                    }
+            Item {
+                Layout.preferredWidth: Math.min(28, parent.height - Kirigami.Units.smallSpacing * 2)
+                Layout.preferredHeight: Layout.preferredWidth
+                MediaArtworkItem {
+                    id: expandedArtwork
+                    anchors.fill: parent
+                    source: DockSettings.mediaPlayerUseArtwork ? controller.artUrl : ""
                 }
-                ColumnLayout {
+                Kirigami.Icon {
+                    anchors.fill: parent
+                    source: controller.desktopEntry || "audio-x-generic-symbolic"
+                    fallback: "media-playback-start"
+                    visible: !expandedArtwork.ready
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 48
+                Layout.preferredWidth: 64
+                spacing: 0
+                QQC2.Label {
+                    objectName: "mediaPlayerExpandedTitle"
                     Layout.fillWidth: true
-                    spacing: 0
-                    QQC2.Label {
-                        objectName: "mediaPlayerExpandedTitle"
-                        Layout.fillWidth: true
-                        text: controller.title || controller.identity || i18n("No media session")
-                        elide: Text.ElideRight
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                        color: root.foreground
-                    }
-                    QQC2.Label {
-                        objectName: "mediaPlayerExpandedArtist"
-                        Layout.fillWidth: true
-                        text: controller.artist
-                        elide: Text.ElideRight
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 0.85
-                        color: root.secondary
-                    }
-                    QQC2.ProgressBar {
-                        objectName: "mediaPlayerDockProgress"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 3
-                        from: 0
-                        to: Math.max(1, controller.durationUs)
-                        value: Math.min(to, controller.positionUs)
-                        visible: controller.durationUs > 0
-                    }
+                    text: controller.title || controller.identity || i18n("No media session")
+                    elide: Text.ElideRight
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    color: root.foreground
+                }
+                QQC2.Label {
+                    objectName: "mediaPlayerExpandedArtist"
+                    Layout.fillWidth: true
+                    text: controller.artist
+                    elide: Text.ElideRight
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 0.85
+                    color: root.secondary
+                }
+                QQC2.ProgressBar {
+                    objectName: "mediaPlayerDockProgress"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 3
+                    from: 0
+                    to: Math.max(1, controller.durationUs)
+                    value: Math.min(to, controller.positionUs)
+                    visible: controller.durationUs > 0
                 }
             }
             RowLayout {
-                Layout.fillWidth: true
+                objectName: "mediaPlayerExpandedControls"
+                Layout.alignment: Qt.AlignVCenter
                 spacing: 0
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerPrevious"
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerExpandedPrevious"
                     icon.name: "media-skip-backward"
                     display: QQC2.AbstractButton.IconOnly
                     Layout.preferredWidth: 24
-                    Layout.preferredHeight: 22
+                    Layout.preferredHeight: 24
+                    Layout.minimumWidth: 24
+                    Layout.minimumHeight: 24
                     enabled: controller.canGoPrevious
                     Accessible.name: i18n("Previous track")
                     onClicked: controller.previous()
                 }
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerDockPlayPause"
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerExpandedPlayPause"
                     icon.name: controller.playbackStatus === "Playing" ? "media-playback-pause" : "media-playback-start"
                     display: QQC2.AbstractButton.IconOnly
                     Layout.preferredWidth: 28
-                    Layout.preferredHeight: 22
+                    Layout.preferredHeight: 24
+                    Layout.minimumWidth: 28
+                    Layout.minimumHeight: 24
                     enabled: controller.canControl
                     Accessible.name: controller.playbackStatus === "Playing" ? i18n("Pause") : i18n("Play")
                     onClicked: controller.playPause()
                 }
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerNext"
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerExpandedNext"
                     icon.name: "media-skip-forward"
                     display: QQC2.AbstractButton.IconOnly
                     Layout.preferredWidth: 24
-                    Layout.preferredHeight: 22
+                    Layout.preferredHeight: 24
+                    Layout.minimumWidth: 24
+                    Layout.minimumHeight: 24
                     enabled: controller.canGoNext
                     Accessible.name: i18n("Next track")
                     onClicked: controller.next()
-                }
+            }
             }
         }
 
@@ -287,7 +333,9 @@ Item {
             Repeater {
                 model: ["media-skip-backward", controller.playbackStatus === "Playing"
                     ? "media-playback-pause" : "media-playback-start", "media-skip-forward"]
-                delegate: QQC2.ToolButton {
+                delegate: MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     required property int index
                     required property string modelData
                     Layout.preferredWidth: DockSettings.iconSize * 0.75
@@ -305,13 +353,14 @@ Item {
         }
 
         ColumnLayout {
+            objectName: "mediaPlayerVerticalLayout"
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             spacing: 1
             visible: root.displayMode === 2 && root.verticalDock
             MediaArtworkItem {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: Math.min(DockSettings.iconSize, 40)
+                Layout.preferredWidth: Math.min(DockSettings.iconSize, 40, parent.width)
                 Layout.preferredHeight: Layout.preferredWidth
                 source: DockSettings.mediaPlayerUseArtwork ? controller.artUrl : ""
                 visible: ready
@@ -319,6 +368,8 @@ Item {
             QQC2.Label {
                 objectName: "mediaPlayerVerticalTitle"
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                width: parent.width
                 text: controller.title || controller.identity
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
@@ -327,6 +378,8 @@ Item {
             }
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                width: parent.width
                 text: controller.artist
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
@@ -336,38 +389,69 @@ Item {
             QQC2.ProgressBar {
                 objectName: "mediaPlayerVerticalProgress"
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                width: parent.width
                 Layout.preferredHeight: 3
                 from: 0
                 to: Math.max(1, controller.durationUs)
                 value: Math.min(to, controller.positionUs)
                 visible: controller.durationUs > 0
             }
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 0
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerPrevious"
+            Item {
+                Layout.preferredWidth: parent.width
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: parent.width
+                Layout.preferredHeight: 24
+                Layout.fillWidth: true
+                MediaPlayerControlButton {
+                    anchors.centerIn: parent
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerVerticalPrevious"
                     icon.name: "media-skip-backward"
                     display: QQC2.AbstractButton.IconOnly
-                    Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                    width: 32
+                    height: 24
                     enabled: controller.canGoPrevious
                     onClicked: controller.previous()
                     Accessible.name: i18n("Previous track")
                 }
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerDockPlayPause"
+            }
+            Item {
+                Layout.preferredWidth: parent.width
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: parent.width
+                Layout.preferredHeight: 24
+                Layout.fillWidth: true
+                MediaPlayerControlButton {
+                    anchors.centerIn: parent
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerVerticalPlayPause"
                     icon.name: controller.playbackStatus === "Playing" ? "media-playback-pause" : "media-playback-start"
                     display: QQC2.AbstractButton.IconOnly
-                    Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                    width: 32
+                    height: 24
                     enabled: controller.canControl
                     onClicked: controller.playPause()
                     Accessible.name: controller.playbackStatus === "Playing" ? i18n("Pause") : i18n("Play")
                 }
-                QQC2.ToolButton {
-                    objectName: "mediaPlayerNext"
+            }
+            Item {
+                Layout.preferredWidth: parent.width
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: parent.width
+                Layout.preferredHeight: 24
+                Layout.fillWidth: true
+                MediaPlayerControlButton {
+                    anchors.centerIn: parent
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
+                    objectName: "mediaPlayerVerticalNext"
                     icon.name: "media-skip-forward"
                     display: QQC2.AbstractButton.IconOnly
-                    Layout.preferredWidth: 32; Layout.preferredHeight: 32
+                    width: 32
+                    height: 24
                     enabled: controller.canGoNext
                     onClicked: controller.next()
                     Accessible.name: i18n("Next track")
@@ -380,7 +464,7 @@ Item {
     QQC2.Popup {
         id: popup
         objectName: "mediaPlayerPopup"
-        parent: dockItem.dockRoot
+        parent: dockDelegate ? dockDelegate.dockRoot : null
         popupType: QQC2.Popup.Window
         x: root.requestedPopupX
         y: root.requestedPopupY
@@ -437,13 +521,17 @@ Item {
                         highlighted: selected
                     }
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     visible: controller.manualSelection
                     text: i18n("Auto")
                     onClicked: controller.selectAutomatic()
                     Accessible.name: i18n("Return to automatic media source selection")
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     visible: controller.canRaise
                     icon.name: "window-raise"
                     display: QQC2.AbstractButton.IconOnly
@@ -550,7 +638,9 @@ Item {
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: Kirigami.Units.largeSpacing
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     objectName: "mediaPlayerShuffle"
                     icon.name: "media-playlist-shuffle"
                     checkable: true
@@ -559,26 +649,34 @@ Item {
                     onClicked: controller.setShuffle(checked)
                     Accessible.name: i18n("Shuffle")
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     icon.name: "media-skip-backward"
                     enabled: controller.canGoPrevious
                     onClicked: controller.previous()
                     Accessible.name: i18n("Previous track")
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     objectName: "mediaPlayerPlayPause"
                     icon.name: controller.playbackStatus === "Playing" ? "media-playback-pause" : "media-playback-start"
                     enabled: controller.canControl && (controller.canPlay || controller.canPause)
                     onClicked: controller.playPause()
                     Accessible.name: controller.playbackStatus === "Playing" ? i18n("Pause") : i18n("Play")
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     icon.name: "media-skip-forward"
                     enabled: controller.canGoNext
                     onClicked: controller.next()
                     Accessible.name: i18n("Next track")
                 }
-                QQC2.ToolButton {
+                MediaPlayerControlButton {
+                    mediaForeground: root.foreground
+                    mediaSecondary: root.secondary
                     objectName: "mediaPlayerRepeat"
                     icon.name: "media-playlist-repeat"
                     enabled: controller.canControl
@@ -611,10 +709,12 @@ Item {
             onHoveredChanged: root.popupHovered = hovered
         }
         onClosed: {
+            root.logPopupState("closed")
             root.popupPinned = false
             root.popupHovered = false
             root.interactionHeld = false
         }
+        onOpened: root.logPopupState("opened")
     }
 
     function formatTime(usec) {

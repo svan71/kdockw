@@ -27,7 +27,7 @@ Item {
             : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : 192)
         height: DockView.isVertical ? (DockSettings.mediaPlayerDisplayMode === 0 ? 48
             : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : 192) : 64
-        dockItem: dockAnchor
+        dockDelegate: dockAnchor
         dockHovered: dockAnchor.dockHovered
     }
 
@@ -56,9 +56,9 @@ Item {
         function test_controls_mode_has_three_direct_commands_and_does_not_open_popup() {
             DockSettings.mediaPlayerDisplayMode = 1
             tryVerify(() => widget.displayMode === 1)
-            const previous = findChild(widget, "mediaPlayerPrevious")
-            const playPause = findChild(widget, "mediaPlayerDockPlayPause")
-            const next = findChild(widget, "mediaPlayerNext")
+            const previous = findChild(widget, "mediaPlayerControlsPrevious")
+            const playPause = findChild(widget, "mediaPlayerControlsPlayPause")
+            const next = findChild(widget, "mediaPlayerControlsNext")
             verify(previous && playPause && next)
             mouseClick(playPause)
             compare(widget.controller.calls[widget.controller.calls.length - 1].name, "playPause")
@@ -67,18 +67,55 @@ Item {
 
         function test_expanded_mode_keeps_metadata_inside_fixed_extent() {
             DockSettings.mediaPlayerDisplayMode = 2
-            tryVerify(() => widget.displayMode === 2)
-            verify(findChild(widget, "mediaPlayerExpandedTitle"))
-            verify(findChild(widget, "mediaPlayerExpandedArtist"))
-            verify(findChild(widget, "mediaPlayerDockPlayPause"))
-            compare(widget.width, 192)
-            compare(findChild(widget, "mediaPlayerExpandedTitle").elide, Text.ElideRight)
+            for (const edge of [0, 1, 2, 3]) {
+                DockView.edge = edge
+                tryVerify(() => widget.displayMode === 2 && widget.verticalDock === (edge >= 2))
+                const vertical = edge >= 2
+                const layout = findChild(widget, vertical ? "mediaPlayerVerticalTitle" : "mediaPlayerExpandedLayout")
+                const title = findChild(widget, vertical ? "mediaPlayerVerticalTitle" : "mediaPlayerExpandedTitle")
+                const artist = vertical ? null : findChild(widget, "mediaPlayerExpandedArtist")
+                const controls = findChild(widget, vertical
+                    ? "mediaPlayerVerticalLayout" : "mediaPlayerExpandedControls")
+                const previous = findChild(widget, vertical
+                    ? "mediaPlayerVerticalPrevious" : "mediaPlayerExpandedPrevious")
+                const playPause = findChild(widget, vertical
+                    ? "mediaPlayerVerticalPlayPause" : "mediaPlayerExpandedPlayPause")
+                const next = findChild(widget, vertical
+                    ? "mediaPlayerVerticalNext" : "mediaPlayerExpandedNext")
+                verify(layout && title && controls)
+                verify(previous && playPause && next)
+                compare(vertical ? widget.width : widget.height, 64)
+                if (!vertical) compare(widget.width, 192)
+                compare(title.elide, Text.ElideRight)
+                tryVerify(() => controls.width > 0)
+                for (const child of [title, artist, controls, previous, playPause, next]) {
+                    if (!child) continue
+                    const rect = child.mapToItem(widget, 0, 0)
+                    verify(rect.x >= -0.5 && rect.y >= -0.5,
+                        child.objectName + " starts outside the media delegate")
+                    verify(rect.x + child.width <= widget.width + 0.5,
+                        child.objectName + " is clipped horizontally on edge " + edge)
+                    verify(rect.y + child.height <= widget.height + 0.5,
+                        child.objectName + " is clipped vertically on edge " + edge)
+                }
+            }
+        }
+
+        function test_media_control_icons_use_the_contrast_selected_foreground() {
+            DockSettings.mediaPlayerDisplayMode = 1
+            tryVerify(() => widget.displayMode === 1)
+            const button = findChild(widget, "mediaPlayerControlsPlayPause")
+            verify(button)
+            compare(button.icon.color, widget.foreground)
+            compare(button.palette.buttonText, widget.foreground)
         }
 
         function test_hover_opens_shared_popup_and_sessions_can_be_manually_selected() {
             dockAnchor.dockHovered = true
             const popup = findChild(widget, "mediaPlayerPopup")
             tryVerify(() => popup && popup.visible, 2000)
+            compare(widget.popupPinned, false)
+            compare(popup.focus, false)
             const selector = findChild(widget, "mediaPlayerSourceSelector")
             verify(selector)
             compare(selector.count, 2)
@@ -133,6 +170,14 @@ Item {
             tryVerify(() => popup && popup.visible, 2000)
             keyClick(popup, Qt.Key_Escape)
             tryVerify(() => !popup.visible, 2000)
+        }
+
+        function test_click_pins_and_repeat_click_closes_the_popup() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            widget.openPinned()
+            tryVerify(() => popup && popup.visible && widget.popupPinned, 2000)
+            widget.openPinned()
+            tryVerify(() => !popup.visible && !widget.popupPinned, 2000)
         }
     }
 }

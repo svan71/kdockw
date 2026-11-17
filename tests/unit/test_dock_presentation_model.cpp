@@ -201,27 +201,37 @@ TEST_CASE("Dock presentation model places built-in widgets in slots without task
     CHECK(entries.moveEntryById(start.id, center.id));
 }
 
-TEST_CASE("Only the Application Launcher participates in dock magnification", "[dock-presentation][dock-widgets][zoom]")
+TEST_CASE("Application Launcher and compact media participate in dock magnification", "[dock-presentation][dock-widgets][zoom]")
 {
     QStandardItemModel tasks;
     kdockw::DockEntriesModel entries;
     const auto separator = kdockw::DockEntry::separator(kdockw::DockWidgetSlot::Start);
     const auto spacer = kdockw::DockEntry::spacer(kdockw::DockWidgetSlot::Center, 32);
     const auto launcher = kdockw::DockEntry::applicationLauncher(kdockw::DockWidgetSlot::End);
-    entries.setEntries({separator, spacer, launcher});
+    const auto media = kdockw::DockEntry::mediaPlayer(kdockw::DockWidgetSlot::End);
+    entries.setEntries({separator, spacer, launcher, media});
 
     kdockw::DockPresentationModel model(&tasks, &entries);
-    QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 3, 2000);
+    model.setMediaPlayerAvailable(true);
+    QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), 4, 2000);
     const QVariantList specs = model.zoomLayoutSpecs(48);
-    REQUIRE(specs.size() == 3);
+    REQUIRE(specs.size() == 4);
     for (int row = 0; row < model.rowCount(); ++row) {
         const auto kind = model.data(model.index(row, 0), kdockw::DockPresentationModel::WidgetKindRole).toString();
         const auto spec = specs.at(row).toMap();
-        const double expectedSize = kind == QLatin1String("spacer") ? 32.0 : 48.0;
+        const double expectedSize = kind == QLatin1String("spacer") ? 32.0
+            : kind == QLatin1String("mediaPlayer") ? 48.0 : 48.0;
         CHECK(spec.value(QStringLiteral("size")).toDouble() == expectedSize);
         CHECK(spec.value(QStringLiteral("canMagnify")).toBool()
-              == (kind == QLatin1String("applicationLauncher")));
+              == (kind == QLatin1String("applicationLauncher")
+                  || kind == QLatin1String("mediaPlayer")));
     }
+    model.setMediaPlayerDisplayMode(1);
+    CHECK_FALSE(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
+    model.setMediaPlayerDisplayMode(2);
+    const auto expandedSpecs = model.zoomLayoutSpecs(48);
+    CHECK(expandedSpecs.at(3).toMap().value(QStringLiteral("size")).toDouble() == 192.0);
+    CHECK_FALSE(expandedSpecs.at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
 }
 
 TEST_CASE("Dock presentation follows TaskManager order when pinned and running zones are combined", "[dock-presentation][taskmanager-regression]")

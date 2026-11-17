@@ -497,7 +497,9 @@ def measure(args: argparse.Namespace) -> int:
         pass
     config_path = pathlib.Path(args.config_file)
     metadata = {
-        "variant": args.variant, "version": "0.5.1" if args.variant == "v051" else "0.6.0-dev",
+        "variant": args.variant, "version": {
+            "v051": "0.5.1", "v060": "0.6.0-dev", "v070": "0.7.0-dev",
+        }[args.variant],
         "dockPid": args.dock_pid, "dockExecutable": actual_executable, "gnuBuildId": actual_build_id,
         "profileConfig": str(config_path),
         "profileConfigSha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
@@ -655,7 +657,7 @@ def main() -> int:
     prep.set_defaults(func=prepare)
     run = commands.add_parser("measure", help="Run active workload while sampling one KDockW PID")
     run.add_argument("--manifest", required=True)
-    run.add_argument("--variant", choices=("v051", "v060"), required=True)
+    run.add_argument("--variant", choices=("v051", "v060", "v070"), required=True)
     run.add_argument("--output", required=True)
     run.add_argument("--config-home", required=True)
     run.add_argument("--dock-pid", required=True, type=int)
@@ -677,7 +679,7 @@ def main() -> int:
     preflight.add_argument("--dock-pid", required=True, type=int)
     preflight.add_argument("--dock-executable", required=True)
     preflight.add_argument("--build-id", required=True)
-    preflight.add_argument("--variant", choices=("v051", "v060"), required=True)
+    preflight.add_argument("--variant", choices=("v051", "v060", "v070"), required=True)
     preflight.add_argument("--dock-log", required=True)
     preflight.add_argument("--fixture-platform", choices=("wayland", "xcb"), default="wayland",
                            help="Use xcb (XWayland under Plasma) to exercise runtime window-icon updates")

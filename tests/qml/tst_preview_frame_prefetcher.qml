@@ -52,6 +52,23 @@ Item {
     }
 
     Component {
+        id: fakeScreencastRequestComponent
+        QtObject {
+            objectName: "fakeScreencastRequest"
+            property int nodeId: 0
+        }
+    }
+
+    Component {
+        id: requestPrefetcherComponent
+        KDockW.PreviewFramePrefetcher {
+            requestComponent: fakeScreencastRequestComponent
+            useKWinScreencastRequest: true
+            sourceNodeIdOverride: -1
+        }
+    }
+
+    Component {
         id: popupComponent
         KDockW.PreviewPopup {}
     }
@@ -188,6 +205,19 @@ Item {
             tryVerify(() => !PreviewController.previewFrameUrl("already-closed-uuid").length,
                       2000, "a UUID absent from two settled model scans must release its cached image")
             compare(prefetcher.active, false)
+        }
+
+        function test_screencast_node_update_stops_retry_timer() {
+            const prefetcher = createTemporaryObject(requestPrefetcherComponent, stage)
+            verify(prefetcher)
+            prefetcher.requestUuid = "screencast-test-window"
+            const loader = T.findFirst(prefetcher,
+                item => item.objectName === "previewScreencastRequestLoader")
+            tryVerify(() => loader && loader.item, 1000)
+
+            loader.item.nodeId = 42
+            tryCompare(prefetcher, "sourceNodeId", 42, 1000)
+            compare(prefetcher.requestRetries, 0)
         }
 
         function test_minimizeBeforeFirstFrameStopsWithoutRetryLoopAndRestoreCanRetry() {

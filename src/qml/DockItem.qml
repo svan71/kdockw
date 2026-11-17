@@ -66,6 +66,14 @@ Item {
     }
 
     function openMediaPlayerPopup() {
+        if (DockModel.taskDiagnosticsEnabled) {
+            console.info("[KDOCKW_MEDIA_POPUP] dock-click", JSON.stringify({
+                dockIndex: index,
+                loaderStatus: mediaPlayerWidgetLoader.status,
+                mediaVisible: mediaPlayerWidgetLoader.item ? mediaPlayerWidgetLoader.item.visible : false,
+                displayMode: DockSettings.mediaPlayerDisplayMode
+            }))
+        }
         if (mediaPlayerWidgetLoader.item)
             mediaPlayerWidgetLoader.item.openPinned()
     }
@@ -1102,7 +1110,7 @@ Item {
         sourceComponent: Component {
             MediaPlayerWidget {
                 anchors.fill: parent
-                dockItem: dockItem
+                dockDelegate: dockItem
                 dockHovered: dockItem.dockRoot && dockItem.dockRoot.hoveredIndex === dockItem.index
             }
         }

@@ -1927,6 +1927,7 @@ Item {
                     restOffsetAnimationEnabled: dockPanel.animationsReady
                         && !dockPanel.mouseInside
                     zoomScale: isBuiltInWidget && !isApplicationLauncher
+                            && !(isMediaPlayer && DockSettings.mediaPlayerDisplayMode === 0)
                         ? 1.0 : (dockPanel.zoomLayout.scales?.[index] ?? 1.0)
                     zoomOffset: dockPanel.zoomLayout.offsets?.[index] ?? 0.0
                     itemCenterX: DockView.isVertical

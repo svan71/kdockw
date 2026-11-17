@@ -4,6 +4,7 @@
         <file>main.qml</file>
         <file>DockItem.qml</file>
         <file>MediaPlayerWidget.qml</file>
+        <file>MediaPlayerControlButton.qml</file>
         <file>DockSeparator.qml</file>
         <file>FolderStackItem.qml</file>
         <file>ApplicationLauncherPopup.qml</file>
