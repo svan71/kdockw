@@ -44,6 +44,14 @@ or TaskManager launcher identity. The Application Launcher currently supports
 one newly added row because style and Start pins are global settings; loading
 does not remove or rewrite pre-existing duplicate rows.
 
+The Media Player Controls widget follows the same saved-entry lifecycle but its
+presentation row is runtime-gated by the shared `MediaPlayerController`. One
+entry is seeded at the end of the dock once when a configuration first opens;
+the one-time marker prevents restoring it after the user removes it. The widget
+is the only row for all discovered MPRIS sessions; selecting a player does not
+create or persist another dock entry. Its three display modes change the row's
+primary extent while retaining the same stable entry ID and saved order.
+
 The v3 separator migrates to visible with automatic size (`size=0`). Version 4
 stores explicit size and visibility. Version 5 stores whether an Application
 Launcher icon is a user override. Earlier launcher entries infer an override

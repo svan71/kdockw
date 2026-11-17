@@ -482,6 +482,21 @@ Ninth owner review (2026-11-16) scored **16/17**. The widget manager, all three 
 
 The owner accepted all **5/5** remaining visual and functional checks on the candidate with Build ID `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`. A controlled live TaskManager A/B then confirmed the earlier `DecorationRole` INVALID result was a diagnostic false negative: `DockPresentationModel` forwarded the icon role, but its diagnostic trace gate omitted DecorationRole-only notifications. The accepted candidate's existing runtime path also advanced icon revisions and refreshed TaskIconProvider URLs. A trace-only gate now records the event without widening the forwarded role list; the preflight parser also correctly treats Qt's empty `dataChanged` role list as “all roles changed”. Stable v0.5.1 and the candidate each observed the fixture's changed icon pixels and live role transition. The repaired diagnostic candidate has GNU Build ID `2fa8516ffcb730d00f29e5fe263f14b2acad98da` and live functional preflight passed 6/6. Diagnostic Release CTest passed 230/230. Production Release CTest ended **222/223** due to the parabolic settings-preview hover case; its isolated retry passed 67 assertions, but the full-run failure remains recorded. The milestone is therefore still in progress and the parent and feature cards remain `review`; release readiness is not claimed. Full details: `docs/qa/v060-dev-performance-icon-theme-2026-11-14.md`.
 
+## v0.7.0 — Media Player Controls (MPRIS2, in progress)
+
+- [ ] **Media Player Controls Widget** (`187d5445ee4d474d`, review): one persisted
+  built-in widget and backend serves all MPRIS2 sessions; default placement is at
+  the end of the dock. It supports compact, controls, and expanded dock modes,
+  plus a shared interactive popup, automatic visibility, manual source selection,
+  metadata/artwork, and capability-gated playback and seeking. It depends on the
+  completed Built-in Dock Widget Model (`35353e13722e4769`). Browser support is
+  limited to the single MPRIS session a browser publishes; no tab-level control
+  or site inference is promised. Production Release CTest passed 228/228 and
+  Diagnostic Release CTest passed 232/232. The isolated stage preflight passed
+  with Build ID `9f2699c3ca33be22f05fe6c87f81932d221ab00f`. Live MPRIS,
+  TaskManager, and Plasma/Wayland acceptance remain pending; the card stays in
+  `review`.
+
 ## Technical debt — Classic Zoom Performance Profile
 
 - [ ] Capture real frame pacing, Qt Quick/QML binding, texture-update, pointer
@@ -494,17 +509,14 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
 
 ### Backlog — no release assignment
 
-- [ ] **Media Player Controls Widget:** use MPRIS2 over D-Bus, with player
-  selection, track and artist metadata, artwork, transport controls, and
-  seeking only when supported by the active player.
 - [ ] **Downloads Stack & Progress Indicator:** extend 13.1 Folder Stacks with
   a navigable Downloads grid, automatic refresh, file opening and Dolphin
   navigation. Investigate KDE JobViewServer/KIO for actual progress; show an
   indeterminate or neutral state when no progress is available.
 
-Media Player Controls and Downloads Stack remain unversioned backlog items.
-The v0.6.0 widget model is a prerequisite for both. This planning assigns no
-release date.
+Downloads Stack and Flexible Spacer remain in the unversioned backlog. The
+v0.6.0 widget model is a prerequisite for future dock-widget extensions. No
+release date is assigned.
 
 - **Badge Appearance (implemented and owner accepted):** default badge colors
   are `#FF3B30` and `#FFFFFF`; independent saved colors, reset, preview, and
