@@ -370,15 +370,28 @@ Fedora 45 была экспериментальной в v0.5.0. В кандид
   `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. В реальной сессии обнаружен один
   остановленный источник MPRIS; проверка двух mock-сессий с отправкой команды
   выбранному владельцу прошла. Текущий Production Release CTest прошёл 230/230.
-  Последний Diagnostic Release CTest завершился 233/234: concurrent MPRIS
-  source-model test упал с SIGSEGV; отдельный запуск прошёл, поэтому
-  непостоянный отказ остаётся нерешённым. Stage содержит версию `0.7.0-dev`;
+  Первый полный Diagnostic Release CTest завершился 233/234 из-за SIGSEGV в
+  concurrent MPRIS source-model test; изолированный и GDB-прогоны прошли, второй
+  полный прогон прошёл 234/234. Первопричина непостоянного сбоя не установлена.
+  Stage содержит версию `0.7.0-dev`;
   GNU Build ID исходного и staged ELF совпадает:
   `6c675083442fc5d1ab01710e1868717be600fad0`. Проверки русской локализации и
-  stage preflight прошли. Стабильный v0.6.0 оставался запущен; live candidate
-  TaskManager/MPRIS preflight и A/B количества окон stable/dev не проводились.
+  stage preflight прошли. После отдельного разрешения владельца выполнен
+  ограниченный запуск кандидата: live TaskManager functional preflight прошёл
+  6/6 на GNU Build ID `6c675083442fc5d1ab01710e1868717be600fad0` и проверил
+  существующие окна, появление тестового окна, title/icon updates, группировку
+  и удаление. В сессии обнаружен один остановленный Chromium MPRIS source;
+  воспроизведение и второй реальный источник не проверялись. Stable v0.6.0
+  восстановлен после проверки. Визуальный A/B количества индикаторов stable/dev
+  остаётся NOT VERIFIED.
   Popup и hover в Plasma/Wayland требуют проверки владельца; карточка остаётся
   в `review`.
+- [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
+  отдельная карточка фиксирует зависавшее число точек сгруппированных окон.
+  Расхождение dev между дочерними строками предпросмотра и forwarded `ChildCount`
+  исправлено и покрыто unit/rendered-QML тестами; candidate functional preflight
+  прошёл 6/6. Визуальный live A/B stable v0.6.0/dev и Plasma-проверка
+  закреплённых/незакреплённых индикаторов пока NOT VERIFIED.
 
 ## Технический долг — профиль Classic Zoom
 

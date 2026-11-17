@@ -500,15 +500,26 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   count indicators. Live TaskManager preflight passed 6/6
   on Build ID `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. Only one real MPRIS
   service was present and it was stopped; two mock services passed the selected
-  owner command test. Production full CTest passed 230/230. The latest Diagnostic
-  full CTest ended 233/234 when the concurrent MPRIS source-model test terminated
-  with SIGSEGV; its isolated retry passed, so the intermittent failure remains
-  unresolved. The current diagnostic stage is version `0.7.0-dev`, with matching
+  owner command test. Production full CTest passed 230/230. Diagnostic full CTest
+  first ended 233/234 when the concurrent MPRIS source-model test terminated
+  with SIGSEGV; isolated and GDB runs passed, and a second full run passed
+  234/234. The intermittent crash's root cause remains unknown. The current
+  diagnostic stage is version `0.7.0-dev`, with matching
   source and staged GNU Build ID `6c675083442fc5d1ab01710e1868717be600fad0`;
-  Russian catalog validation and stage preflight passed. Stable v0.6.0 remained
-  active, so live candidate TaskManager/MPRIS preflights and a stable-versus-dev
-  window-count A/B were not run. Plasma/Wayland visual behavior still needs
+  Russian catalog validation and stage preflight passed. A final live
+  TaskManager functional preflight passed 6/6 on this candidate Build ID; it
+  observed existing windows, fixture appearance, title/icon changes, grouping,
+  and fixture removal. One stopped Chromium MPRIS service was discovered; live
+  playback controls and a second real source were not exercised. Stable v0.6.0
+  was restored after the bounded candidate run. A visual stable-versus-dev
+  indicator-count A/B remains NOT VERIFIED. Plasma/Wayland visual behavior still needs
   owner review; the card remains `review`.
+- [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
+  a separate grouped-window regression card tracks stale running-dot counts.
+  The dev-side mismatch between preview child rows and forwarded `ChildCount`
+  was corrected and has unit/rendered-QML coverage; candidate functional
+  preflight passed 6/6. Stable-v0.6.0 versus dev visible-indicator A/B and
+  pinned/unpinned Plasma acceptance remain NOT VERIFIED.
 
 ## Technical debt — Classic Zoom Performance Profile
 
