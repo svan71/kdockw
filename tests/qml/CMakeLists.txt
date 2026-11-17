@@ -13,6 +13,10 @@ add_executable(kdockw_qml_tests
     ${CMAKE_SOURCE_DIR}/src/utils/springzoomcontroller.cpp
     ${CMAKE_SOURCE_DIR}/src/models/applicationlauncherstate.cpp
     ${CMAKE_SOURCE_DIR}/src/models/applicationcatalog.cpp
+    # List the generated KConfigXT header explicitly so AUTOMOC also processes
+    # it on CMake/Qt combinations that do not discover generated headers from
+    # the generated .cpp include.
+    ${CMAKE_BINARY_DIR}/src/kdockw.h
     ${CMAKE_BINARY_DIR}/src/kdockw.cpp
     qmltestmocks.cpp
     qmltestmocks.h
