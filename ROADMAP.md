@@ -301,7 +301,11 @@ the final exact-SHA matrix passed in [workflow run 43433604968](https://github.c
 The signed tag and all five release assets were verified on the
 [v0.5.1 GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.5.1).
 
-## v0.6.0 — Built-in Dock Widgets & Application Launcher (local gates passed; publication pending)
+## v0.6.0 — Built-in Dock Widgets & Application Launcher (published 2026-11-17)
+
+
+**Release completed:** signed tag `kdockw-v0.6.0` and GitHub Release point to `15a3da99d2f66bcb22e5a6d771a69631c5ec1014`. CI build/test run [44015014164](https://github.com/thicking/kdockw/actions/runs/44015014164) and final required Distro E2E run [44018776362](https://github.com/thicking/kdockw/actions/runs/44018776362) passed. Full E2E totals: Debian 13 219 passed / 21 skipped; Ubuntu 26.04 227 / 13; Fedora 45 227 / 13; zero failures. Local Production CTest passed 223/223 twice and Diagnostic CTest 230/230. Five published assets matched their release checksums. An earlier exact-SHA run had one intermittent Ubuntu two-output Follow Active failure; targeted retry and the final complete rerun passed without changing the assertion. Its transient cause remains unconfirmed. Historical anonymous-PSS growth attribution remains UNKNOWN.
+
 
 - [x] **Built-in Dock Widget Model** (`35353e13722e4769`, done): the
   existing `DockEntriesModel` now supports persistent separators and fixed-size
