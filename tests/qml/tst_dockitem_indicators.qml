@@ -132,6 +132,55 @@ Item {
             tryCompare(T.indicatorDots(item), "length", 0)
         }
 
+        function test_pinnedLauncherRemainsAfterLastGroupedWindowCloses() {
+            let row = createTemporaryObject(rowComponent, stage)
+            DockModel.tasksModel.addTask(Object.assign({
+                display: "Dolphin",
+                AppId: "org.kde.dolphin",
+                LauncherUrlWithoutIcon: launcherUrl,
+                IsLauncher: true,
+                IsWindow: true,
+                IsGroupParent: true,
+                ChildCount: 3,
+            }))
+            tryCompare(row, "count", 1)
+            let item = row.itemAt(0)
+            tryCompare(T.indicatorDots(item), "length", 3)
+
+            DockModel.tasksModel.setTaskData(0, "ChildCount", 2)
+            tryCompare(T.indicatorDots(item), "length", 2)
+            DockModel.tasksModel.setTaskData(0, "ChildCount", 1)
+            tryCompare(T.indicatorDots(item), "length", 1)
+            DockModel.tasksModel.setTaskData(0, "ChildCount", 0)
+            DockModel.tasksModel.setTaskData(0, "IsGroupParent", false)
+            DockModel.tasksModel.setTaskData(0, "IsWindow", false)
+            tryCompare(T.indicatorDots(item), "length", 0)
+            tryCompare(row, "count", 1)
+            compare(DockModel.tasksModel.get(0, "IsLauncher"), true)
+        }
+
+        function test_unpinnedTaskRowDisappearsAfterLastWindowCloses() {
+            let row = createTemporaryObject(rowComponent, stage)
+            DockModel.tasksModel.addTask(Object.assign({
+                display: "Konsole",
+                AppId: "org.kde.konsole",
+                IsLauncher: false,
+                IsWindow: true,
+                IsGroupParent: true,
+                ChildCount: 3,
+            }))
+            tryCompare(row, "count", 1)
+            let item = row.itemAt(0)
+            tryCompare(T.indicatorDots(item), "length", 3)
+            DockModel.tasksModel.setTaskData(0, "ChildCount", 2)
+            tryCompare(T.indicatorDots(item), "length", 2)
+            DockModel.tasksModel.setTaskData(0, "ChildCount", 1)
+            tryCompare(T.indicatorDots(item), "length", 1)
+
+            DockModel.tasksModel.removeTask(0)
+            tryCompare(row, "count", 0)
+        }
+
         function test_activeWindowHasLargerDot() {
             let item = makeItem({ IsWindow: true, IsActive: false })
             let dot = T.indicatorDots(item)[0]
