@@ -303,7 +303,6 @@ The signed tag and all five release assets were verified on the
 
 ## v0.6.0 — Built-in Dock Widgets & Application Launcher (published 2026-11-17)
 
-
 **Release completed:** signed tag `kdockw-v0.6.0` and GitHub Release point to `15a3da99d2f66bcb22e5a6d771a69631c5ec1014`. CI build/test run [44015014164](https://github.com/thicking/kdockw/actions/runs/44015014164) and final required Distro E2E run [44018776362](https://github.com/thicking/kdockw/actions/runs/44018776362) passed. Full E2E totals: Debian 13 219 passed / 21 skipped; Ubuntu 26.04 227 / 13; Fedora 45 227 / 13; zero failures. Local Production CTest passed 223/223 twice and Diagnostic CTest 230/230. Five published assets matched their release checksums. An earlier exact-SHA run had one intermittent Ubuntu two-output Follow Active failure; targeted retry and the final complete rerun passed without changing the assertion. Its transient cause remains unconfirmed. Historical anonymous-PSS growth attribution remains UNKNOWN.
 
 
@@ -404,20 +403,17 @@ The signed tag and all five release assets were verified on the
   functional and visual acceptance. See
   [the investigation and bounded sampling procedure](docs/qa/v060-dev-performance-icon-theme-2026-11-14.md).
 
-  **Final local validation (2026-11-16):** owner acceptance of the remaining
-  Launcher and built-in widget items is complete. The settings-preview
-  integration flake was caused by checking hover/zoom before its loaded
-  Flickable had returned to its origin; the test now waits for the exposed
-  window, normalized Flickable, pointer leave, hover, and zoom state. Production
-  Release CTest passed 223/223 twice; Diagnostic Release CTest passed 230/230.
-  Full local Distro E2E passed on Debian 13 (219 passed, 21 skipped), Ubuntu
-  26.04 (227/13), and Fedora 45 (227/13), with no failures. Skipped cases
-  require additional outputs or Qt 6.9 hit-rectangle support. Local DEB/RPM
-  builds, source archive, checksum manifest, package installation, and Russian
-  package translations were verified. These package builds retain version
-  0.5.1 because the final version bump was not authorized. No tag, push, GitHub
-  Actions run, or release was created; exact-SHA remote gates and version
-  preparation remain pending. See the QA report for GNU Build IDs and hashes.
+  **Historical pre-publication validation snapshot (2026-11-16):** owner
+  acceptance of the remaining Launcher and built-in widget items was complete.
+  The settings-preview integration flake was fixed in the test harness by
+  waiting for the exposed window, normalized Flickable, pointer leave, hover,
+  and zoom state. Production Release CTest passed 223/223 twice; Diagnostic
+  Release CTest passed 230/230. The local distro/package matrix was prepared
+  before the owner authorized the final version bump. At that time the local
+  package builds still carried 0.5.1 and no tag/release existed. The subsequent
+  signed tag, exact-SHA CI, and GitHub publication completed on 2026-11-17 as
+  recorded at the top of this milestone. See the QA report for exact run IDs,
+  asset hashes and the preserved transient Ubuntu failure.
 
   Fourth Launcher refinement: the owner accepted 19/29 criteria (main-view
   contrast 4/4, Launchpad paging 6/6, KDE Hierarchical/shared favorites 5/5).
