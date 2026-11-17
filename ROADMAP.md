@@ -491,11 +491,19 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   metadata/artwork, and capability-gated playback and seeking. It depends on the
   completed Built-in Dock Widget Model (`35353e13722e4769`). Browser support is
   limited to the single MPRIS session a browser publishes; no tab-level control
-  or site inference is promised. Production Release CTest passed 228/228 and
-  Diagnostic Release CTest passed 232/232. The isolated stage preflight passed
-  with Build ID `9f2699c3ca33be22f05fe6c87f81932d221ab00f`. Live MPRIS,
-  TaskManager, and Plasma/Wayland acceptance remain pending; the card stays in
-  `review`.
+  or site inference is promised. The first owner review was 21/42 and found
+  popup binding, expanded-layout, contrast, and compact magnification defects;
+  implementation fixes are now in place. Live TaskManager preflight passed 6/6
+  on Build ID `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. Only one real MPRIS
+  service was present and it was stopped; two mock services passed the selected
+  owner command test. Production full CTest passed 229/229, had an earlier
+  228/229 run with an intermittent MPRIS integration SIGSEGV, and then passed
+  229/229 again on the final source state; the isolated case passed ten
+  consecutive repetitions. Diagnostic full CTest passed 233/233 on the final
+  source state. Final staged Build ID is
+  `8b829d27264ee48e32575b8c3004d72d5f7ceb2c`. Real popup appearance, pointer
+  handoff, and visible geometry in Plasma/Wayland still need owner review; the
+  card remains `review`.
 
 ## Technical debt — Classic Zoom Performance Profile
 

@@ -13,6 +13,12 @@ carried forward from the Krema-based development period.
 - Added one persistent MPRIS2 media player dock widget with Compact, Controls, and Expanded display modes, automatic session visibility, multi-player selection, metadata and bounded artwork loading, plus a shared interactive playback popup.
 - Added settings for media widget visibility, display mode, artwork, paused-session handling, stopped-session delay, popup behavior, source identity, and volume control.
 
+### Fixed
+
+- Fixed the media widget popup's dock-root binding so its parent geometry resolves, and guarded popup setup while the dock delegate is unavailable.
+- Kept expanded media controls and progress inside the dock item's allocated bounds on every edge, derived control contrast from the active dock/theme colors, and included the compact media icon in existing magnification.
+- Fixed a preview-prefetch retry callback that dereferenced a QML-local timer through the root object.
+
 ## [0.6.0] - 2026-11-17
 
 ### Added

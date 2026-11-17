@@ -70,8 +70,20 @@ seeking, and optional volume. A delayed hover opens it; moving into the popup
 keeps it open. Leaving both areas closes it after a short delay. Clicking the
 widget pins the popup until Escape, outside click, or an explicit close action.
 The detached `Popup.Window` is positioned and clamped against the selected
-screen and dock edge. That placement still requires owner verification in a
-real Plasma/Wayland session.
+screen and dock edge. The popup reference is explicitly named `dockDelegate`;
+this avoids shadowing the enclosing `DockItem.qml` id, which previously created
+a self-referential binding and left the popup without its dock root. Popup
+positioning also guards the delegate while it is unavailable. Automated tests
+cover popup state and clamped placement, but cursor handoff and visible
+placement still require owner verification in real Plasma/Wayland.
+
+Expanded mode receives a 192 px primary extent from `DockPresentationModel`,
+which the dock delegate uses instead of the standard icon width. Its horizontal
+and vertical layouts constrain controls and progress to the allocated item
+rectangle. Compact mode participates in the existing dock magnification model;
+Controls and Expanded retain stable hit targets. Media control symbols use the
+dock's resolved foreground and secondary colors, including composited surface
+and KDE palette logic, rather than fixed black or white.
 
 The popup and dock artwork use `MediaArtworkItem`, a bounded asynchronous
 loader: local files and HTTP(S) only, 5 MiB input cap, 8 MP decode cap, 512 px
@@ -99,3 +111,11 @@ seek arguments. Offscreen QML tests exercise all display modes, popup
 interaction, source selection, and vertical layout. These checks do not verify
 real player behavior, output geometry, hover handoff, or visual quality in
 Plasma/Wayland; those remain part of owner acceptance.
+
+The 2026-11-17 first-review follow-up added a two-service private D-Bus test that
+selects one player and verifies the command reaches only that owner. Optional
+source diagnostics are gated by `KDOCKW_MEDIA_DIAGNOSTICS` and record service
+name, identity, playback status, selection, and capabilities without metadata
+URLs. In the live session only one real MPRIS service was present and it was
+Stopped, so concurrent real-player behavior and the visible popup remain
+unverified.

@@ -62,3 +62,73 @@ tools/kdockw-v070-dev-stop-and-restore
 ```
 
 Do not run the candidate while a stable KDockW process is active.
+
+## First owner review follow-up — 2026-11-17
+
+The owner’s first review scored **21/42** (15 errors, 6 not checked). The owner-confirmed baseline behaviors listed above remain in scope and were not intentionally changed. This section records implementation fixes and evidence; it does not claim the visually affected paths are accepted.
+
+### Popup root cause and correction
+
+The diagnostic log from the candidate showed `Binding loop detected for property "dockItem"` at `DockItem.qml:1105`, followed by `Cannot read property 'dockRoot' of null` from `MediaPlayerWidget.qml`. The child component declared a `dockItem` property and assigned `dockItem: dockItem`; the RHS resolved to the property itself rather than the outer delegate id. `dockRoot` therefore remained null and popup parenting/geometry could not be resolved. The property is now `dockDelegate`, and popup positioning, pinned opening, hover handling, and diagnostics guard unavailable delegates. After the correction, the candidate log contained no new `MediaPlayerWidget` dock-root binding/null warnings. This is source- and log-confirmed; actual visible opening and pointer handoff still require physical owner input in Wayland.
+
+### Expanded layout, control colors, and compact magnification
+
+The model already allocated a 192 px primary extent to Expanded mode, and the delegate used that extent. The content's nested layout did not constrain child controls to the item rectangle, especially in vertical orientation. Layouts now give the artwork/text/progress and control region explicit bounds, and buttons use wrapper geometry bounded by the parent. QML regression tests map visible controls into the dock coordinate space and check bounds for all four edges. Compact mode now uses the existing magnification path; Expanded and Controls remain stable hit targets. `MediaPlayerControlButton` resolves foreground/secondary colors through the existing badge/dock compositing and Kirigami palette logic, including hover and pressed states. These properties passed offscreen QML tests; visual contrast and real pointer geometry are not yet owner-accepted.
+
+A QML runtime warning during the live TaskManager fixture also exposed `root.nodeRetryTimer.stop()` although `nodeRetryTimer` is a local QML id. It is corrected to `nodeRetryTimer.stop()` and covered by `qml_tst_preview_frame_prefetcher`.
+
+### MPRIS session diagnostics
+
+The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance313005`, with Identity `Яндекс Браузер` and PlaybackStatus `Stopped`; it was not a second concurrent playing source. No real second browser/player session was started. The two-service private D-Bus integration test selects the second fixture and confirms Previous is sent only to its owner; the isolated test passed ten consecutive runs. Candidate diagnostic logging, enabled with `KDOCKW_MEDIA_DIAGNOSTICS`, reports service, identity, status, selection, and capabilities without URLs or playback history.
+
+### Live candidate evidence and limits
+
+- Live TaskManager functional preflight passed **6/6** on `/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`, Build ID `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. It observed existing windows, fixture appearance, title change, DecorationRole, grouping, and fixture removal. Evidence: `diagnostics/v070-dev/logs/media-first-review-20261117/taskmanager/live/functional-preflight.json`.
+- The same candidate received MPRIS source-add/property diagnostics. No `[KDOCKW_MEDIA_POPUP]` interaction event was recorded, so the logs do not demonstrate a real hover or click opening.
+- Candidate process snapshots were brief diagnostics, not a controlled performance comparison: `smaps_rollup` changed from RSS 429,952 KiB / PSS 284,422 KiB / anonymous PSS 234,588 KiB to RSS 411,720 KiB / PSS 282,898 KiB / anonymous PSS 210,964 KiB after the fixture. User-service CPU accounting was 3.272 s at the later sample. Frame timing was not captured; no performance acceptance is claimed.
+- The final PreviewFramePrefetcher correction happened after that live run, so the live preflight was not repeated on the final ELF. Its QML regression passed in both configurations.
+
+### Final local verification
+
+- Production Release CTest: the earlier full run **228/229 failed** when `MPRIS source model selects among concurrent services and targets the selected owner` terminated with SIGSEGV; the isolated case passed ten consecutive runs. A later full run on the final source state passed **229/229**. The earlier full-suite failure remains part of the record; its cause is still unestablished.
+- Diagnostic Release CTest: **233/233 passed** on the final source state after the PreviewFramePrefetcher timer-id correction.
+- After the final correction, targeted media QML, prefetcher QML, MPRIS discovery/selection, and compact-magnification tests passed **6/6 in Diagnostic** and **6/6 in Production**. The TaskManager preflight helper tests passed **10/10**.
+- `msgfmt --check --check-format` passed; source and staged Russian catalog SHA-256 both equal `d5bff1abeb1ed834237a8d6fa70daf10ef4dc2b7d8a6a2ceb623fb14f80a2897`. Version is `0.7.0-dev`; final source/stage ELF Build ID is `8b829d27264ee48e32575b8c3004d72d5f7ceb2c`; launcher preflight passed without launching a second dock.
+- `bash -n` on the candidate helpers, Python compilation of the TaskManager helper and test, and `git diff --check` passed after the final source edits.
+
+The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
+
+## First owner review follow-up — 2026-11-17
+
+The owner’s first review scored **21/42** (15 errors, 6 not checked). The owner-confirmed baseline behaviors listed above remain in scope and were not intentionally changed. This section records implementation fixes and evidence; it does not claim the visually affected paths are accepted.
+
+### Popup root cause and correction
+
+The diagnostic log from the candidate showed `Binding loop detected for property "dockItem"` at `DockItem.qml:1105`, followed by `Cannot read property 'dockRoot' of null` from `MediaPlayerWidget.qml`. The child component declared a `dockItem` property and assigned `dockItem: dockItem`; the RHS resolved to the property itself rather than the outer delegate id. `dockRoot` therefore remained null and popup parenting/geometry could not be resolved. The property is now `dockDelegate`, and popup positioning, pinned opening, hover handling, and diagnostics guard unavailable delegates. After the correction, the candidate log contained no new `MediaPlayerWidget` dock-root binding/null warnings. This is source- and log-confirmed; actual visible opening and pointer handoff still require physical owner input in Wayland.
+
+### Expanded layout, control colors, and compact magnification
+
+The model already allocated a 192 px primary extent to Expanded mode, and the delegate used that extent. The content's nested layout did not constrain child controls to the item rectangle, especially in vertical orientation. Layouts now give the artwork/text/progress and control region explicit bounds, and buttons use wrapper geometry bounded by the parent. QML regression tests map visible controls into the dock coordinate space and check bounds for all four edges. Compact mode now uses the existing magnification path; Expanded and Controls remain stable hit targets. `MediaPlayerControlButton` resolves foreground/secondary colors through the existing badge/dock compositing and Kirigami palette logic, including hover and pressed states. These properties passed offscreen QML tests; visual contrast and real pointer geometry are not yet owner-accepted.
+
+A QML runtime warning during the live TaskManager fixture also exposed `root.nodeRetryTimer.stop()` although `nodeRetryTimer` is a local QML id. It is corrected to `nodeRetryTimer.stop()` and covered by `qml_tst_preview_frame_prefetcher`.
+
+### MPRIS session diagnostics
+
+The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance313005`, with Identity `Яндекс Браузер` and PlaybackStatus `Stopped`; it was not a second concurrent playing source. No real second browser/player session was started. The two-service private D-Bus integration test selects the second fixture and confirms Previous is sent only to its owner; the isolated test passed ten consecutive runs. Candidate diagnostic logging, enabled with `KDOCKW_MEDIA_DIAGNOSTICS`, reports service, identity, status, selection, and capabilities without URLs or playback history.
+
+### Live candidate evidence and limits
+
+- Live TaskManager functional preflight passed **6/6** on `/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`, Build ID `4f484b8b9bdef35b21daa3d0b99521d05a8f16f2`. It observed existing windows, fixture appearance, title change, DecorationRole, grouping, and fixture removal. Evidence: `diagnostics/v070-dev/logs/media-first-review-20261117/taskmanager/live/functional-preflight.json`.
+- The same candidate received MPRIS source-add/property diagnostics. No `[KDOCKW_MEDIA_POPUP]` interaction event was recorded, so the logs do not demonstrate a real hover or click opening.
+- Candidate process snapshots were brief diagnostics, not a controlled performance comparison: `smaps_rollup` changed from RSS 429,952 KiB / PSS 284,422 KiB / anonymous PSS 234,588 KiB to RSS 411,720 KiB / PSS 282,898 KiB / anonymous PSS 210,964 KiB after the fixture. User-service CPU accounting was 3.272 s at the later sample. Frame timing was not captured; no performance acceptance is claimed.
+- The final PreviewFramePrefetcher correction happened after that live run, so the live preflight was not repeated on the final ELF. Its QML regression passed in both configurations.
+
+### Final local verification
+
+- Production Release CTest: the earlier full run **228/229 failed** when `MPRIS source model selects among concurrent services and targets the selected owner` terminated with SIGSEGV; the isolated case passed ten consecutive runs. A later full run on the final source state passed **229/229**. The earlier full-suite failure remains part of the record; its cause is still unestablished.
+- Diagnostic Release CTest: **233/233 passed** on the final source state after the PreviewFramePrefetcher timer-id correction.
+- After the final correction, targeted media QML, prefetcher QML, MPRIS discovery/selection, and compact-magnification tests passed **6/6 in Diagnostic** and **6/6 in Production**. The TaskManager preflight helper tests passed **10/10**.
+- `msgfmt --check --check-format` passed; source and staged Russian catalog SHA-256 both equal `d5bff1abeb1ed834237a8d6fa70daf10ef4dc2b7d8a6a2ceb623fb14f80a2897`. Version is `0.7.0-dev`; final source/stage ELF Build ID is `8b829d27264ee48e32575b8c3004d72d5f7ceb2c`; launcher preflight passed without launching a second dock.
+- `bash -n` on the candidate helpers, Python compilation of the TaskManager helper and test, and `git diff --check` passed after the final source edits.
+
+The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
