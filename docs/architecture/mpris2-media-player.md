@@ -69,6 +69,17 @@ source identity, metadata, artwork, available transport controls, supported
 seeking, and optional volume. A delayed hover opens it; moving into the popup
 keeps it open. Leaving both areas closes it after a short delay. Clicking the
 widget pins the popup until Escape, outside click, or an explicit close action.
+The QML controller represents this lifecycle as Closed, OpeningPending,
+HoverOpen, ClosingPending, and PinnedOpen. Pointer retention is decided from the
+current dock-item hit target, the popup surface, and active media-control
+interaction. `PointerFocusTracker` exposes the current Wayland surface as its
+own `QWindow`; this lets the controller distinguish a dock-to-popup handoff
+from moving to another dock item or outside the client. The 200 ms close timer
+is unchanged. Magnification hold is separately acquired/released once per
+popup lifetime, so preserving the anchor does not freeze dock hit-testing or
+prevent a neighboring Window Preview. When the popup closes, the dock
+re-evaluates the current pointer position. Click-pinned behavior is separate
+from hover timers.
 The detached `Popup.Window` is positioned and clamped against the selected
 screen and dock edge. The popup reference is explicitly named `dockDelegate`;
 this avoids shadowing the enclosing `DockItem.qml` id, which previously created
@@ -76,6 +87,14 @@ a self-referential binding and left the popup without its dock root. Popup
 positioning also guards the delegate while it is unavailable. Automated tests
 cover popup state and clamped placement, but cursor handoff and visible
 placement still require owner verification in real Plasma/Wayland.
+
+Optional `KDOCKW_MEDIA_POPUP_TRACE=1` records a bounded set of state transitions
+with monotonic timestamps, pointer target/surface classification, popup/window
+state, timer state, and magnification hold details. It does not log window
+titles or run a periodic high-frequency sampler. Launcher cold-open timing is
+independently opt-in through `KDOCKW_LAUNCHER_TIMING=1`; it records the request,
+catalog/page readiness, and first swapped frame with counts rather than app
+metadata.
 
 Expanded mode receives a persisted primary extent from `DockPresentationModel`,
 which the dock delegate uses instead of the standard icon width. The default is

@@ -498,3 +498,78 @@ includes the fifth-cycle changes and the MPRIS source-selection correction:
 The existing media widget and v0.7.0 stage cards remain `review` pending live
 owner acceptance. No release, tag, push, candidate runtime, production install,
 or user-config modification was performed.
+
+## Sixth-cycle hover stabilization — 2026-11-18
+
+### Interaction model and scope
+
+The fifth-cycle trace recorded this repeatable sequence in the earlier ELF:
+hover-open request, a dock-only leave during the detached popup handoff while
+KWin still hit-tested the media item, popup open, timer-driven close, and a new
+open request after close-time reconciliation. That trace explains the recorded
+open/close/open cycle, but it is historical evidence and does not prove that it
+was the only source of the owner's visual flicker on every build.
+
+The controller now uses explicit Closed, OpeningPending, HoverOpen,
+ClosingPending, and PinnedOpen states. A client-side Wayland pointer tracker
+maps the focused `wl_surface` to the corresponding `QWindow`; QML compares that
+window with the dock and media popup windows, while the dock's own hit target
+identifies a neighboring item. Magnification is held/released independently
+and exactly once, so it no longer determines hover ownership. The existing
+200 ms close timer and click-pinned behavior remain. The same composite hover
+path covers Controls and Expanded content, including their transport controls.
+The accepted Expanded dimensions and composition were not changed in this
+cycle.
+
+The historical trace also showed why a transient popup close could make the
+Compact icon appear to jump: that close released the media magnification hold,
+then the repeated open reacquired it, restarting the dock spring target. This
+is tied to the recorded open/close/open sequence, not a changed Compact icon
+size. The new lifecycle keeps the hold across dock↔popup surface handoff and
+releases it only on an actual popup close. For Controls, reliance on QML or
+delegate hover alone did not reliably represent pointer focus over child
+buttons; the current path compares the compositor-focused dock `QWindow` and
+the dock hit-tested item index, with the non-grabbing parent HoverHandler as
+fallback. Button-center paths are covered by QML tests, but real pointer
+behavior in Plasma remains **NOT VERIFIED**.
+
+### Verification
+
+- Production Release CTest: **230/230 passed**; the run used `TMPDIR=/tmp`.
+- Diagnostic Release CTest: **234/234 passed**; the run used `TMPDIR=/tmp`.
+- The tested Production ELF at `build/v070-production-release/bin/kdockw` has GNU Build ID `fea70c261afdb6a9916c363f5b4140965a180155`.
+- The media QML regressions passed in both suites. They exercise pointer-focus
+  changes between dock/popup/neighbor, timer cancellation on re-entry,
+  one-time magnification release, center coordinates of Controls and Expanded
+  buttons, and all four dock edges.
+- Diagnostic source and stage version: `0.7.0-dev`; GNU Build ID matched at
+  `699427b2545c1431f542b039cb03cfd75f5cc80d`. Russian catalog and installed
+  QML resources were included by the launcher stage preflight.
+- Live Plasma TaskManager functional preflight passed **6/6** on candidate PID
+  545927 and the same Build ID. It observed existing windows, a test window,
+  title update, DecorationRole/icon update, grouping, and fixture removal.
+  Evidence: `diagnostics/v070-dev/logs/sixth-cycle-20261118/taskmanager-preflight/`.
+- One live Chromium MPRIS service was present with `PlaybackStatus=Stopped`;
+  playback commands and a second real service were not exercised. The complete
+  suites, including MPRIS backend integration, passed. Historical intermittent
+  SIGSEGV evidence still points to QtDBus `QObject::disconnect` during test
+  teardown after failed assertions, but its root cause is not proven and is not
+  generalized to all reported crashes.
+- Candidate cold-open timing was captured for the Start style on this Build ID:
+  catalog ready with 116 applications; the popup's first swapped frame arrived
+  81 ms after the open request. At that first frame the Start view reported
+  zero dynamic page rows and Plasma favorites were not ready; the diagnostic
+  route selected the full list after the popup opened. This is one dev sample,
+  not a complete content-readiness measurement or a stable-vs-dev A/B.
+- Actual pointer travel through the media widget and popup was not automated in
+  this Wayland session. The new trace emitted no real hover sequence during the
+  bounded run; live popup flicker, button-region hover, and visual behavior stay
+  **NOT VERIFIED** until owner input in Plasma/Wayland.
+
+The diagnostic candidate used the new isolated `media-sixth-cycle` profile.
+The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored as PID
+548668 (Build ID `929161b576ca3fc8a683eb896668d9ead5ff0419`). Production config
+and its mode-preserving backup both remain mode 0600 with SHA-256
+`2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`. The
+candidate's isolated profile was preserved. Media Player Controls remains
+`review`; no release, tag, or push was created.

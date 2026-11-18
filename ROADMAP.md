@@ -550,6 +550,16 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   assertions; it did not show an application playback stack, and no crash
   recurred after the selection fix. Launcher stable/dev latency A/B and live
   Plasma visual acceptance remain NOT VERIFIED; card remains `review`.
+  The sixth cycle adds an explicit popup lifecycle and maps the focused
+  Wayland surface to its client `QWindow`, separating popup retention from dock
+  hit-testing and magnification. Production CTest passed 230/230 and Diagnostic
+  CTest 234/234. The live TaskManager functional preflight passed 6/6 on
+  candidate Build ID `699427b2545c1431f542b039cb03cfd75f5cc80d`. One Start
+  Launcher sample reached its first swapped frame 81 ms after request with the
+  116-app catalog ready; content-row count was zero at that frame and Plasma
+  favorites were still loading. Stable-vs-dev timing A/B and real pointer
+  hover in Plasma remain NOT VERIFIED. The historical MPRIS teardown SIGSEGV
+  remains unexplained. Stable v0.6.0 was restored; the feature stays `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   a separate grouped-window regression card tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`

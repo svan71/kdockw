@@ -20,6 +20,7 @@ carried forward from the Krema-based development period.
 ### Fixed
 
 - Kept the media hover popup open across QtWayland's synthetic dock leave while the pointer remains on the media widget, and tracked hover across composite media controls.
+- Reconciled pointer focus across the dock and detached popup Wayland surfaces so media hover state no longer depends on magnification or a stale dock-only leave event.
 - Aligned all media widget modes with the ordinary icon band and kept Expanded artwork at the dock icon's logical size.
 - Preserved the user's manually selected MPRIS source while its playback status is temporarily invalidated and being refreshed.
 - Limited hover-retention for the media popup to the media widget and popup; moving to another dock item starts the existing 200 ms close timer while neighboring task previews and magnification handoff remain available.

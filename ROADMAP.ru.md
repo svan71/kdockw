@@ -423,6 +423,17 @@ Fedora 45 была экспериментальной в v0.5.0. В кандид
   стека ошибки управления проигрыванием нет, после исправления сбой не повторился.
   A/B задержки Launcher stable/dev и визуальная приёмка в Plasma остаются
   NOT VERIFIED; карточка остаётся `review`.
+  Шестой цикл добавил явный жизненный цикл popup и сопоставление активной
+  Wayland-поверхности с её `QWindow`, отделив удержание popup от hit-testing
+  дока и magnification. Production CTest прошёл 230/230, Diagnostic — 234/234.
+  Live TaskManager functional preflight прошёл 6/6 на Build ID кандидата
+  `699427b2545c1431f542b039cb03cfd75f5cc80d`. Первый кадр одного запуска Start
+  Launcher появился через 81 мс после запроса при готовом каталоге из 116
+  приложений; число элементов страницы в этот кадр было нулевым, а Plasma
+  favorites ещё загружались. A/B задержки stable/dev и реальный hover указателя
+  в Plasma остаются NOT VERIFIED. Причина исторического MPRIS SIGSEGV при
+  завершении теста не установлена. Stable v0.6.0 восстановлен; задача остаётся
+  `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   отдельная карточка фиксирует зависавшее число точек сгруппированных окон.
   Расхождение dev между дочерними строками предпросмотра и forwarded `ChildCount`
