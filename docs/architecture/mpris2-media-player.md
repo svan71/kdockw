@@ -77,13 +77,24 @@ positioning also guards the delegate while it is unavailable. Automated tests
 cover popup state and clamped placement, but cursor handoff and visible
 placement still require owner verification in real Plasma/Wayland.
 
-Expanded mode receives a 192 px primary extent from `DockPresentationModel`,
-which the dock delegate uses instead of the standard icon width. Its horizontal
-and vertical layouts constrain controls and progress to the allocated item
-rectangle. Compact mode participates in the existing dock magnification model;
-Controls and Expanded retain stable hit targets. Media control symbols use the
-dock's resolved foreground and secondary colors, including composited surface
-and KDE palette logic, rather than fixed black or white.
+Expanded mode receives a persisted primary extent from `DockPresentationModel`,
+which the dock delegate uses instead of the standard icon width. The default is
+250 logical pixels; the setting accepts 250–300 logical pixels in 5 px steps.
+The bound is in logical coordinates and Qt applies the system scale factor. The
+cover follows the dock icon size within the available cross-axis span. Title and
+artist are single-line and ellipsized, the 3 px progress track sits beneath the
+text, and the three transport buttons keep 32 × 32 logical-pixel hit targets.
+Track changes do not resize the widget. Its horizontal and vertical layouts
+constrain controls and progress to the allocated item rectangle. Compact mode
+participates in the existing dock magnification model; Controls and Expanded
+retain stable hit targets. Media control symbols use the dock's resolved
+foreground and secondary colors, including composited surface and KDE palette
+logic, rather than fixed black or white.
+
+The full player popup has a separate nominal size of 400 × 360 logical pixels
+and a stable 124 px square cover. It may shrink to fit the available screen
+space, but track metadata and artwork dimensions do not determine its size. The
+Expanded widget's 300 px width limit does not apply to this popup.
 
 The popup and dock artwork use `MediaArtworkItem`, a bounded asynchronous
 loader: local files and HTTP(S) only, 5 MiB input cap, 8 MP decode cap, 512 px
@@ -94,7 +105,8 @@ falls back to the player's desktop icon or a generic media icon.
 
 ## Settings and migration
 
-KConfigXT persists widget enablement, display mode, artwork use, automatic
+KConfigXT persists widget enablement, display mode, Expanded widget width,
+artwork use, automatic
 visibility, paused-session inclusion, stopped-session delay, hover popup and
 delay, volume visibility, and source identity visibility. Existing settings
 remain untouched; new keys use defaults. Dock entry persistence uses the

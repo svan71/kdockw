@@ -12,6 +12,7 @@ carried forward from the Krema-based development period.
 
 - Added one persistent MPRIS2 media player dock widget with Compact, Controls, and Expanded display modes, automatic session visibility, multi-player selection, metadata and bounded artwork loading, plus a shared interactive playback popup.
 - Added settings for media widget visibility, display mode, artwork, paused-session handling, stopped-session delay, popup behavior, source identity, and volume control.
+- Added an Expanded widget width setting from 250 to 300 logical pixels in 5 px steps, defaulting to 250 px.
 
 ### Fixed
 
@@ -19,6 +20,10 @@ carried forward from the Krema-based development period.
 - Kept expanded media controls and progress inside the dock item's allocated bounds on every edge, derived control contrast from the active dock/theme colors, and included the compact media icon in existing magnification.
 - Rendered media control symbols directly with Kirigami icons so their visible glyphs and contrast do not depend on the active Qt Quick Controls style; emphasized popup play/pause and themed the source selector and volume controls.
 - Kept the media popup anchored to the transformed dock item during hover handoff, aligned it to the dock edge with screen clamping, and preserved the same popup when changing from hover to pinned mode.
+- Kept full-popup geometry independent of track metadata, fixed it at 400 × 360 logical pixels when screen space permits, and kept its 124 px artwork square stable across tracks.
+- Reserved a visible 3 px progress track in Expanded mode, scaled its cover from the dock icon size, and kept title and artist on one ellipsized line while preserving 32 px transport hit areas.
+- Held dock magnification before opening the detached media popup so the popup's initial focus transition cannot release the hovered delegate early.
+- Added opt-in Application Launcher opening phase timings for request, catalog/page readiness, and first frame without logging application names.
 - Derived grouped TaskManager indicator counts from live child rows and forwarded the explicit child-count role when group rows change, preventing stale running-window dots.
 - Fixed a preview-prefetch retry callback that dereferenced a QML-local timer through the root object.
 

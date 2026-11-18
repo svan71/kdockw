@@ -514,6 +514,22 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   was restored after the bounded candidate run. A visual stable-versus-dev
   indicator-count A/B remains NOT VERIFIED. Plasma/Wayland visual behavior still needs
   owner review; the card remains `review`.
+  The fourth correction cycle adds a persisted Expanded width of 250–300 logical
+  pixels in 5 px steps (250 px default), track-independent 400 × 360 popup
+  geometry when screen space permits, a 124 px popup cover, ellipsized metadata,
+  a 3 px dock progress track, and 32 px transport targets. Opening the popup
+  now holds dock magnification before the detached surface opens. Production
+  CTest passed 230/230 and Diagnostic CTest passed 234/234; the earlier
+  Production run failed 229/230 on a stale 192 px expectation that was updated.
+  Stage preflight passed with matching source/stage Build ID
+  `9b5df45c73391e0f7e7d5843ea08421258a365d0`. One diagnostic Launchpad run
+  reached its first frame in 517 ms with the catalog already ready (116 apps);
+  no comparable stable or idle-delay measurement exists. The live MPRIS source
+  was Stopped, so playback controls were not exercised, and live TaskManager
+  preflight was not repeated on this Build ID. The intermittent historical
+  MPRIS SIGSEGV remains unexplained; the concurrent-source case passed in both
+  the full suite and an isolated GDB run. Owner visual and functional review
+  remains pending; the card stays `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   a separate grouped-window regression card tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`

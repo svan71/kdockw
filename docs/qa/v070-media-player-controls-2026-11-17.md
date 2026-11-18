@@ -98,6 +98,109 @@ The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance3
 
 The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
 
+## Fourth correction cycle — 2026-11-18
+
+### Expanded widget sizing and media popup
+
+The owner clarified that the dock's Expanded widget should be 250 logical pixels
+by default, configurable from 250 to 300 px in 5 px steps. The former fixed
+192 px model extent could not meet this capacity. `MediaPlayerExpandedWidth` is
+now persisted and clamped in both the settings control and presentation model;
+the artwork follows the configured dock icon size within the available
+cross-axis space. The horizontal layout keeps title and artist on one ellipsized
+line, reserves a 3 px progress row below them, and gives Previous/Play/Next
+32 × 32 logical-pixel targets. A custom bounded progress item replaces the
+style-sized `ProgressBar`, so its height is explicitly reserved. Offscreen QML
+and model tests cover the 250 px default, 275/280 px updates, 300 px upper bound,
+progress ratio/visibility, button hit areas, and all four dock edges. HiDPI is
+represented by logical QML geometry; real scaled-session appearance remains
+owner verification.
+
+The full popup now has a 400 × 360 logical-pixel nominal outer size and a stable
+124 px square cover. It clamps smaller only when the screen or dock-side space
+requires it. Metadata is single-line and ellipsized, with full title/album
+available by tooltip. Offscreen track-change tests confirm that short/long
+metadata and artwork do not feed back into the popup's nominal geometry. The
+300 px maximum applies only to the dock widget.
+
+### Magnification and hover findings
+
+Code inspection found the popup hold was first requested from `onOpened`, after
+`Popup.Window` could already take focus. That left a race where dock hover and
+spring geometry could reconcile before the hold took effect. The existing dock
+hold is now requested before `open()` for hover and pinned paths, and the dock
+keeps the magnification state while the held delegate index is set. The QML
+regression checks the hold lifecycle and delegate geometry around opening. This
+is a source-level mechanism and offscreen regression; a physical Wayland pointer
+transition is not independently verified in this cycle.
+
+The three presentation modes use the same `MediaPlayerWidget` popup controller
+and the same dock-level hovered delegate. No separate mode-specific popup
+handler or distinct failure mechanism was found in source. The QML suite covers
+the shared activation path and component hit targets, but does not establish why
+the owner's earlier live Buttons/Expanded hover failed. Those two modes still
+need direct mouse/hover verification in Plasma/Wayland.
+
+### Application Launcher delay
+
+The diagnostic launcher now logs request, popup-opened, page-loaded,
+catalog-ready, and first-frame phases when task diagnostics are enabled. It
+records counts and state only, not app names. A bounded live run of the current
+ELF (`9b5df45c73391e0f7e7d5843ea08421258a365d0`) opened Launchpad automatically:
+the catalog was already ready with 116 apps at request time, and the first frame
+was reported 517 ms later. This is one first-open observation, not a stable
+versus dev comparison, and did not exercise 30/60-second or multi-minute idle
+reopen cases. It did not show a catalog-read delay, but it cannot identify icon
+decode/cache cost or explain the owner's delay. No launcher optimization was
+made without comparable measurements. The delay remains **NOT VERIFIED** as a
+regression or fixed defect.
+
+### MPRIS SIGSEGV and live session limits
+
+The full Diagnostic CTest on the current source passed **234/234** in 198.05 s;
+the concurrent-source MPRIS test passed in that run. Its isolated GDB run passed
+12 assertions / 1 case and exited normally, so no crash backtrace was produced.
+The earlier intermittent full-suite SIGSEGV remains unexplained; no sanitizer
+build or reproducing failure was obtained. This is not evidence that the race is
+fixed.
+
+The live candidate saw one Chromium MPRIS service with status `Stopped` and no
+other real source. Playback controls and multiple real sources were not tested.
+Live TaskManager functional preflight was not repeated on this ELF; the previous
+6/6 result was on Build ID `6c675083442fc5d1ab01710e1868717be600fad0` and is not
+carried forward as current-build evidence.
+
+### Final checks and restoration
+
+- Production Release CTest: final run **230/230 passed** in 187.96 s. The prior
+  full run **229/230 failed** on an outdated assertion expecting the old 192 px
+  Expanded extent; the assertion was updated and its isolated rerun passed.
+- Diagnostic Release CTest: **234/234 passed** in 198.05 s.
+- Diagnostic stage preflight passed with source/stage version `0.7.0-dev`,
+  matching GNU Build ID `9b5df45c73391e0f7e7d5843ea08421258a365d0`, and identical
+  Russian catalogs (SHA-256 `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`).
+- `msgfmt --check --check-format`, `bash -n`, Python compilation of the existing
+  diagnostics/tests, and `git diff --check` passed.
+- After a formatting-only edit in the model regression, the targeted test was
+  rebuilt and rerun in both Production and Diagnostic: **13 assertions / 1 case
+  passed** in each configuration.
+- The first `launcher-review` start was refused before launching because its
+  optional v0.7 KService trace library is absent. A separate isolated
+  `fourth-cycle` profile was used for the bounded Launcher timing run. The
+  candidate was then stopped and `/usr/bin/kdockw` v0.6.0 restored at PID
+  112383, Build ID `929161b576ca3fc8a683eb896668d9ead5ff0419`.
+- Production config and its profile-specific backup both remain mode 0600 and
+  have SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f`.
+
+Logs for the full suites, GDB run, stage preflight, refused launcher attempt,
+bounded candidate start, and restore are under
+`diagnostics/v070-dev/logs/media-fourth-cycle-20261118/`. The unfiltered runtime
+log remains in the ignored diagnostics tree.
+
+The Media Player Controls feature and v0.7.0 parent remain `review`. Owner visual
+acceptance of the new width, expanded layout, hover transition, and all three
+mode popups is pending. No release, tag, or push was created.
+
 ## Third owner-review correction cycle — 2026-11-17
 
 The second owner review scored **27/35** (5 errors, 3 not checked). The owner accepted automatic visibility, compact magnification, expanded widget containment, popup appearance/composition, metadata/artwork, transport, seeking, volume, and switching between two real MPRIS sources (5/5). The MPRIS backend and visibility/source-selection policy were left unchanged.
