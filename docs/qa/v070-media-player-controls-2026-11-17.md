@@ -269,3 +269,51 @@ The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance3
 - `bash -n` on the candidate helpers, Python compilation of the TaskManager helper and test, and `git diff --check` passed after the final source edits.
 
 The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
+
+
+## Fifth-cycle follow-up — media popup hover retention — 2026-11-18
+
+### Root cause
+
+`_mediaPopupHoldIndex` had been included in `_hoverHeld`. That made the detached
+popup's magnification hold freeze dock-wide pointer hit-testing at the media
+widget. Since the media widget's hover state is derived from the dock's current
+hovered index, moving over other dock items continued to report media hover:
+the 200 ms close timer never started, and ordinary task previews were blocked.
+The whole-dock surface was therefore acting as the popup's retention region.
+This confirms excessive retention and preview blocking, but does not establish
+that it caused the separately observed repeated popup blinking.
+
+### Correction
+
+The media popup now holds only the magnification cursor. Pointer samples keep
+updating the dock hover target, including the secondary-axis hit test; hysteresis
+for the media anchor is disabled during that hold so it cannot retain hover
+outside its actual item bounds. The widget's existing 200 ms timer closes the
+unpinned popup after the pointer reaches another dock item. Popup hover still
+cancels the timer for widget-to-popup travel. Closing releases the magnification
+hold and re-hit-tests the current pointer location. Window Preview can follow a
+neighboring task while the media popup is pending close. Click-pinned popup
+behavior is unchanged. The same widget component covers the three display modes
+and axis-aware hit testing covers all four dock edges.
+
+### Automated verification
+
+- Production `qml_tst_media_player_widget`: passed, 1/1 CTest, including the
+  3 display modes × 4 dock edges and the requested pointer transitions.
+- Diagnostic `qml_tst_media_player_widget`: passed, 1/1 CTest.
+- Production `qml_tst_dock_main`: passed 1/1 in the targeted run (90.81 s).
+- Diagnostic `qml_tst_dock_main`: passed 1/1 (91.53 s).
+- Full Production CTest first failed 214/230 because 16 DBus-backed cases received `Socket name too long` from `dbus-run-session` under the wrapper’s long per-task TMPDIR. All 16 failed cases passed in isolation with `TMPDIR=/tmp`; the full Production suite then passed 230/230 (350.88 s). Full Diagnostic CTest passed 234/234 (358.27 s) with the same short TMPDIR. Test assertions were unchanged.
+- Diagnostic stage preflight passed while stable `/usr/bin/kdockw` remained running; no candidate was launched. Build and stage version are `0.7.0-dev`; source and staged ELF GNU Build ID is `1fd8668dc4909414f8d1f48dfe74a1d01182e31c`; source/staged Russian MO files match (SHA-256 `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`).
+- Final `git diff --check`, `msgfmt --check --check-format`, and Bash syntax checks passed.
+- The dock-root regression also verifies neighboring Window Preview remains
+  available while magnification remains anchored, then hands magnification to
+  the item currently under the pointer on popup close.
+- Live Plasma/Wayland pointer movement and actual compositor popup placement:
+  **NOT VERIFIED**; no candidate runtime was launched and stable v0.6.0 remained
+  active. Owner acceptance remains required; the Media Player Controls card
+  remains `review`.
+
+No launcher performance, historical MPRIS SIGSEGV, or visual-layout claims are
+changed by this hover-only correction.

@@ -530,6 +530,10 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   MPRIS SIGSEGV remains unexplained; the concurrent-source case passed in both
   the full suite and an isolated GDB run. Owner visual and functional review
   remains pending; the card stays `review`.
+  The 2026-11-18 hover follow-up separates popup magnification hold from dock
+  pointer hit-testing: moving to another item starts the 200 ms popup close
+  timer and permits its Window Preview; the card remains `review` pending live
+  Plasma/Wayland acceptance.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   a separate grouped-window regression card tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`

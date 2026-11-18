@@ -166,3 +166,23 @@ the source model roles when grouped children change. Unit and rendered QML
 regressions exercise count sequences in both directions, the three-dot cap,
 group collapse to one window, and removal of the final task. This remains
 event-driven and does not add polling or global icon-cache invalidation.
+
+
+## Hover retention and dock handoff — 2026-11-18
+
+The hover popup is retained only while the pointer is over the media widget, the
+popup surface, or an active media control interaction. The dock-wide pointer
+sample continues to hit-test neighboring items while the popup is open. The
+media popup lock freezes the magnification cursor independently; it does not
+freeze the hovered task or suppress Window Preview. Leaving the widget for a
+different dock item starts the existing 200 ms close timer. Moving between the
+widget and popup cancels that timer. On close, the lock is released and the
+current pointer position is re-hit-tested so magnification follows the item
+under it. This path is shared by Compact, Controls and Expanded on all four dock
+edges. A click-pinned popup remains pinned and is not closed by hover leave.
+This explains over-retention across the dock, but does not establish the cause
+of the separately observed repeated popup blinking.
+
+Offscreen QML regressions cover widget-to-neighbor, widget-to-far-item,
+widget-to-popup, popup-to-another-item and popup-to-desktop transitions. They do
+not replace live pointer verification in Plasma/Wayland; that remains pending.

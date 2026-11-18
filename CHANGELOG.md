@@ -16,6 +16,7 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
+- Limited hover-retention for the media popup to the media widget and popup; moving to another dock item starts the existing 200 ms close timer while neighboring task previews and magnification handoff remain available.
 - Fixed the media widget popup's dock-root binding so its parent geometry resolves, and guarded popup setup while the dock delegate is unavailable.
 - Kept expanded media controls and progress inside the dock item's allocated bounds on every edge, derived control contrast from the active dock/theme colors, and included the compact media icon in existing magnification.
 - Rendered media control symbols directly with Kirigami icons so their visible glyphs and contrast do not depend on the active Qt Quick Controls style; emphasized popup play/pause and themed the source selector and volume controls.
