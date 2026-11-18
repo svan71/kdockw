@@ -198,6 +198,7 @@ Item {
     }
     Timer {
         id: hideTimer
+        objectName: "mediaPlayerHideTimer"
         interval: 200
         onTriggered: {
             if (!root.popupPinned && !root.dockHovered && !root.popupHovered && !root.interactionHeld)

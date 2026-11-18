@@ -23,7 +23,8 @@ Item {
         x: 360; y: 560; width: 192; height: 64
         property Item dockRoot: stage
         property int index: 3
-        property bool dockHovered: false
+        property bool pointerOnDock: false
+        property int hoveredIndex: -1
         function previewAnchorGeometry() {
             return {
                 currentEdgeInSurface: DockView.edge === 0 ? mapToItem(null, 0, height).y
@@ -43,7 +44,7 @@ Item {
         height: DockView.isVertical ? (DockSettings.mediaPlayerDisplayMode === 0 ? 48
             : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth) : 64
         dockDelegate: dockAnchor
-        dockHovered: dockAnchor.dockHovered
+        dockHovered: dockAnchor.pointerOnDock && dockAnchor.hoveredIndex === dockAnchor.index
     }
 
     TestCase {
@@ -65,7 +66,12 @@ Item {
             DockSettings.mediaPlayerUseArtwork = true
             DockView.edge = 1
             DockView.screenGeometry = Qt.rect(0, 0, stage.width, stage.height)
-            dockAnchor.dockHovered = false
+            hoverDockIndex(-1)
+        }
+
+        function hoverDockIndex(index) {
+            dockAnchor.pointerOnDock = index >= 0
+            dockAnchor.hoveredIndex = index
         }
 
         function popupBoundsInDockSurface(popup) {
@@ -145,20 +151,95 @@ Item {
             for (const mode of [0, 1, 2]) {
                 DockSettings.mediaPlayerDisplayMode = mode
                 tryVerify(() => widget.displayMode === mode)
-                dockAnchor.dockHovered = true
+                hoverDockIndex(dockAnchor.index)
                 tryVerify(() => popup.visible, 2000)
                 compare(widget.popupPinned, false)
                 popup.close()
                 tryVerify(() => !popup.visible)
-                dockAnchor.dockHovered = false
+                hoverDockIndex(-1)
                 wait(220)
+            }
+        }
+
+        function test_popup_closes_when_pointer_moves_to_neighbor_or_far_dock_item() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const hideTimer = findChild(widget, "mediaPlayerHideTimer")
+            verify(hideTimer)
+            for (const edge of [0, 1, 2, 3]) {
+                DockView.edge = edge
+                for (const mode of [0, 1, 2]) {
+                    DockSettings.mediaPlayerDisplayMode = mode
+                    hoverDockIndex(dockAnchor.index)
+                    tryVerify(() => popup.visible, 2000)
+                    compare(widget.popupPinned, false)
+                    const neighborIndex = dockAnchor.index + 1
+                    hoverDockIndex(neighborIndex)
+                    compare(widget.dockHovered, false,
+                        "adjacent dock item must not retain media-widget hover")
+                    tryVerify(() => hideTimer.running, 1000,
+                        "leaving the media widget must start the standard close timer")
+                    wait(230)
+                    tryVerify(() => !popup.visible, 1000)
+                    tryVerify(() => stage.mediaPopupHoldIndex === -1)
+
+                    hoverDockIndex(dockAnchor.index)
+                    tryVerify(() => popup.visible, 2000)
+                    hoverDockIndex(dockAnchor.index + 100)
+                    compare(widget.dockHovered, false,
+                        "opposite dock end must not retain media-widget hover")
+                    tryVerify(() => hideTimer.running)
+                    wait(230)
+                    tryVerify(() => !popup.visible, 1000)
+                    tryVerify(() => stage.mediaPopupHoldIndex === -1)
+                }
+            }
+        }
+
+        function test_pointer_can_cross_widget_popup_and_other_dock_items() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const hideTimer = findChild(widget, "mediaPlayerHideTimer")
+            for (const edge of [0, 1, 2, 3]) {
+                DockView.edge = edge
+                for (const mode of [0, 1, 2]) {
+                    DockSettings.mediaPlayerDisplayMode = mode
+
+                    // Widget -> popup remains inside the combined hover region.
+                    hoverDockIndex(dockAnchor.index)
+                    tryVerify(() => popup.visible, 2000)
+                    hoverDockIndex(-1)
+                    widget.popupHovered = true
+                    wait(230)
+                    verify(popup.visible, "moving from widget to popup must retain it")
+                    verify(!hideTimer.running, "popup hover must cancel the close timer")
+
+                    // Popup -> another dock task starts the close timer while
+                    // allowing the dock's hovered index to follow that task.
+                    hoverDockIndex(dockAnchor.index + 2)
+                    widget.popupHovered = false
+                    tryVerify(() => hideTimer.running)
+                    compare(dockAnchor.hoveredIndex, dockAnchor.index + 2)
+                    wait(230)
+                    tryVerify(() => !popup.visible, 1000)
+                    tryVerify(() => stage.mediaPopupHoldIndex === -1)
+
+                    // Popup -> desktop also closes after the same delay.
+                    hoverDockIndex(dockAnchor.index)
+                    tryVerify(() => popup.visible, 2000)
+                    widget.popupHovered = true
+                    hoverDockIndex(-1)
+                    widget.popupHovered = false
+                    tryVerify(() => hideTimer.running)
+                    wait(230)
+                    tryVerify(() => !popup.visible, 1000)
+                    tryVerify(() => stage.mediaPopupHoldIndex === -1)
+                }
             }
         }
 
         function test_hoverPopupPinsInPlaceAndSourceListHoldsItsLifecycle() {
             const popup = findChild(widget, "mediaPlayerPopup")
             const selector = findChild(widget, "mediaPlayerSourceSelector")
-            dockAnchor.dockHovered = true
+            hoverDockIndex(dockAnchor.index)
             tryVerify(() => popup.visible, 2000)
             const popupWindow = popup.contentItem.Window.window
             widget.openPinned()
@@ -167,7 +248,7 @@ Item {
             compare(popup.contentItem.Window.window, popupWindow)
             selector.popup.open()
             tryVerify(() => widget.interactionHeld)
-            dockAnchor.dockHovered = false
+            hoverDockIndex(-1)
             widget.popupHovered = false
             wait(250)
             verify(popup.visible, "source list interaction did not retain its popup")
@@ -180,11 +261,11 @@ Item {
         function test_hoverPopupClosesAfterLeavingDockAndSourceList() {
             const popup = findChild(widget, "mediaPlayerPopup")
             const selector = findChild(widget, "mediaPlayerSourceSelector")
-            dockAnchor.dockHovered = true
+            hoverDockIndex(dockAnchor.index)
             tryVerify(() => popup.visible, 2000)
             selector.popup.open()
             tryVerify(() => widget.interactionHeld)
-            dockAnchor.dockHovered = false
+            hoverDockIndex(-1)
             widget.popupHovered = false
             wait(250)
             verify(popup.visible, "open source list lost its parent popup")
@@ -256,7 +337,7 @@ Item {
         }
 
         function test_hover_opens_shared_popup_and_sessions_can_be_manually_selected() {
-            dockAnchor.dockHovered = true
+            hoverDockIndex(dockAnchor.index)
             const popup = findChild(widget, "mediaPlayerPopup")
             tryVerify(() => popup && popup.visible, 2000)
             compare(widget.popupPinned, false)

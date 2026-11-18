@@ -2501,6 +2501,51 @@ Item {
             compare(DockVisibility.hovered, false)
         }
 
+        function test_mediaPopupHoldTracksNeighborPreviewWithoutMovingMagnification() {
+            DockSettings.previewEnabled = false
+            addTasks(["Media anchor", "Neighbor", "Far task"])
+            const dock = makeDock(3)
+            const its = items(dock)
+            const panel = its[0].parent.parent
+            hoverItem(its[0])
+            tryCompare(its[0], "currentScale", DockSettings.maxZoomFactor)
+            const anchorCursor = panel.mouseX
+
+            dock.holdMediaPopup(0)
+            dock._pointerLeft()
+            compare(dock.hoveredIndex, 0)
+            compare(panel.mouseX, anchorCursor)
+            const neighbor = its[1].mapToItem(dock, its[1].width / 2, its[1].height / 2)
+            dock._pointerRootX = neighbor.x
+            dock._pointerRootY = neighbor.y
+            DockSettings.previewEnabled = true
+            DockView.pointerInside = true
+            dock._handleDockPointerEntered(neighbor.x, neighbor.y)
+
+            compare(dock.hoveredIndex, 1,
+                    "media popup hold must continue tracking neighboring task hover")
+            verify(dock._mediaPopupHoldIndex === 0,
+                   "magnification lock must remain until the popup closes")
+            compare(panel.mouseX, anchorCursor,
+                    "media popup hold must keep the original zoom cursor")
+            compare(its[0].currentScale, DockSettings.maxZoomFactor,
+                    "the media anchor must not lose magnification during the handoff")
+            tryVerify(() => PreviewController.visible, 2000,
+                      "a neighboring task preview was blocked by the media popup hold")
+            compare(PreviewController.parentIndex, 1)
+
+            dock.releaseMediaPopup(0)
+            tryVerify(() => dock._mediaPopupHoldIndex === -1)
+            tryVerify(() => its[0].currentScale < DockSettings.maxZoomFactor - 0.01
+                && its[1].currentScale > 1.0, 2000,
+                "closing the media popup must transfer magnification to the hovered task")
+            const pointerTarget = itemUnderPoint(dock, panel, neighbor)
+            compare(dock.hoveredIndex, pointerTarget,
+                    "closing the media popup must re-hit-test the current pointer position")
+            verify(pointerTarget !== 0,
+                   "closing the media popup must release the original anchor")
+        }
+
         // The pointer rests on item 1's preview (the preview keeps the dock
         // hovered), the Focus Dock shortcut starts keyboard navigation and
         // the Menu key opens the menu, whose hold hides that preview.

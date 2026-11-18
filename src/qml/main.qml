@@ -115,7 +115,7 @@ Item {
     // and timers cannot act on a row that shifted under the pointer.
     property bool _hoverReconciling: false
     // Last real pointer position in root (dock window) coordinates, the
-    // space trackPointer() takes. Not updated while hover is held.
+    // space trackPointer() takes. Not updated while context-menu hover is held.
     property real _pointerRootX: -1
     property real _pointerRootY: -1
     property int _perfPointerEnters: 0
@@ -555,7 +555,9 @@ Item {
     // Null-safe: the context property goes away first when a dock shell is torn down.
     readonly property bool _menuHeld: DockContextMenu?.open ?? false
     // Also held until the post-menu reconciliation runs (_hoverReconciling).
-    readonly property bool _hoverHeld: _menuHeld || _hoverReconciling || _mediaPopupHoldIndex >= 0
+    // A media popup holds the magnification cursor separately while pointer
+    // hit-testing continues to follow dock items.
+    readonly property bool _hoverHeld: _menuHeld || _hoverReconciling
     // Pointer on the dock as the dock tracks it. Replaces
     // dockMouseArea.containsMouse, which stays false after the fake leave.
     property bool _pointerOnDock: false
@@ -842,7 +844,9 @@ Item {
     // dockPanel.mouseY = secondary axis (depth), so all zoom/hover logic works
     // identically regardless of orientation; -1 = outside the dock zone.
     function trackPointer(x, y, entryEnvelope = false) {
-        // The context menu holds the zoom anchor (see _hoverHeld).
+        // The context menu holds both hover and magnification. A media popup
+        // holds magnification only: pointer hit-testing must keep following the
+        // dock so adjacent tasks can preview and dismiss the media popup.
         if (_hoverHeld) return
         let zoomExtension = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
         let primarySample = -1
@@ -878,20 +882,28 @@ Item {
             springZoom.synchronizeCursor(primarySample, 0,
                 DockView.isVertical ? root.height : root.width)
         }
-        if (primarySample >= 0) {
-            dockPanel.mouseX = primarySample
-            dockPanel.mouseY = secondarySample
-        } else {
-            dockPanel.mouseX = -1
-            dockPanel.mouseY = -1
+        const mediaPopupHoldsMagnification = _mediaPopupHoldIndex >= 0
+        if (!mediaPopupHoldsMagnification) {
+            if (primarySample >= 0) {
+                dockPanel.mouseX = primarySample
+                dockPanel.mouseY = secondarySample
+            } else {
+                dockPanel.mouseX = -1
+                dockPanel.mouseY = -1
+            }
         }
-        updateHoveredItem(entryEnvelope)
+        updateHoveredItem(entryEnvelope,
+            mediaPopupHoldsMagnification ? primarySample : dockPanel.mouseX,
+            mediaPopupHoldsMagnification ? secondarySample : dockPanel.mouseY,
+            mediaPopupHoldsMagnification)
     }
 
     // Shared by MouseArea.onEntered and QML tests so the real event ordering
     // (pointer ownership -> entry sample -> sync -> hit-test) is exercised.
     function _handleDockPointerEntered(x, y) {
         if (_menuHeld) return
+        _pointerRootX = x
+        _pointerRootY = y
         PreviewController.cancelHide()
         _pointerOnDock = true
         DockVisibility.setHovered(true)
@@ -901,10 +913,13 @@ Item {
             trackPointer(x, y, true)
     }
 
-    function updateHoveredItem(entryEnvelope = false) {
+    function updateHoveredItem(entryEnvelope = false,
+                               sampleX = dockPanel.mouseX,
+                               sampleY = dockPanel.mouseY,
+                               pointerSampleDuringMediaPopup = false) {
         // Geometry/scale callbacks must not move the held hover.
-        if (_hoverHeld) return
-        if (dockPanel.mouseX < 0) {
+        if (_hoverHeld || (_mediaPopupHoldIndex >= 0 && !pointerSampleDuringMediaPopup)) return
+        if (sampleX < 0) {
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -935,7 +950,7 @@ Item {
         } else {
             rowNear -= maxExt
         }
-        if (dockPanel.mouseY < rowNear || dockPanel.mouseY > rowFar) {
+        if (sampleY < rowNear || sampleY > rowFar) {
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -952,7 +967,7 @@ Item {
             for (let i = 0; i < dockRepeater.count; i++) {
                 let it = dockRepeater.itemAt(i)
                 if (!it) continue
-                let dist = Math.abs(dockPanel.mouseX - (it.itemCenterX + it.currentOffset))
+                let dist = Math.abs(sampleX - (it.itemCenterX + it.currentOffset))
                 let hitScale = entryEnvelope ? Math.max(it.currentScale, DockSettings.maxZoomFactor) : it.currentScale
                 let half = DockSettings.iconSize * hitScale / 2 + DockSettings.iconSpacing / 2
                 if (dist <= half && dist < bestDist) { slot = i; bestDist = dist }
@@ -964,7 +979,7 @@ Item {
                 let hitScale = entryEnvelope
                     ? Math.max(slotItem.currentScale, DockSettings.maxZoomFactor) : slotItem.currentScale
                 let span = _secondarySpan(slotItem, hitScale)
-                hit = dockPanel.mouseY >= span.near && dockPanel.mouseY <= span.far
+                hit = sampleY >= span.near && sampleY <= span.far
             }
             if (hit) {
                 _zoomActive = true  // Activate zoom; stays until mouse leaves panel
@@ -999,23 +1014,24 @@ Item {
             // Primary axis: normalized distance (0 = center, 1 = edge of scaled
             // icon). Primary extent is item.width (horizontal) / item.height
             // (vertical); itemCenterX is already axis-aware.
-            let dist = Math.abs(dockPanel.mouseX - item.itemCenterX)
+            let dist = Math.abs(sampleX - item.itemCenterX)
             let hitScale = entryEnvelope ? Math.max(item.currentScale, DockSettings.maxZoomFactor) : item.currentScale
             let scaledHalfWidth = ((DockView.isVertical ? item.height : item.width)
                                    * hitScale) / 2
             let normDist = dist / scaledHalfWidth
 
             // Hysteresis: currently-hovered icon uses wider exit threshold
-            let maxNorm = (i === hoveredIndex) ? (1.0 + hysteresisFactor) : 1.0
+            let keepCurrentItemSticky = _mediaPopupHoldIndex < 0 && i === hoveredIndex
+            let maxNorm = keepCurrentItemSticky ? (1.0 + hysteresisFactor) : 1.0
             if (normDist >= maxNorm) continue
 
             // Secondary-axis check: scaled extent honours the edge-pinned
             // Scale origin (grows away from the screen edge)
             let span = _secondarySpan(item, hitScale)
-            if (dockPanel.mouseY < span.near || dockPanel.mouseY > span.far) continue
+            if (sampleY < span.near || sampleY > span.far) continue
 
             // Comparison: currently-hovered icon gets distance bonus (sticky)
-            let effectiveDist = (i === hoveredIndex) ? normDist * (1.0 - hysteresisFactor) : normDist
+            let effectiveDist = keepCurrentItemSticky ? normDist * (1.0 - hysteresisFactor) : normDist
             if (effectiveDist < bestNormDist) { bestIndex = i; bestNormDist = effectiveDist }
         }
 
