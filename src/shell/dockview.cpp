@@ -51,6 +51,7 @@ DockView::DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *setti
 {
     setColor(Qt::transparent);
     setResizeMode(QQuickView::SizeRootObjectToView);
+    m_monotonicClock.start();
 }
 
 DockView::~DockView() = default;
@@ -118,6 +119,10 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
     // focus when a context menu's popup grab fakes a leave.
     m_pointerFocusTracker = std::make_unique<PointerFocusTracker>(this);
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerInsideChanged, this, &DockView::pointerInsideChanged);
+    connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerFocusChanged,
+            this, &DockView::pointerFocusWindowChanged);
+    m_mediaPopupTraceEnabled = qEnvironmentVariable("KDOCKW_MEDIA_POPUP_TRACE") == QLatin1String("1");
+    m_launcherTimingEnabled = qEnvironmentVariable("KDOCKW_LAUNCHER_TIMING") == QLatin1String("1");
 
     // Register the icon image provider for QML
     m_iconDiagnostics = new IconDiagnostics(this);
@@ -316,6 +321,31 @@ bool DockView::isPointerInside() const
     return m_pointerFocusTracker && m_pointerFocusTracker->isPointerInside();
 }
 
+bool DockView::pointerFocusKnown() const
+{
+    return m_pointerFocusTracker && m_pointerFocusTracker->hasPointerFocus();
+}
+
+QWindow *DockView::pointerFocusWindow() const
+{
+    return m_pointerFocusTracker ? m_pointerFocusTracker->pointerFocusWindow() : nullptr;
+}
+
+bool DockView::mediaPopupTraceEnabled() const
+{
+    return m_mediaPopupTraceEnabled;
+}
+
+bool DockView::launcherTimingEnabled() const
+{
+    return m_launcherTimingEnabled;
+}
+
+qint64 DockView::monotonicNowMs() const
+{
+    return m_monotonicClock.elapsed();
+}
+
 bool DockView::performanceDiagnosticsEnabled() const
 {
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
@@ -333,7 +363,7 @@ QString DockView::launcherDiagnosticPage() const
 void DockView::traceLauncherUi(const QString &label, const QVariantMap &state) const
 {
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
-    if (!m_launcherDiagnosticPage.isEmpty()) {
+    if (m_launcherTimingEnabled || !m_launcherDiagnosticPage.isEmpty()) {
         QVariantMap details = state;
         details.insert(QStringLiteral("label"), label);
         qCInfo(lcDockView).noquote() << "[KDOCKW_LAUNCHER_UI]"

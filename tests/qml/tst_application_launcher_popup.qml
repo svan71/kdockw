@@ -44,6 +44,7 @@ Item {
             DockModel.applicationCatalog.resetLoading()
             DockModel.applicationCatalog.applications = []
             DockModel.applicationCatalog.menuTree = []
+            DockView.launcherTimingEnabled = false
         }
 
         function test_positions_within_output_bounds_for_all_dock_edges() {
@@ -96,6 +97,22 @@ Item {
             tryVerify(() => DockModel.applicationCatalog.ready)
             tryVerify(() => !loading.visible)
             popup.close()
+        }
+
+        function test_launcher_timing_uses_monotonic_clock_for_cold_open() {
+            DockView.launcherTimingEnabled = true
+            const start = DockView.monotonicTimeMs
+            popup.openFor(anchor)
+            compare(popup.openRequestTimestampMs, start + 1,
+                "open timing must use the monotonic DockView clock")
+            tryVerify(() => popup.visible, 2000)
+            const loader = findChild(popup, "applicationLauncherStyleLoader")
+            tryVerify(() => loader.item !== null, 2000)
+            popup.traceOpenTiming("test-snapshot")
+            verify(DockView.monotonicTimeMs > popup.openRequestTimestampMs,
+                "timing samples must advance from the request timestamp")
+            popup.close()
+            DockView.launcherTimingEnabled = false
         }
 
         function test_each_style_has_its_own_catalog_layout() {

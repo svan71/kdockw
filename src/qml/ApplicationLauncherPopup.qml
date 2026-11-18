@@ -89,7 +89,7 @@ QQC2.Popup {
     function openFor(item) {
         if (!item || visible)
             return
-        openRequestTimestampMs = Date.now()
+        openRequestTimestampMs = DockView.monotonicNowMs()
         timingFirstFrameSeen = false
         traceOpenTiming("request")
         anchorItem = item
@@ -107,16 +107,36 @@ QQC2.Popup {
     // Low-rate, opt-in timing for owner reproduction runs. It records only
     // phases and counts; it does not log application names or metadata.
     function traceOpenTiming(phase) {
-        if (!DockModel.taskDiagnosticsEnabled || openRequestTimestampMs <= 0)
+        const diagnosticPage = typeof DockView.launcherDiagnosticPage === "string"
+            ? DockView.launcherDiagnosticPage : ""
+        if ((!DockView.launcherTimingEnabled && !DockModel.taskDiagnosticsEnabled
+                && !diagnosticPage.length) || openRequestTimestampMs <= 0)
             return
+        const now = DockView.monotonicNowMs()
+        const view = contentLoader.item
+        let pageItemCount = -1
+        if (view) {
+            if (launcherState.style === "launchpad")
+                pageItemCount = view.pageItems.length
+                    + (view.pageTransitioning ? view.transitionItems.length : 0)
+            else if (launcherState.style === "start")
+                pageItemCount = view.pageMode === "home" ? view.pinnedItems.length
+                    : view.pageMode === "all" ? view.allRows.length : view.visibleItems.length
+            else
+                pageItemCount = view.visibleItems.length
+        }
         console.info("[KDOCKW_LAUNCHER_TIMING] " + JSON.stringify({
             phase: phase,
             style: launcherState.style,
-            elapsedMs: Date.now() - openRequestTimestampMs,
+            monotonicMs: now,
+            elapsedMs: now - openRequestTimestampMs,
             popupVisible: visible,
             loaderStatus: contentLoader.status,
             catalogReady: catalog.ready,
             applicationCount: catalog.ready ? catalog.applications.length : -1,
+            loadedPage: view ? view.objectName : "none",
+            pageItemCount: pageItemCount,
+            popupSize: { width: width, height: height },
             favoritesReady: favoritesSourceReady,
             favoritesAvailable: favoritesSourceAvailable
         }))

@@ -13,10 +13,15 @@ Item {
     width: 800
     height: 640
     property int mediaPopupHoldIndex: -1
+    property int mediaPopupHoldCount: 0
+    property int mediaPopupReleaseCount: 0
     property int hoveredIndex: -1
-    function holdMediaPopup(index) { mediaPopupHoldIndex = index }
+    function holdMediaPopup(index) { ++mediaPopupHoldCount; mediaPopupHoldIndex = index }
     function releaseMediaPopup(index) {
-        if (mediaPopupHoldIndex === index) mediaPopupHoldIndex = -1
+        if (mediaPopupHoldIndex === index) {
+            ++mediaPopupReleaseCount
+            mediaPopupHoldIndex = -1
+        }
     }
 
     Item {
@@ -59,7 +64,12 @@ Item {
             const existingPopup = findChild(widget, "mediaPlayerPopup")
             if (existingPopup && existingPopup.visible)
                 existingPopup.close()
-            widget.popupPinned = false
+            widget.popupState = widget.popupStateClosed
+            widget.popupOpenRequested = false
+            widget.magnificationHeld = false
+            stage.mediaPopupHoldIndex = -1
+            stage.mediaPopupHoldCount = 0
+            stage.mediaPopupReleaseCount = 0
             widget.popupHovered = false
             widget.interactionHeld = false
             DockSettings.mediaPlayerEnabled = true
@@ -70,6 +80,8 @@ Item {
             DockSettings.mediaPlayerUseArtwork = true
             DockView.edge = 1
             DockView.pointerInside = false
+            DockView.pointerFocusKnown = false
+            DockView.pointerFocusWindow = null
             DockView.screenGeometry = Qt.rect(0, 0, stage.width, stage.height)
             mouseMove(stage, 12, 12)
             hoverDockIndex(-1)
@@ -225,6 +237,80 @@ Item {
                     compare(widget.controller.calls[widget.controller.calls.length - 1].name, "playPause")
                 }
             }
+        }
+
+        function test_controls_buttons_open_popup_and_surface_focus_holds_it() {
+            DockSettings.mediaPlayerHoverPopup = true
+            DockSettings.mediaPlayerHoverDelay = 30
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const hideTimer = findChild(widget, "mediaPlayerHideTimer")
+            const dockWindow = stage.Window.window
+            verify(popup && hideTimer && dockWindow)
+
+            for (const edge of [0, 1, 2, 3]) {
+                DockView.edge = edge
+                for (const mode of [1, 2]) {
+                    DockSettings.mediaPlayerDisplayMode = mode
+                    tryVerify(() => widget.displayMode === mode)
+                    const names = mode === 1
+                        ? (DockView.isVertical
+                            ? ["mediaPlayerVerticalControlsPrevious", "mediaPlayerVerticalControlsPlayPause", "mediaPlayerVerticalControlsNext"]
+                            : ["mediaPlayerControlsPrevious", "mediaPlayerControlsPlayPause", "mediaPlayerControlsNext"])
+                        : DockView.isVertical
+                            ? ["mediaPlayerVerticalPrevious", "mediaPlayerVerticalPlayPause", "mediaPlayerVerticalNext"]
+                            : ["mediaPlayerExpandedPrevious", "mediaPlayerExpandedPlayPause", "mediaPlayerExpandedNext"]
+                    for (const name of names) {
+                        const button = findChild(widget, name)
+                        verify(button && button.width > 0 && button.height > 0, name)
+                        const center = button.mapToItem(widget, button.width / 2, button.height / 2)
+                        hoverDockIndex(dockAnchor.index)
+                        mouseMove(widget, center.x, center.y)
+                        tryVerify(() => widget.pointerOverDockWidget,
+                            1000, name + " must be inside the dock widget hover target")
+                        tryVerify(() => popup.visible, 1500,
+                            name + " must open the hover popup when directly hovered")
+
+                        // Simulate QtWayland transferring focus to the popup's
+                        // native surface while the visual HoverHandler is stale.
+                        DockView.pointerFocusKnown = true
+                        DockView.pointerFocusWindow = popup.contentItem.Window.window
+                        DockView.pointerInside = false
+                        widget.popupHovered = false
+                        wait(230)
+                        verify(popup.visible, "compositor focus on the popup surface must hold it")
+                        verify(!hideTimer.running, "popup surface focus must cancel close timer")
+
+                        if (edge === 0 && mode === 1 && name === names[0]) {
+                            DockView.pointerFocusWindow = dockWindow
+                            DockView.pointerInside = true
+                            dockAnchor.hoveredIndex = dockAnchor.index + 1
+                            stage.hoveredIndex = dockAnchor.index + 1
+                            tryVerify(() => hideTimer.running, 1000)
+                            DockView.pointerFocusWindow = popup.contentItem.Window.window
+                            tryVerify(() => !hideTimer.running, 1000,
+                                "returning to popup before 200 ms must cancel close")
+                            wait(230)
+                            verify(popup.visible, "cancelled close should leave the popup open")
+                        }
+
+                        DockView.pointerFocusWindow = dockWindow
+                        DockView.pointerInside = true
+                        dockAnchor.hoveredIndex = dockAnchor.index + 1
+                        stage.hoveredIndex = dockAnchor.index + 1
+                        tryVerify(() => hideTimer.running,
+                            1000, "moving from popup to a neighbor must start close timer")
+                        wait(230)
+                        tryVerify(() => !popup.visible, 1000)
+                        tryVerify(() => stage.mediaPopupHoldIndex === -1)
+                        compare(widget.magnificationHeld, false)
+                        DockView.pointerFocusKnown = false
+                        DockView.pointerFocusWindow = null
+                        hoverDockIndex(-1)
+                    }
+                }
+            }
+            compare(stage.mediaPopupHoldCount, stage.mediaPopupReleaseCount,
+                "every popup lifecycle must release magnification exactly once")
         }
 
         function test_media_visual_cross_axis_matches_the_ordinary_icon_band() {

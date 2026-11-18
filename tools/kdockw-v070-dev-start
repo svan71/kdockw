@@ -38,6 +38,8 @@ object_census=false
 kservice_trace=false
 launcher_page=""
 controls_style=""
+media_popup_trace=false
+launcher_timing=false
 
 fail() { printf 'KDockW v0.7.0-dev launcher refused: %s\n' "$1" >&2; exit 1; }
 
@@ -69,6 +71,8 @@ while (($#)); do
             shift
             ;;
         --task-diagnostics) task_diagnostics=true; shift ;;
+        --media-popup-trace) media_popup_trace=true; shift ;;
+        --launcher-timing) launcher_timing=true; shift ;;
         --model-debug) model_debug=true; shift ;;
         --performance-diagnostics) performance_diagnostics=true; shift ;;
         --qml-profiler) qml_profiler=true; shift ;;
@@ -88,7 +92,7 @@ while (($#)); do
             shift 2
             ;;
         --controls-style=*) controls_style="${1#*=}"; shift ;;
-        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace] [--launcher-page PAGE] [--controls-style org.kde.desktop|Fusion|Basic]" ;;
+        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--media-popup-trace] [--launcher-timing] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace] [--launcher-page PAGE] [--controls-style org.kde.desktop|Fusion|Basic]" ;;
     esac
 done
 if [[ -n "$launcher_page" ]]; then
@@ -160,7 +164,7 @@ manager_config_home="$(sed -n 's/^XDG_CONFIG_HOME=//p' <<<"$manager_env")"
 [[ -S "/run/user/$(id -u)/${wayland_display}" ]] || fail "Wayland socket is unavailable"
 [[ "$dbus_address" == "unix:path=/run/user/$(id -u)/bus" && -S "/run/user/$(id -u)/bus" ]] || fail "user D-Bus is unavailable"
 grep -Fxq 'KWIN_WAYLAND_NO_PERMISSION_CHECKS=1' <<<"$manager_env" && fail "KWin permission checks are disabled"
-if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_PREVIEW_CAPTURE_MODE|KDOCKW_PERF_DIAGNOSTICS|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
+if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_MEDIA_POPUP_TRACE|KDOCKW_LAUNCHER_TIMING|KDOCKW_PREVIEW_CAPTURE_MODE|KDOCKW_PERF_DIAGNOSTICS|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
     fail "Plasma manager has a pre-existing diagnostic override"
 fi
 for xdg_name in XDG_CONFIG_HOME XDG_CONFIG_DIRS XDG_DATA_HOME XDG_CACHE_HOME; do
@@ -379,6 +383,14 @@ if [[ "$task_diagnostics" == true ]]; then
     task_diagnostic_args+=(--setenv=KDOCKW_TASK_DIAGNOSTICS=1)
     task_diagnostic_args+=(--setenv=KDOCKW_MEDIA_DIAGNOSTICS=1)
 fi
+media_popup_trace_args=()
+if [[ "$media_popup_trace" == true ]]; then
+    media_popup_trace_args+=(--setenv=KDOCKW_MEDIA_POPUP_TRACE=1)
+fi
+launcher_timing_args=()
+if [[ "$launcher_timing" == true ]]; then
+    launcher_timing_args+=(--setenv=KDOCKW_LAUNCHER_TIMING=1)
+fi
 kservice_trace_args=()
 if [[ "$kservice_trace" == true ]]; then
     kservice_trace_log="${diagnostic_root}/logs/kservice-query-$(date +%Y%m%d-%H%M%S).csv"
@@ -442,6 +454,8 @@ systemd-run --user --no-block --collect --unit="$service" \
     --setenv="KDOCKW_DIAGNOSTIC_CONFIG=${config_file}" \
     --setenv="XDG_CONFIG_HOME=${diagnostic_xdg_config_home}" \
     "${task_diagnostic_args[@]}" \
+    "${media_popup_trace_args[@]}" \
+    "${launcher_timing_args[@]}" \
     "${model_logging_args[@]}" \
     "${performance_diagnostic_args[@]}" \
     "${experiment_args[@]}" \
@@ -475,8 +489,8 @@ done
 restore_pending=false
 trap - EXIT
 
-printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview capture mode: %s\nTask diagnostics: %s\nModel debug logging: %s\nPerformance diagnostics: %s\nQML Profiler: %s\nKService query trace: %s\nProduction config backup: %s\nSeparate config: %s\nIsolated XDG_CONFIG_HOME: %s\nIsolated XDG_DATA_HOME: %s\nIsolated XDG_CACHE_HOME: %s\nLog: %s\n' \
-    "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_backup" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
+printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview capture mode: %s\nTask diagnostics: %s\nMedia popup trace: %s\nLauncher timing: %s\nModel debug logging: %s\nPerformance diagnostics: %s\nQML Profiler: %s\nKService query trace: %s\nProduction config backup: %s\nSeparate config: %s\nIsolated XDG_CONFIG_HOME: %s\nIsolated XDG_DATA_HOME: %s\nIsolated XDG_CACHE_HOME: %s\nLog: %s\n' \
+    "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$media_popup_trace" "$launcher_timing" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_backup" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
 if [[ "$kservice_trace" == true ]]; then
     printf 'KService trace: %s\n' "$kservice_trace_log"
 fi

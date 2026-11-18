@@ -50,10 +50,18 @@ public:
 
     /// True when the compositor's pointer focus is the window's current surface.
     [[nodiscard]] bool isPointerInside() const;
+    /// True when a Wayland pointer focus surface is currently known.
+    [[nodiscard]] bool hasPointerFocus() const;
+    /// Window currently holding compositor pointer focus, if it belongs to
+    /// this client. This lets QML distinguish the dock from its own popup
+    /// surfaces instead of treating every surface leave as leaving the UI.
+    [[nodiscard]] QWindow *pointerFocusWindow() const;
 
 Q_SIGNALS:
     /// Emitted when a compositor enter/leave changes isPointerInside().
     void pointerInsideChanged();
+    /// Emitted whenever the compositor changes pointer-focused surface.
+    void pointerFocusChanged();
 
 private:
     void bindSeat(uint32_t name, uint32_t version);

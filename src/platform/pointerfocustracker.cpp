@@ -99,6 +99,7 @@ PointerFocusTracker::PointerFocusTracker(QWindow *window, QObject *parent)
 PointerFocusTracker::~PointerFocusTracker()
 {
     releaseSeat();
+    m_focusedSurface = nullptr;
     if (m_registry) {
         wl_registry_destroy(m_registry);
     }
@@ -190,7 +191,6 @@ void PointerFocusTracker::releasePointer()
         wl_pointer_destroy(m_pointer);
     }
     m_pointer = nullptr;
-    m_focusedSurface = nullptr;
 }
 
 bool PointerFocusTracker::isPointerInside() const
@@ -208,9 +208,37 @@ bool PointerFocusTracker::isPointerInside() const
     return surface && surface == m_focusedSurface;
 }
 
+bool PointerFocusTracker::hasPointerFocus() const
+{
+    return m_pointer && m_focusedSurface;
+}
+
+QWindow *PointerFocusTracker::pointerFocusWindow() const
+{
+    if (!m_focusedSurface) {
+        return nullptr;
+    }
+    auto *nativeInterface = QGuiApplication::platformNativeInterface();
+    if (!nativeInterface) {
+        return nullptr;
+    }
+    for (QWindow *window : QGuiApplication::allWindows()) {
+        auto *surface = static_cast<wl_surface *>(
+            nativeInterface->nativeResourceForWindow(QByteArrayLiteral("surface"), window));
+        if (surface && surface == m_focusedSurface) {
+            return window;
+        }
+    }
+    return nullptr;
+}
+
 void PointerFocusTracker::setFocusedSurface(wl_surface *surface)
 {
+    if (surface == m_focusedSurface) {
+        return;
+    }
     m_focusedSurface = surface;
+    Q_EMIT pointerFocusChanged();
     // An enter on another surface of this client (e.g. the preview popup)
     // also leaves the window, so compare the derived state, not the surface.
     const bool inside = isPointerInside();

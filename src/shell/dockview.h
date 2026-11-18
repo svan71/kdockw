@@ -10,10 +10,10 @@
 #include <QPointer>
 #include <QQuickView>
 #include <QVariant>
+#include <QElapsedTimer>
 
 #include <memory>
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
-#include <QElapsedTimer>
 class QTimer;
 #endif
 
@@ -59,7 +59,11 @@ class DockView : public QQuickView
     /// Qt's hover state this ignores the leave QtWayland fakes for a popup
     /// grab (see PointerFocusTracker). False without a Wayland pointer.
     Q_PROPERTY(bool pointerInside READ isPointerInside NOTIFY pointerInsideChanged)
+    Q_PROPERTY(bool pointerFocusKnown READ pointerFocusKnown NOTIFY pointerFocusWindowChanged)
+    Q_PROPERTY(QWindow *pointerFocusWindow READ pointerFocusWindow NOTIFY pointerFocusWindowChanged)
     Q_PROPERTY(bool performanceDiagnosticsEnabled READ performanceDiagnosticsEnabled CONSTANT)
+    Q_PROPERTY(bool mediaPopupTraceEnabled READ mediaPopupTraceEnabled CONSTANT)
+    Q_PROPERTY(bool launcherTimingEnabled READ launcherTimingEnabled CONSTANT)
     Q_PROPERTY(QString launcherDiagnosticPage READ launcherDiagnosticPage CONSTANT)
 
 public:
@@ -148,7 +152,12 @@ public:
 
     /// See the pointerInside property.
     [[nodiscard]] bool isPointerInside() const;
+    [[nodiscard]] bool pointerFocusKnown() const;
+    [[nodiscard]] QWindow *pointerFocusWindow() const;
     [[nodiscard]] bool performanceDiagnosticsEnabled() const;
+    [[nodiscard]] bool mediaPopupTraceEnabled() const;
+    [[nodiscard]] bool launcherTimingEnabled() const;
+    Q_INVOKABLE qint64 monotonicNowMs() const;
     [[nodiscard]] QString launcherDiagnosticPage() const;
     Q_INVOKABLE void traceLauncherUi(const QString &label, const QVariantMap &state) const;
 
@@ -164,6 +173,7 @@ Q_SIGNALS:
     void edgeChanged();
     void tooltipReserveChanged();
     void pointerInsideChanged();
+    void pointerFocusWindowChanged();
     void screenGeometryChanged();
 
 private:
@@ -186,6 +196,7 @@ private:
     ScreenSettings *m_screenSettings = nullptr;
     DockVisibilityController *m_visibilityController = nullptr;
     std::unique_ptr<PointerFocusTracker> m_pointerFocusTracker;
+    QElapsedTimer m_monotonicClock;
     TaskIconProvider *m_iconProvider = nullptr;
     IconDiagnostics *m_iconDiagnostics = nullptr;
     int m_iconCacheVersion = 0;
@@ -193,6 +204,8 @@ private:
     bool m_geometryTraceEnabled = false;
     QString m_geometryTraceAfterFrame;
     QString m_launcherDiagnosticPage;
+    bool m_mediaPopupTraceEnabled = false;
+    bool m_launcherTimingEnabled = false;
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     bool m_performanceDiagnosticsEnabled = false;
     QTimer *m_performanceReportTimer = nullptr;
