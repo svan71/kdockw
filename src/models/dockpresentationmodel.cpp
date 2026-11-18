@@ -276,6 +276,14 @@ void DockPresentationModel::setMediaPlayerDisplayMode(int mode)
     scheduleRebuild();
 }
 
+void DockPresentationModel::setMediaPlayerExpandedWidth(int width)
+{
+    width = std::clamp(250 + ((width - 250 + 2) / 5) * 5, 250, 300);
+    if (m_mediaPlayerExpandedWidth == width) return;
+    m_mediaPlayerExpandedWidth = width;
+    scheduleRebuild();
+}
+
 int DockPresentationModel::taskIndexForDockIndex(int dockIndex) const
 {
     if (dockIndex < 0 || dockIndex >= m_rows.size()) {
@@ -326,7 +334,7 @@ QVariantList DockPresentationModel::zoomLayoutSpecs(int iconSize) const
         const bool widget = row.entryType == QLatin1String("builtInWidget");
         const bool launcher = widget && row.widgetKind == QLatin1String("applicationLauncher");
         const bool media = widget && row.widgetKind == QLatin1String("mediaPlayer");
-        const double size = media && m_mediaPlayerDisplayMode == 2 ? std::max(192, iconSize)
+        const double size = media && m_mediaPlayerDisplayMode == 2 ? m_mediaPlayerExpandedWidth
             : media && m_mediaPlayerDisplayMode == 1 ? std::max(96, iconSize)
             : widget && row.widgetSize > 0 ? std::max(4, row.widgetSize) : std::max(1, iconSize);
         specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget || launcher || (media && m_mediaPlayerDisplayMode == 0)}});
@@ -348,7 +356,7 @@ QList<DockPresentationModel::Row> DockPresentationModel::desiredRows() const
         row.iconUrl = entry.iconUrl;
         row.widgetSize = entry.widgetSize;
         if (entry.widgetKind == QLatin1String("mediaPlayer") && m_mediaPlayerDisplayMode == 2) {
-            row.widgetSize = 192;
+            row.widgetSize = m_mediaPlayerExpandedWidth;
         }
         row.widgetVisible = entry.widgetVisible;
         row.iconIsCustom = entry.iconIsCustom;

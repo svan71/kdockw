@@ -836,7 +836,7 @@ Item {
     // Size: base icon size + fixed indicator space (toward screen edge)
     readonly property int _primaryExtent: isBuiltInWidget && model.widgetSize > 0
         ? Math.max(4, model.widgetSize) : (isMediaPlayer
-            ? Math.max(iconSize, DockSettings.mediaPlayerDisplayMode === 2 ? 192
+            ? Math.max(iconSize, DockSettings.mediaPlayerDisplayMode === 2 ? Math.max(250, Math.min(300, DockSettings.mediaPlayerExpandedWidth))
                 : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : iconSize) : iconSize)
     width: DockView.isVertical ? (iconSize + _indicatorSpace) : _primaryExtent
     height: DockView.isVertical ? _primaryExtent : (iconSize + _indicatorSpace)

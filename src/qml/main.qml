@@ -555,7 +555,7 @@ Item {
     // Null-safe: the context property goes away first when a dock shell is torn down.
     readonly property bool _menuHeld: DockContextMenu?.open ?? false
     // Also held until the post-menu reconciliation runs (_hoverReconciling).
-    readonly property bool _hoverHeld: _menuHeld || _hoverReconciling
+    readonly property bool _hoverHeld: _menuHeld || _hoverReconciling || _mediaPopupHoldIndex >= 0
     // Pointer on the dock as the dock tracks it. Replaces
     // dockMouseArea.containsMouse, which stays false after the fake leave.
     property bool _pointerOnDock: false
@@ -1080,6 +1080,32 @@ Item {
     function holdMediaPopup(index) {
         if (index >= 0 && index < dockRepeater.count)
             _mediaPopupHoldIndex = index
+    }
+
+    function mediaPopupGeometrySnapshot(index) {
+        function geometryFor(item) {
+            if (!item) return null
+            const point = item.mapToItem(null, 0, 0)
+            return { x: point.x, y: point.y, width: item.width, height: item.height,
+                scale: item.currentScale, targetScale: item.zoomScale }
+        }
+        const current = dockRepeater.itemAt(index)
+        const previous = dockRepeater.itemAt(index - 1)
+        const next = dockRepeater.itemAt(index + 1)
+        return {
+            pointerInside: DockView.pointerInside,
+            pointerRoot: { x: _pointerRootX, y: _pointerRootY },
+            pointerPanel: dockPanel ? { x: dockPanel.mouseX, y: dockPanel.mouseY } : null,
+            hoveredIndex: hoveredIndex,
+            mediaPopupHoldIndex: _mediaPopupHoldIndex,
+            zoomActive: _zoomActive,
+            springFactor: dockPanel ? dockPanel.zoomAmount : 0,
+            springCursor: dockPanel ? dockPanel.zoomCursor : 0,
+            previewVisible: PreviewController.visible,
+            current: geometryFor(current),
+            previous: geometryFor(previous),
+            next: geometryFor(next)
+        }
     }
 
     function releaseMediaPopup(index) {

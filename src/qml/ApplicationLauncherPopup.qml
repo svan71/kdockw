@@ -22,6 +22,8 @@ QQC2.Popup {
     property real requestedWidth: maxPopupWidth
     property real requestedHeight: maxPopupHeight
     property bool enablePlasmaFavoritesSource: true
+    property double openRequestTimestampMs: 0
+    property bool timingFirstFrameSeen: false
     // Internal test seams allow the visual integration harness to supply the
     // real C++ catalog/state without replacing this production popup or pages.
     property var catalogOverride: null
@@ -87,6 +89,9 @@ QQC2.Popup {
     function openFor(item) {
         if (!item || visible)
             return
+        openRequestTimestampMs = Date.now()
+        timingFirstFrameSeen = false
+        traceOpenTiming("request")
         anchorItem = item
         const preferred = preferredSize(launcherState.style)
         requestedWidth = preferred.width
@@ -97,6 +102,24 @@ QQC2.Popup {
         contentLoader.active = true
         positionNearDock()
         open()
+    }
+
+    // Low-rate, opt-in timing for owner reproduction runs. It records only
+    // phases and counts; it does not log application names or metadata.
+    function traceOpenTiming(phase) {
+        if (!DockModel.taskDiagnosticsEnabled || openRequestTimestampMs <= 0)
+            return
+        console.info("[KDOCKW_LAUNCHER_TIMING] " + JSON.stringify({
+            phase: phase,
+            style: launcherState.style,
+            elapsedMs: Date.now() - openRequestTimestampMs,
+            popupVisible: visible,
+            loaderStatus: contentLoader.status,
+            catalogReady: catalog.ready,
+            applicationCount: catalog.ready ? catalog.applications.length : -1,
+            favoritesReady: favoritesSourceReady,
+            favoritesAvailable: favoritesSourceAvailable
+        }))
     }
 
     function preferredSize(style) {
@@ -300,6 +323,7 @@ QQC2.Popup {
     }
 
     onOpened: {
+        traceOpenTiming("popup-opened")
         if (contentLoader.item && contentLoader.item.focusSearch)
             contentLoader.item.focusSearch()
         if (typeof DockView.launcherDiagnosticPage === "string" && DockView.launcherDiagnosticPage.length)
@@ -307,7 +331,10 @@ QQC2.Popup {
         if (typeof DockView.launcherDiagnosticPage === "string" && DockView.launcherDiagnosticPage.length)
             diagnosticTraceTimer.start()
     }
-    onClosed: contentLoader.active = false
+    onClosed: {
+        contentLoader.active = false
+        openRequestTimestampMs = 0
+    }
 
     Loader {
         id: favoritesLoader
@@ -351,6 +378,7 @@ QQC2.Popup {
             anchors.fill: parent
             sourceComponent: popup.launcherState.style === "start" ? startComponent
                 : popup.launcherState.style === "hierarchical" ? hierarchicalComponent : launchpadComponent
+            onLoaded: popup.traceOpenTiming("page-loaded")
         }
     }
 
@@ -378,6 +406,24 @@ QQC2.Popup {
             catalog: popup.catalog
             launcherState: popup.launcherState
             launcherPopup: popup
+        }
+    }
+
+    Connections {
+        target: popup.catalog
+        function onReadyChanged() {
+            if (popup.visible && popup.catalog.ready)
+                popup.traceOpenTiming("catalog-ready")
+        }
+    }
+
+    Connections {
+        target: popup.contentItem ? popup.contentItem.Window.window : null
+        function onFrameSwapped() {
+            if (!popup.visible || popup.timingFirstFrameSeen)
+                return
+            popup.timingFirstFrameSeen = true
+            popup.traceOpenTiming("first-frame")
         }
     }
 

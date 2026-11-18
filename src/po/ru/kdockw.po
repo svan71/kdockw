@@ -2100,6 +2100,14 @@ msgstr "Кнопки управления воспроизведением"
 msgid "Expanded media widget"
 msgstr "Расширенный медиавиджет"
 
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Expanded widget width"
+msgstr "Ширина расширенного виджета"
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Sets the dock widget width in logical pixels. The full player popup keeps its own size."
+msgstr "Задаёт ширину виджета в логических пикселях. Размер полного окна плеера настраивается отдельно."
+
 #: src/qml/MediaPlayerWidget.qml src/qml/settings/MediaPlayerPage.qml
 msgid "Use album artwork in the dock"
 msgstr "Показывать обложку в доке"

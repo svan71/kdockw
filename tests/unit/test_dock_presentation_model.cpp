@@ -276,8 +276,12 @@ TEST_CASE("Application Launcher and compact media participate in dock magnificat
     CHECK_FALSE(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
     model.setMediaPlayerDisplayMode(2);
     const auto expandedSpecs = model.zoomLayoutSpecs(48);
-    CHECK(expandedSpecs.at(3).toMap().value(QStringLiteral("size")).toDouble() == 192.0);
+    CHECK(expandedSpecs.at(3).toMap().value(QStringLiteral("size")).toDouble() == 250.0);
     CHECK_FALSE(expandedSpecs.at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
+    model.setMediaPlayerExpandedWidth(275);
+    CHECK(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("size")).toDouble() == 275.0);
+    model.setMediaPlayerExpandedWidth(500);
+    CHECK(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("size")).toDouble() == 300.0);
 }
 
 TEST_CASE("Dock presentation follows TaskManager order when pinned and running zones are combined", "[dock-presentation][taskmanager-regression]")

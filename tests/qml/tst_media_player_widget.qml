@@ -12,11 +12,17 @@ Item {
     id: stage
     width: 800
     height: 640
+    property int mediaPopupHoldIndex: -1
+    function holdMediaPopup(index) { mediaPopupHoldIndex = index }
+    function releaseMediaPopup(index) {
+        if (mediaPopupHoldIndex === index) mediaPopupHoldIndex = -1
+    }
 
     Item {
         id: dockAnchor
         x: 360; y: 560; width: 192; height: 64
         property Item dockRoot: stage
+        property int index: 3
         property bool dockHovered: false
         function previewAnchorGeometry() {
             return {
@@ -33,9 +39,9 @@ Item {
         objectName: "mediaPlayerWidgetUnderTest"
         x: dockAnchor.x; y: dockAnchor.y
         width: DockView.isVertical ? 64 : (DockSettings.mediaPlayerDisplayMode === 0 ? 48
-            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : 192)
+            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth)
         height: DockView.isVertical ? (DockSettings.mediaPlayerDisplayMode === 0 ? 48
-            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : 192) : 64
+            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth) : 64
         dockDelegate: dockAnchor
         dockHovered: dockAnchor.dockHovered
     }
@@ -53,6 +59,7 @@ Item {
             widget.interactionHeld = false
             DockSettings.mediaPlayerEnabled = true
             DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.mediaPlayerExpandedWidth = 250
             DockSettings.mediaPlayerHoverPopup = true
             DockSettings.mediaPlayerHoverDelay = 30
             DockSettings.mediaPlayerUseArtwork = true
@@ -206,7 +213,7 @@ Item {
                 verify(layout && title && controls)
                 verify(previous && playPause && next)
                 compare(vertical ? widget.width : widget.height, 64)
-                if (!vertical) compare(widget.width, 192)
+                if (!vertical) compare(widget.width, DockSettings.mediaPlayerExpandedWidth)
                 compare(title.elide, Text.ElideRight)
                 tryVerify(() => controls.width > 0)
                 if (!vertical) {
@@ -214,6 +221,11 @@ Item {
                     verify(artwork && artwork.width >= DockSettings.iconSize * 0.85,
                         "expanded artwork is smaller than the neighboring app icon")
                 }
+                const progress = findChild(widget, vertical
+                    ? "mediaPlayerVerticalProgress" : "mediaPlayerDockProgress")
+                verify(progress && progress.visible && progress.width > 0,
+                    "expanded progress track is absent or has no allocated width")
+                compare(progress.progress, widget.controller.positionUs / widget.controller.durationUs)
                 for (const child of [title, artist, controls, previous, playPause, next]) {
                     if (!child) continue
                     const rect = child.mapToItem(widget, 0, 0)
@@ -224,6 +236,13 @@ Item {
                     verify(rect.y + child.height <= widget.height + 0.5,
                         child.objectName + " is clipped vertically on edge " + edge)
                 }
+                for (const button of [previous, playPause, next]) {
+                    verify(button.visible, button.objectName + " should remain visible")
+                    verify(button.width >= 32 && button.height >= 32,
+                        button.objectName + " has a hit area smaller than 32 logical pixels")
+                }
+                widget.controller.positionUs = 60000000
+                compare(progress.progress, 1 / 3)
             }
         }
 
@@ -259,7 +278,7 @@ Item {
             tryVerify(() => widget.verticalDock)
             verify(findChild(widget, "mediaPlayerVerticalTitle"))
             compare(widget.width, 64)
-            compare(widget.height, 192)
+            compare(widget.height, DockSettings.mediaPlayerExpandedWidth)
         }
 
         function test_popup_is_clamped_away_from_dock_on_all_four_edges() {
@@ -282,8 +301,10 @@ Item {
                 verify(bounds.x >= 0 && bounds.y >= 0)
                 verify(bounds.x + bounds.width <= stage.width)
                 verify(bounds.y + bounds.height <= stage.height)
-                verify(bounds.height <= widget.popupPreferredHeight + 1,
-                    "popup window reserves excessive vertical space below its content")
+                compare(bounds.width, widget.popupWidth)
+                compare(bounds.height, widget.popupHeight)
+                compare(bounds.width, 400)
+                compare(bounds.height, 360)
                 if (placement.edge === 0) verify(bounds.y >= dockAnchor.y + dockAnchor.height)
                 if (placement.edge === 1) verify(bounds.y + bounds.height <= dockAnchor.y)
                 if (placement.edge === 2) verify(bounds.x >= dockAnchor.x + dockAnchor.width)
@@ -302,6 +323,29 @@ Item {
             }
         }
 
+        function test_popup_geometry_and_artwork_do_not_follow_track_metadata() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const artwork = findChild(widget, "popupArtwork")
+            widget.controller.title = "Short"
+            widget.controller.artist = "Artist"
+            widget.controller.album = "Album"
+            widget.positionPopup()
+            widget.openPinned()
+            tryVerify(() => popup && popup.visible)
+            const first = Qt.size(popup.width, popup.height)
+            compare(artwork.width, 124)
+            compare(artwork.height, 124)
+            widget.controller.title = "An exceptionally long title that must be elided without resizing the player"
+            widget.controller.artist = "A very long performer name whose content must remain in the same bounded row"
+            widget.controller.album = "A long album title that cannot change popup dimensions or artwork size"
+            wait(20)
+            widget.positionPopup()
+            compare(Qt.size(popup.width, popup.height), first)
+            compare(artwork.width, 124)
+            compare(artwork.height, 124)
+            popup.close()
+        }
+
         function test_pinned_popup_closes_on_escape() {
             const popup = findChild(widget, "mediaPlayerPopup")
             widget.openPinned()
@@ -316,6 +360,24 @@ Item {
             tryVerify(() => popup && popup.visible && widget.popupPinned, 2000)
             widget.openPinned()
             tryVerify(() => !popup.visible && !widget.popupPinned, 2000)
+        }
+
+        function test_popup_holds_delegate_geometry_before_detached_window_opens() {
+            DockSettings.mediaPlayerDisplayMode = 0
+            widget.scale = 1.35
+            const before = widget.mapToItem(stage, 0, 0)
+            const beforeScale = widget.scale
+            const popup = findChild(widget, "mediaPlayerPopup")
+            widget.openPinned()
+            tryVerify(() => popup && popup.visible)
+            compare(stage.mediaPopupHoldIndex, dockAnchor.index)
+            compare(widget.scale, beforeScale)
+            const after = widget.mapToItem(stage, 0, 0)
+            compare(after.x, before.x)
+            compare(after.y, before.y)
+            popup.close()
+            tryVerify(() => stage.mediaPopupHoldIndex === -1)
+            widget.scale = 1
         }
     }
 }

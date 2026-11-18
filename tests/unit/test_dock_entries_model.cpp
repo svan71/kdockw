@@ -74,9 +74,14 @@ TEST_CASE("Media player widget is a unique persisted entry and follows runtime v
     presentation.setMediaPlayerAvailable(true);
     QTRY_COMPARE(presentation.rowCount(), 1);
     presentation.setMediaPlayerDisplayMode(2);
+    QTRY_COMPARE(
+        presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetSizeRole).toInt(), 250);
+    presentation.setMediaPlayerExpandedWidth(280);
+    QTRY_COMPARE(
+        presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetSizeRole).toInt(), 280);
     const auto zoomSpecs = presentation.zoomLayoutSpecs(48);
     REQUIRE(zoomSpecs.size() == 1);
-    CHECK(zoomSpecs.first().toMap().value(QStringLiteral("size")).toDouble() == 192.0);
+    CHECK(zoomSpecs.first().toMap().value(QStringLiteral("size")).toDouble() == 280.0);
 }
 
 TEST_CASE("Dock entries model appends, moves, and removes only folder stacks", "[dock-entries]")

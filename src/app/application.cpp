@@ -218,6 +218,7 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::ApplicationLauncherStyleChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerEnabledChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerDisplayModeChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerExpandedWidthChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerUseArtworkChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerAutoVisibilityChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerShowPausedChanged, context, saveSettings);
@@ -369,6 +370,7 @@ int Application::run(const KAboutData &aboutData)
     m_dockModel->setSeparateLaunchers(m_settings->separateLaunchers());
     m_dockModel->setMediaPlayerEnabled(m_settings->mediaPlayerEnabled());
     m_dockModel->dockPresentationModel()->setMediaPlayerDisplayMode(m_settings->mediaPlayerDisplayMode());
+    m_dockModel->dockPresentationModel()->setMediaPlayerExpandedWidth(m_settings->mediaPlayerExpandedWidth());
 
     // Create notification trackers (before QML loading)
     m_notificationTracker = std::make_unique<NotificationTracker>();
@@ -451,6 +453,9 @@ int Application::run(const KAboutData &aboutData)
     });
     connect(s, &KDockWSettings::MediaPlayerDisplayModeChanged, this, [this]() {
         m_dockModel->dockPresentationModel()->setMediaPlayerDisplayMode(m_settings->mediaPlayerDisplayMode());
+    });
+    connect(s, &KDockWSettings::MediaPlayerExpandedWidthChanged, this, [this]() {
+        m_dockModel->dockPresentationModel()->setMediaPlayerExpandedWidth(m_settings->mediaPlayerExpandedWidth());
     });
     connect(s, &KDockWSettings::MediaPlayerEnabledChanged, this, [this]() {
         if (m_settings->mediaPlayerEnabled() && !m_dockModel->dockEntriesModel()->hasMediaPlayer()) {

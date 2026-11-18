@@ -381,7 +381,10 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
         m_tasksModel.get(), m_dockEntriesModel.get(), this, diagnosticTaskLoggingEnabled());
     m_dockPresentationModel->setSeparateLaunchers(m_separateLaunchers);
     m_dockPresentationModel->setMediaPlayerAvailable(m_mediaPlayerEnabled && m_mediaPlayerController->available());
-    if (settings) m_dockPresentationModel->setMediaPlayerDisplayMode(settings->mediaPlayerDisplayMode());
+    if (settings) {
+        m_dockPresentationModel->setMediaPlayerDisplayMode(settings->mediaPlayerDisplayMode());
+        m_dockPresentationModel->setMediaPlayerExpandedWidth(settings->mediaPlayerExpandedWidth());
+    }
     if (settings) {
         m_mediaPlayerController->setVisibilityPolicy(settings->mediaPlayerAutoVisibility(),
             settings->mediaPlayerShowPaused(), settings->mediaPlayerStoppedHideDelay() * 1000);
