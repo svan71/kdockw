@@ -278,7 +278,7 @@ void DockPresentationModel::setMediaPlayerDisplayMode(int mode)
 
 void DockPresentationModel::setMediaPlayerExpandedWidth(int width)
 {
-    width = std::clamp(250 + ((width - 250 + 2) / 5) * 5, 250, 300);
+    width = std::clamp(200 + ((width - 200 + 2) / 5) * 5, 200, 300);
     if (m_mediaPlayerExpandedWidth == width) return;
     m_mediaPlayerExpandedWidth = width;
     scheduleRebuild();

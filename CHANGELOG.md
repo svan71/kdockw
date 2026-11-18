@@ -12,10 +12,16 @@ carried forward from the Krema-based development period.
 
 - Added one persistent MPRIS2 media player dock widget with Compact, Controls, and Expanded display modes, automatic session visibility, multi-player selection, metadata and bounded artwork loading, plus a shared interactive playback popup.
 - Added settings for media widget visibility, display mode, artwork, paused-session handling, stopped-session delay, popup behavior, source identity, and volume control.
-- Added an Expanded widget width setting from 250 to 300 logical pixels in 5 px steps, defaulting to 250 px.
+
+### Changed
+
+- Reduced the Expanded media dock widget's default width to 200 logical pixels and allowed 200–300 px sizing in 5 px steps.
 
 ### Fixed
 
+- Kept the media hover popup open across QtWayland's synthetic dock leave while the pointer remains on the media widget, and tracked hover across composite media controls.
+- Aligned all media widget modes with the ordinary icon band and kept Expanded artwork at the dock icon's logical size.
+- Preserved the user's manually selected MPRIS source while its playback status is temporarily invalidated and being refreshed.
 - Limited hover-retention for the media popup to the media widget and popup; moving to another dock item starts the existing 200 ms close timer while neighboring task previews and magnification handoff remain available.
 - Fixed the media widget popup's dock-root binding so its parent geometry resolves, and guarded popup setup while the dock delegate is unavailable.
 - Kept expanded media controls and progress inside the dock item's allocated bounds on every edge, derived control contrast from the active dock/theme colors, and included the compact media icon in existing magnification.

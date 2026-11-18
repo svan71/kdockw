@@ -13,6 +13,9 @@ Item {
     objectName: "mediaPlayerWidget"
     required property Item dockDelegate
     property bool dockHovered: false
+    readonly property bool pointerOverDockWidget: dockHovered || dockAreaHover.hovered
+        || (DockView.pointerInside && dockDelegate && dockDelegate.dockRoot
+            && dockDelegate.dockRoot.hoveredIndex === dockDelegate.index)
     readonly property var controller: DockModel.mediaPlayerController
     readonly property bool verticalDock: DockView.isVertical
     readonly property bool progressActive: DockSettings.mediaPlayerEnabled && DockVisibility.dockVisible
@@ -48,7 +51,10 @@ Item {
             ? dockDelegate.dockRoot.mediaPopupGeometrySnapshot(dockDelegate.index) : null
         console.info("[KDOCKW_MEDIA_POPUP]", JSON.stringify({
             phase: phase,
-            dockHovered: dockHovered,
+            dockHovered: pointerOverDockWidget,
+            dockItemHovered: dockHovered,
+            compositeAreaHovered: dockAreaHover.hovered,
+            compositorPointerInside: DockView.pointerInside,
             popupHovered: popupHovered,
             pinned: popupPinned,
             delegateIndex: dockDelegate ? dockDelegate.index : -1,
@@ -159,13 +165,13 @@ Item {
     }
 
     function closeAfterHover() {
-        if (!popupPinned && !dockHovered && !popupHovered && !interactionHeld)
+        if (!popupPinned && !pointerOverDockWidget && !popupHovered && !interactionHeld)
             hideTimer.restart()
     }
 
-    onDockHoveredChanged: {
-        logPopupState(dockHovered ? "dock-hover-enter" : "dock-hover-leave")
-        if (dockHovered) {
+    onPointerOverDockWidgetChanged: {
+        logPopupState(pointerOverDockWidget ? "dock-hover-enter" : "dock-hover-leave")
+        if (pointerOverDockWidget) {
             hideTimer.stop()
             if (DockSettings.mediaPlayerHoverPopup && !popup.visible)
                 openTimer.restart()
@@ -186,7 +192,7 @@ Item {
         id: openTimer
         interval: DockSettings.mediaPlayerHoverDelay
         onTriggered: {
-            if (root.dockHovered && DockSettings.mediaPlayerHoverPopup && !popup.visible) {
+            if (root.pointerOverDockWidget && DockSettings.mediaPlayerHoverPopup && !popup.visible) {
                 root.popupPinned = false
                 if (root.positionPopup()) {
                     root.holdDockForPopup()
@@ -201,21 +207,33 @@ Item {
         objectName: "mediaPlayerHideTimer"
         interval: 200
         onTriggered: {
-            if (!root.popupPinned && !root.dockHovered && !root.popupHovered && !root.interactionHeld)
+            if (!root.popupPinned && !root.pointerOverDockWidget && !root.popupHovered && !root.interactionHeld)
                 popup.close()
         }
     }
 
+    // Observe hover over the complete composite widget without taking mouse
+    // presses away from its transport controls.
+    HoverHandler {
+        id: dockAreaHover
+        objectName: "mediaPlayerDockHoverHandler"
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+    }
+
     Item {
         id: dockVisual
-        anchors.fill: parent
+        objectName: "mediaPlayerDockVisual"
+        width: root.verticalDock ? dockDelegate.iconSize : root.width
+        height: root.verticalDock ? root.height : dockDelegate.iconSize
+        x: root.verticalDock ? (dockDelegate._indicatorAfterIcon ? 0 : parent.width - width) : 0
+        y: root.verticalDock ? 0 : (dockDelegate._indicatorAfterIcon ? 0 : parent.height - height)
         visible: DockSettings.mediaPlayerEnabled
 
         Kirigami.Icon {
             id: compactIcon
             objectName: "mediaPlayerCompactIcon"
             anchors.centerIn: parent
-            width: Math.min(DockSettings.iconSize, root.width, root.height)
+            width: Math.min(dockDelegate.iconSize, root.width, root.height)
             height: width
             source: controller.desktopEntry || "audio-x-generic-symbolic"
             fallback: "media-playback-start"
@@ -225,7 +243,7 @@ Item {
             id: dockArtwork
             objectName: "mediaPlayerDockArtwork"
             anchors.centerIn: parent
-            width: Math.min(DockSettings.iconSize, root.width, root.height)
+            width: Math.min(dockDelegate.iconSize, root.width, root.height)
             height: width
             source: DockSettings.mediaPlayerUseArtwork ? controller.artUrl : ""
             visible: (root.displayMode === 0 || (verticalDock && root.displayMode === 2)) && ready
@@ -263,11 +281,12 @@ Item {
         RowLayout {
             objectName: "mediaPlayerExpandedLayout"
             anchors.fill: parent
-            anchors.margins: 4
-            spacing: 4
+            anchors.leftMargin: 2
+            anchors.rightMargin: 2
+            spacing: 3
             visible: root.displayMode === 2 && !root.verticalDock
             Item {
-                Layout.preferredWidth: Math.min(DockSettings.iconSize, parent.height - 8)
+                Layout.preferredWidth: Math.min(dockDelegate.iconSize, parent.height)
                 Layout.preferredHeight: Layout.preferredWidth
                 MediaArtworkItem {
                     id: expandedArtwork
@@ -284,7 +303,7 @@ Item {
             }
             ColumnLayout {
                 Layout.fillWidth: true
-                Layout.minimumWidth: 36
+                Layout.minimumWidth: 0
                 spacing: 0
                 QQC2.Label {
                     id: expandedTitle
@@ -392,7 +411,7 @@ Item {
                     mediaSecondary: root.secondary
                     required property int index
                     required property string modelData
-                    Layout.preferredWidth: DockSettings.iconSize * 0.75
+                    Layout.preferredWidth: dockDelegate.iconSize * 0.75
                     Layout.preferredHeight: 32
                     icon.name: modelData
                     display: QQC2.AbstractButton.IconOnly
@@ -414,7 +433,7 @@ Item {
             visible: root.displayMode === 2 && root.verticalDock
             Item {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: Math.min(DockSettings.iconSize, parent.width)
+                Layout.preferredWidth: Math.min(dockDelegate.iconSize, parent.width)
                 Layout.preferredHeight: Layout.preferredWidth
                 MediaArtworkItem {
                     id: verticalArtwork

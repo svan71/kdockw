@@ -514,8 +514,8 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   was restored after the bounded candidate run. A visual stable-versus-dev
   indicator-count A/B remains NOT VERIFIED. Plasma/Wayland visual behavior still needs
   owner review; the card remains `review`.
-  The fourth correction cycle adds a persisted Expanded width of 250–300 logical
-  pixels in 5 px steps (250 px default), track-independent 400 × 360 popup
+  The fourth correction cycle added a persisted Expanded width, now clarified to
+  200–300 logical pixels in 5 px steps (200 px default), track-independent 400 × 360 popup
   geometry when screen space permits, a 124 px popup cover, ellipsized metadata,
   a 3 px dock progress track, and 32 px transport targets. Opening the popup
   now holds dock magnification before the detached surface opens. Production
@@ -534,6 +534,22 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   pointer hit-testing: moving to another item starts the 200 ms popup close
   timer and permits its Window Preview; the card remains `review` pending live
   Plasma/Wayland acceptance.
+  The fifth-cycle trace found a synthetic QtWayland leave while KWin still
+  hit-tested the pointer on the media delegate; the 200 ms close timer then
+  closed the detached popup before hover handoff completed. Item/popup hover,
+  neighbor hit-testing and close-time magnification re-hit-test are now covered
+  by QML regressions. Expanded mode defaults to 200 logical px (200–300, step
+  5), uses icon-sized artwork, and all modes align to the normal icon band.
+  MPRIS invalidation testing reproduced manual source selection being lost
+  while PlaybackStatus was temporarily unknown; the controller now retains
+  that choice until refreshed properties arrive. The exact test passed 20/20;
+  Production CTest passed 230/230 and Diagnostic CTest 234/234. Diagnostic
+  source/stage Build ID `817354026b09ba1f6a80341be99c84df4a81c936` and RU
+  catalog matched; launcher preflight passed. GDB placed the test's observed
+  SIGSEGV in QtDBus `QObject::disconnect` during process exit after failed
+  assertions; it did not show an application playback stack, and no crash
+  recurred after the selection fix. Launcher stable/dev latency A/B and live
+  Plasma visual acceptance remain NOT VERIFIED; card remains `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   a separate grouped-window regression card tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`

@@ -663,8 +663,8 @@
     </entry>
     <entry name="MediaPlayerExpandedWidth" type="Int">
       <label>Expanded media player widget width in logical pixels</label>
-      <default>250</default>
-      <min>250</min>
+      <default>200</default>
+      <min>200</min>
       <max>300</max>
     </entry>
     <entry name="MediaPlayerUseArtwork" type="Bool">

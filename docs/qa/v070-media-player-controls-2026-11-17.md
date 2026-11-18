@@ -317,3 +317,184 @@ and axis-aware hit testing covers all four dock edges.
 
 No launcher performance, historical MPRIS SIGSEGV, or visual-layout claims are
 changed by this hover-only correction.
+
+## Fifth-cycle continuation — popup flicker, widget geometry, and outstanding diagnostics — 2026-11-18
+
+### Popup flicker diagnosis
+
+The available diagnostic trace contains a repeated transition at monotonic
+timestamps `953247.328` (`open-hover-request`), `953247.331`
+(`dock-hover-leave`, while `pointerInside=true` and `hoveredIndex=28`),
+`953247.521` (`opened`), `953247.705` (`closed`), and `953248.011`
+(`open-hover-request` again). This confirms that the dock-only hover flag was
+cleared by the detached `Popup.Window` handoff even though KWin still reported
+the pointer on the media delegate. The 200 ms close timer was therefore already
+pending as the popup opened; close-time pointer reconciliation re-entered the
+media item and restarted the open timer. This is the established mechanism for
+the recorded flicker sequence. The trace is historical; it is not a capture of
+the not-yet-built source changes in this continuation.
+
+The source now derives the hover region from the composite widget's own
+`HoverHandler`, the dock delegate's current hit-test together with
+`DockView.pointerInside`, and the popup's own hover state. The hit-test keeps the
+region limited to the media item; a neighboring item or desktop still starts
+the existing 200 ms close timer. The observer does not take button presses, so
+direct transport actions retain their handlers. The click-pinned state remains
+separate. These source changes have **not been built or executed**.
+
+### Dock layout and width correction
+
+Expanded width now defaults to 200 logical px, ranges from 200 through 300 px in
+5 px steps, and continues to persist user values. Previously saved values from
+250 to 300 px remain valid and unchanged. The full 400 × 360 px popup is still
+independent. The media visual is aligned to the same icon-size band and
+indicator-side placement used by ordinary DockItem icons, using the delegate's
+logical icon size on all four edges. Expanded artwork is allocated up to the
+ordinary icon size; the text column may shrink while all three 32 px controls
+remain reserved. Offscreen tests were added for pointer handoff flicker,
+composite hit areas and direct button actions, icon-band alignment at 32/48/64
+logical px, four dock edges, and the 200 px model default/5 px step.
+
+### Launcher timing A/B and MPRIS crash
+
+The prior dev trace on Build ID
+`9b5df45c73391e0f7e7d5843ea08421258a365d0` records Launchpad first-frame
+latencies of 517 ms, 71 ms, 924 ms, and 245 ms across distinct opens; a later
+popup-opened phase reached 1108 ms. At the first request the 116-app catalog was
+already ready, and subsequent requests recorded it ready before opening. This
+shows substantial dev-run variability but does not compare with stable v0.6.0.
+The only `ApplicationLauncherPopup.qml` difference from the v0.6.0 tag is
+opt-in timing instrumentation; that source comparison is not a runtime A/B.
+Stable/dev timing remains **NOT VERIFIED**.
+
+The historical concurrent-source MPRIS SIGSEGV remains unexplained. Prior
+isolated and GDB runs passed without a crash; this environment has core dumps
+disabled (`ulimit -c` is 0), and no matching coredump record exists. No new
+MPRIS run has been made in this continuation.
+
+### Verification state and resource blocker
+
+One incremental Production build completed through `codex-build run`; its
+registered disk free space changed from 51.77 GB to 44.19 GB, with no OOM or
+significant PSI pressure. Later preflights found 39.8 GiB free, below the
+mandatory 40 GiB minimum, so the follow-up build and heavy tests were correctly
+not started. The current source is therefore **not a built candidate**; the
+previous stage Build ID `1fd8668dc4909414f8d1f48dfe74a1d01182e31c` does not
+include these edits. Current stable remains `/usr/bin/kdockw` v0.6.0 (Build ID
+`929161b576ca3fc8a683eb896668d9ead5ff0419`), PID 188793. No candidate runtime
+was started. Production and diagnostic full CTest, final stage/Build ID and
+locale checks, live stable/dev Launcher A/B, and final MPRIS repeat diagnosis
+remain outstanding. The feature and parent cards stay `review`; no release,
+tag, or push was created.
+
+### Fifth-cycle final verification — 2026-11-18
+
+The continuation source was built in both configurations. Production ELF GNU
+Build ID: `7b0aa9f64c039f5bf4340f00c8091ef6d050a59f`; diagnostic source and
+staged ELF GNU Build ID: `3245426e3576b1d9ed91b6ff1cc1d1a41d0e0000`. The
+diagnostic launcher `--preflight-only --profile media-fifth-final` passed,
+matched source/stage Build IDs, and confirmed the isolated `0.7.0-dev` metadata
+and Russian catalog. It did not launch the candidate. The production process
+remained `/usr/bin/kdockw` PID 188793, Build ID
+`929161b576ca3fc8a683eb896668d9ead5ff0419`; production config SHA-256 remained
+`3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`.
+
+Both full suites passed after correcting the QML test fixture's stale hit-test
+index, hard-coded icon-size assumption, and immediate layout reads:
+
+- Production Release CTest: **230/230 passed**.
+- Diagnostic Release CTest: **234/234 passed**.
+- `qml_tst_media_player_widget`: passed in both full suites. It exercises the
+  synthetic Layer Shell hover handoff, leaving for a neighbor, full composite
+  content/button hover in both modes, icon-band alignment across 3 modes × 4
+  edges × 3 icon sizes, expanded width/progress/control bounds, and direct
+  transport actions.
+- The previous first Production run's 229/230 failure and isolated QML test
+  failures were recorded; the fixture corrections were followed by the passing
+  full Production rerun. No application workaround was added for those fixture
+  timing/index errors.
+- Exact historical concurrent-MPRIS Catch2 case: user-session-bus repeat passed
+  13 times then failed on iteration 14 while waiting up to 3 seconds for
+  `controller.title() == "Second source"`; CTest classified process exit as
+  SIGSEGV. The failure output has no stack trace. On a private `dbus-run-session`
+  bus, the same exact Production case passed 50/50. Full Diagnostic CTest also
+  passed the case once. This narrows the intermittent condition to the
+  user-session D-Bus context or its interaction with the test, but **does not
+  establish the crash root cause**. Core dumps remain disabled and no matching
+  coredump is available.
+- Application Launcher latency A/B remains **NOT VERIFIED**. Prior dev samples
+  remain 517, 71, 924, and 245 ms first-frame latency (Build ID
+  `9b5df45c73391e0f7e7d5843ea08421258a365d0`); these are not a stable comparison.
+  The stable D-Bus interface exposes no launcher-open method; no `ydotool`,
+  `wtype`, or `xdotool` is installed, and `/dev/uinput` is not user-writable.
+  The only `ApplicationLauncherPopup.qml` source difference from the v0.6.0 tag
+  is opt-in instrumentation, which does not substitute for runtime A/B.
+- Real Plasma/Wayland visual acceptance remains **NOT VERIFIED** because no
+  candidate was launched while stable was active. The widget task remains in
+  `review` pending that owner check.
+
+The accepted click-pinned popup path and full popup geometry were not changed.
+No release, tag, push, production install, or user-config modification was
+performed. Resource-guard runs were registered and cleaned; no VM, container,
+temporary image, or volume was created. The diagnostic build and staged
+candidate are retained for review.
+
+### Fifth-cycle completion update — 2026-11-18
+
+The earlier sections above are historical checkpoints. The latest candidate
+includes the fifth-cycle changes and the MPRIS source-selection correction:
+
+- Expanded dock-widget width defaults to 200 logical px, ranges 200–300 in
+  5 px increments, and keeps its width independent of track composition. The
+  artwork uses the ordinary icon-band size; the text column yields space to
+  the always-visible transport controls. The full hover popup geometry was not
+  changed.
+- The popup flicker trace showed `open-hover-request` at 953247.328, followed
+  by a synthetic `dock-hover-leave` at 953247.331 while the compositor still
+  reported `pointerInside=true` and `hoveredIndex=28`. The popup opened at
+  953247.521 and closed at 953247.705 when the 200 ms leave timer won the
+  detached-surface handoff; another open request followed at 953248.011.
+  The hold decision now uses the media item's hover/compositor hit-test as well
+  as the popup area, while the separate magnification lock remains independent.
+  Widget-to-popup movement cancels close; movement to another dock item starts
+  the existing timer and re-hit-tests on close. This causal trace and the QML
+  regression support the fix. Live pointer behavior still requires owner review.
+- A deterministic test now invalidates the selected MPRIS source's
+  `PlaybackStatus` while a competing source is Playing. Before the fix, the
+  controller treated the transient empty value as stopped, discarded manual
+  selection, and selected the competing source. It now retains the chosen
+  source until refreshed properties arrive. The exact case passed 20/20
+  repeats after the fix.
+- GDB on the failing pre-fix test observed `SIGSEGV` on the QtDBus worker thread
+  in `QObject::disconnect` during process exit after Catch2 had reported the
+  failed selection assertions. This places the observed signal in teardown,
+  not in an application playback stack. The test passed 20 repeats and both
+  complete suites after correcting selection; no SIGSEGV recurred. This does
+  not prove that every historical/user-reported SIGSEGV has the same cause.
+- The first full Production run after this change was **229/230**: the 230-test
+  run was paused by the resource guard after free disk fell below 20 GiB, and
+  `qml_tst_dock_main` exceeded its CTest timeout. The isolated test passed
+  1/1 in 89.91 s after resources recovered; the subsequent complete Production
+  rerun passed **230/230**. Full Diagnostic Release CTest passed **234/234**.
+- The diagnostic launcher preflight passed for profile `media-fifth-final`
+  without launching the candidate. Build and stage both resolve to GNU Build
+  ID `817354026b09ba1f6a80341be99c84df4a81c936`; the Russian catalog matches
+  and has SHA-256 `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`.
+  Candidate version is `0.7.0-dev`. Production Release Build ID is
+  `12c503eb49f6543360f9e27d0dcaeccac8130dfd`.
+- Application Launcher stable-v0.6.0 versus dev latency A/B remains
+  **NOT VERIFIED**. No supported desktop input/launcher-control interface is
+  available in this session; the stable bus exposes no launcher-open method,
+  and synthetic QML timing is not a substitute for the requested live A/B.
+  Real Plasma pointer/visual acceptance also remains **NOT VERIFIED**. Stable
+  `/usr/bin/kdockw` remains running as PID 188793; the production config hash
+  remains `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`.
+- All build/test runs used `TMPDIR=/tmp` and `codex-build`. A concurrent
+  unrelated build temporarily reduced free disk below the guard threshold;
+  this run's CTest was paused and resumed automatically. No resources belonging
+  to other projects were removed. At final preflight, free disk was 62.6 GB,
+  `MemAvailable` 19.7 GB, and memory PSI was zero.
+
+The existing media widget and v0.7.0 stage cards remain `review` pending live
+owner acceptance. No release, tag, push, candidate runtime, production install,
+or user-config modification was performed.

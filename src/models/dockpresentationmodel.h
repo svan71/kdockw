@@ -101,7 +101,7 @@ private:
     bool m_separateLaunchers = true;
     bool m_mediaPlayerAvailable = false;
     int m_mediaPlayerDisplayMode = 0;
-    int m_mediaPlayerExpandedWidth = 250;
+    int m_mediaPlayerExpandedWidth = 200;
     QList<Row> m_rows;
     QVector<int> m_taskToDock;
     int m_pinnedEntryCount = 0;

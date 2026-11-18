@@ -75,7 +75,7 @@ TEST_CASE("Media player widget is a unique persisted entry and follows runtime v
     QTRY_COMPARE(presentation.rowCount(), 1);
     presentation.setMediaPlayerDisplayMode(2);
     QTRY_COMPARE(
-        presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetSizeRole).toInt(), 250);
+        presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetSizeRole).toInt(), 200);
     presentation.setMediaPlayerExpandedWidth(280);
     QTRY_COMPARE(
         presentation.data(presentation.index(0, 0), kdockw::DockPresentationModel::WidgetSizeRole).toInt(), 280);

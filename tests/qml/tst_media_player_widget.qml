@@ -13,6 +13,7 @@ Item {
     width: 800
     height: 640
     property int mediaPopupHoldIndex: -1
+    property int hoveredIndex: -1
     function holdMediaPopup(index) { mediaPopupHoldIndex = index }
     function releaseMediaPopup(index) {
         if (mediaPopupHoldIndex === index) mediaPopupHoldIndex = -1
@@ -20,11 +21,13 @@ Item {
 
     Item {
         id: dockAnchor
-        x: 360; y: 560; width: 192; height: 64
+        x: 360; y: 560; width: DockSettings.iconSize + 16; height: DockSettings.iconSize + 16
         property Item dockRoot: stage
         property int index: 3
+        property int iconSize: DockSettings.iconSize
         property bool pointerOnDock: false
         property int hoveredIndex: -1
+        property bool _indicatorAfterIcon: true
         function previewAnchorGeometry() {
             return {
                 currentEdgeInSurface: DockView.edge === 0 ? mapToItem(null, 0, height).y
@@ -39,10 +42,11 @@ Item {
         id: widget
         objectName: "mediaPlayerWidgetUnderTest"
         x: dockAnchor.x; y: dockAnchor.y
-        width: DockView.isVertical ? 64 : (DockSettings.mediaPlayerDisplayMode === 0 ? 48
+        width: DockView.isVertical ? (DockSettings.iconSize + 16) : (DockSettings.mediaPlayerDisplayMode === 0 ? DockSettings.iconSize
             : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth)
-        height: DockView.isVertical ? (DockSettings.mediaPlayerDisplayMode === 0 ? 48
-            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth) : 64
+        height: DockView.isVertical ? (DockSettings.mediaPlayerDisplayMode === 0 ? DockSettings.iconSize
+            : DockSettings.mediaPlayerDisplayMode === 1 ? 96 : DockSettings.mediaPlayerExpandedWidth)
+            : (DockSettings.iconSize + 16)
         dockDelegate: dockAnchor
         dockHovered: dockAnchor.pointerOnDock && dockAnchor.hoveredIndex === dockAnchor.index
     }
@@ -60,18 +64,22 @@ Item {
             widget.interactionHeld = false
             DockSettings.mediaPlayerEnabled = true
             DockSettings.mediaPlayerDisplayMode = 0
-            DockSettings.mediaPlayerExpandedWidth = 250
+            DockSettings.mediaPlayerExpandedWidth = 200
             DockSettings.mediaPlayerHoverPopup = true
             DockSettings.mediaPlayerHoverDelay = 30
             DockSettings.mediaPlayerUseArtwork = true
             DockView.edge = 1
+            DockView.pointerInside = false
             DockView.screenGeometry = Qt.rect(0, 0, stage.width, stage.height)
+            mouseMove(stage, 12, 12)
             hoverDockIndex(-1)
         }
 
         function hoverDockIndex(index) {
             dockAnchor.pointerOnDock = index >= 0
             dockAnchor.hoveredIndex = index
+            stage.hoveredIndex = index
+            DockView.pointerInside = index >= 0
         }
 
         function popupBoundsInDockSurface(popup) {
@@ -158,6 +166,92 @@ Item {
                 tryVerify(() => !popup.visible)
                 hoverDockIndex(-1)
                 wait(220)
+            }
+        }
+
+        function test_popup_does_not_blink_on_layer_surface_pointer_handoff() {
+            const popup = findChild(widget, "mediaPlayerPopup")
+            mouseMove(stage, 12, 12)
+            hoverDockIndex(dockAnchor.index)
+            tryVerify(() => popup.visible, 2000)
+
+            // QtWayland may send a synthetic leave when Popup.Window opens.
+            // KWin still reports the pointer on the dock and the last hit test
+            // remains on this media delegate until the next pointer sample.
+            dockAnchor.pointerOnDock = false
+            DockView.pointerInside = true
+            dockAnchor.hoveredIndex = dockAnchor.index
+            stage.hoveredIndex = dockAnchor.index
+            wait(260)
+            verify(popup.visible, "synthetic layer-surface leave closed a popup under the pointer")
+
+            // A real move to a neighboring dock item must still start the
+            // standard close timer despite the popup's pointer grab.
+            dockAnchor.hoveredIndex = dockAnchor.index + 1
+            stage.hoveredIndex = dockAnchor.index + 1
+            const hideTimer = findChild(widget, "mediaPlayerHideTimer")
+            tryVerify(() => hideTimer.running, 1000)
+            wait(230)
+            tryVerify(() => !popup.visible, 1000)
+        }
+
+        function test_composite_modes_track_hover_across_content_and_button_areas() {
+            DockSettings.mediaPlayerHoverPopup = false
+            for (const mode of [1, 2]) {
+                DockSettings.mediaPlayerDisplayMode = mode
+                tryVerify(() => widget.displayMode === mode)
+                const names = mode === 1
+                    ? ["mediaPlayerControlsPrevious", "mediaPlayerControlsPlayPause", "mediaPlayerControlsNext"]
+                    : ["mediaPlayerExpandedArtwork", "mediaPlayerExpandedTitle", "mediaPlayerDockProgress",
+                        "mediaPlayerExpandedPrevious", "mediaPlayerExpandedPlayPause", "mediaPlayerExpandedNext"]
+                for (const name of names) {
+                    const item = findChild(widget, name)
+                    verify(item && item.height > 0, name + " must have a hit region")
+                    tryVerify(() => item.width > 0, 1000, name + " must have a hit region")
+                    const point = item.mapToItem(widget, item.width / 2, item.height / 2)
+                    mouseMove(widget, point.x, point.y)
+                    tryVerify(() => findChild(widget, "mediaPlayerDockHoverHandler").hovered,
+                        1000, name + " did not keep hover over the composite widget")
+                    verify(widget.pointerOverDockWidget,
+                        name + " should remain inside the dock widget hover region")
+                }
+                if (mode === 1) {
+                    const play = findChild(widget, "mediaPlayerControlsPlayPause")
+                    mouseClick(play)
+                    compare(widget.controller.calls[widget.controller.calls.length - 1].name, "playPause")
+                } else {
+                    const play = findChild(widget, "mediaPlayerExpandedPlayPause")
+                    mouseClick(play)
+                    compare(widget.controller.calls[widget.controller.calls.length - 1].name, "playPause")
+                }
+            }
+        }
+
+        function test_media_visual_cross_axis_matches_the_ordinary_icon_band() {
+            const visual = findChild(widget, "mediaPlayerDockVisual")
+            verify(visual)
+            for (const edge of [0, 1, 2, 3]) {
+                DockView.edge = edge
+                for (const iconSize of [32, 48, 64]) {
+                    DockSettings.iconSize = iconSize
+                    tryVerify(() => dockAnchor.iconSize === iconSize)
+                    for (const mode of [0, 1, 2]) {
+                        DockSettings.mediaPlayerDisplayMode = mode
+                        tryVerify(() => widget.displayMode === mode)
+                        dockAnchor._indicatorAfterIcon = true
+                        let visualCenter = DockView.isVertical
+                            ? visual.x + visual.width / 2 : visual.y + visual.height / 2
+                        compare(visualCenter, iconSize / 2,
+                            "media content must align with the icon-side band")
+                        dockAnchor._indicatorAfterIcon = false
+                        visualCenter = DockView.isVertical
+                            ? visual.x + visual.width / 2 : visual.y + visual.height / 2
+                        compare(visualCenter, (DockView.isVertical ? widget.width : widget.height)
+                            - iconSize / 2,
+                            "media content must align when the indicator is before the icon")
+                    }
+                }
+                DockSettings.iconSize = 48
             }
         }
 
@@ -293,8 +387,15 @@ Item {
                     ? "mediaPlayerVerticalNext" : "mediaPlayerExpandedNext")
                 verify(layout && title && controls)
                 verify(previous && playPause && next)
-                compare(vertical ? widget.width : widget.height, 64)
+                compare(vertical ? widget.width : widget.height, DockSettings.iconSize + 16)
                 if (!vertical) compare(widget.width, DockSettings.mediaPlayerExpandedWidth)
+                if (vertical) {
+                    const visual = findChild(widget, "mediaPlayerDockVisual")
+                    tryVerify(() => controls.width === visual.width - Kirigami.Units.smallSpacing * 2,
+                        1000, "vertical content must settle to the icon-side band width")
+                    tryVerify(() => previous.parent.width <= controls.width,
+                        1000, "vertical controls must settle inside the icon-side band")
+                }
                 compare(title.elide, Text.ElideRight)
                 tryVerify(() => controls.width > 0)
                 if (!vertical) {
@@ -304,7 +405,8 @@ Item {
                 }
                 const progress = findChild(widget, vertical
                     ? "mediaPlayerVerticalProgress" : "mediaPlayerDockProgress")
-                verify(progress && progress.visible && progress.width > 0,
+                verify(progress)
+                tryVerify(() => progress.visible && progress.width > 0, 1000,
                     "expanded progress track is absent or has no allocated width")
                 compare(progress.progress, widget.controller.positionUs / widget.controller.durationUs)
                 for (const child of [title, artist, controls, previous, playPause, next]) {

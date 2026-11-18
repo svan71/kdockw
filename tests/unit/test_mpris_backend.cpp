@@ -104,6 +104,14 @@ public:
         signal << QString::fromLatin1(kPlayer) << QVariantMap{} << QStringList{QStringLiteral("Metadata")};
         connection.send(signal);
     }
+
+    void invalidatePlaybackStatus(const QDBusConnection &connection)
+    {
+        QDBusMessage signal = QDBusMessage::createSignal(QString::fromLatin1(kPath),
+            QString::fromLatin1(kProperties), QStringLiteral("PropertiesChanged"));
+        signal << QString::fromLatin1(kPlayer) << QVariantMap{} << QStringList{QStringLiteral("PlaybackStatus")};
+        connection.send(signal);
+    }
 };
 
 class MprisRegistration final
@@ -182,7 +190,31 @@ TEST_CASE("MPRIS source model selects among concurrent services and targets the 
         return firstFound && secondFound;
     }, 3000));
     REQUIRE(controller.selectSession(secondService));
-    REQUIRE(waitUntil([&] { return controller.title() == QStringLiteral("Second source"); }, 3000));
+    secondFixture.invalidatePlaybackStatus(secondBus);
+    const int firstRow = [&] {
+        for (int row = 0; row < controller.rowCount(); ++row)
+            if (controller.serviceAt(row) == firstService) return row;
+        return -1;
+    }();
+    REQUIRE(firstRow >= 0);
+    REQUIRE(waitUntil([&] {
+        return controller.data(controller.index(firstRow), kdockw::MediaPlayerController::PlaybackStatusRole).toString()
+            == QStringLiteral("Playing")
+            && controller.data(controller.index(firstRow), kdockw::MediaPlayerController::TitleRole).toString()
+                == QStringLiteral("First source");
+    }, 3000));
+    const int secondRow = [&] {
+        for (int row = 0; row < controller.rowCount(); ++row)
+            if (controller.serviceAt(row) == secondService) return row;
+        return -1;
+    }();
+    REQUIRE(secondRow >= 0);
+    REQUIRE(waitUntil([&] {
+        return controller.data(controller.index(secondRow), kdockw::MediaPlayerController::PlaybackStatusRole).toString()
+            == QStringLiteral("Paused");
+    }, 3000));
+    CHECK(controller.selectedService() == secondService);
+    CHECK(waitUntil([&] { return controller.title() == QStringLiteral("Second source"); }, 3000));
     CHECK(controller.selectedService() == secondService);
     REQUIRE(controller.previous());
     REQUIRE(waitUntil([&] { return secondFixture.methods.contains(QStringLiteral("Previous")); }, 3000));

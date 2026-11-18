@@ -79,11 +79,12 @@ placement still require owner verification in real Plasma/Wayland.
 
 Expanded mode receives a persisted primary extent from `DockPresentationModel`,
 which the dock delegate uses instead of the standard icon width. The default is
-250 logical pixels; the setting accepts 250–300 logical pixels in 5 px steps.
+200 logical pixels; the setting accepts 200–300 logical pixels in 5 px steps.
 The bound is in logical coordinates and Qt applies the system scale factor. The
-cover follows the dock icon size within the available cross-axis span. Title and
-artist are single-line and ellipsized, the 3 px progress track sits beneath the
-text, and the three transport buttons keep 32 × 32 logical-pixel hit targets.
+cover uses the dock icon's logical size within the available cross-axis span.
+Title and artist are single-line and ellipsized, the 3 px progress track sits
+beneath the text, and the three transport buttons keep 32 × 32 logical-pixel hit
+targets. The text column can shrink to preserve all controls in a narrow row.
 Track changes do not resize the widget. Its horizontal and vertical layouts
 constrain controls and progress to the allocated item rectangle. Compact mode
 participates in the existing dock magnification model; Controls and Expanded
@@ -180,9 +181,22 @@ widget and popup cancels that timer. On close, the lock is released and the
 current pointer position is re-hit-tested so magnification follows the item
 under it. This path is shared by Compact, Controls and Expanded on all four dock
 edges. A click-pinned popup remains pinned and is not closed by hover leave.
-This explains over-retention across the dock, but does not establish the cause
-of the separately observed repeated popup blinking.
+The recorded flicker sequence was caused by the detached popup handoff:
+QtWayland reported a synthetic dock leave while KWin still hit-tested the
+pointer on the media delegate, so the 200 ms timer closed the popup just after
+opening; the close-time hit-test then requested it again. The current guard
+considers the widget and compositor hit-test while retaining the independent
+popup and magnification state.
 
 Offscreen QML regressions cover widget-to-neighbor, widget-to-far-item,
 widget-to-popup, popup-to-another-item and popup-to-desktop transitions. They do
 not replace live pointer verification in Plasma/Wayland; that remains pending.
+
+### Manual selection during status refresh
+
+When the manually selected player's `PlaybackStatus` is invalidated, retain
+that selection while the replacement property snapshot is pending. An empty
+status during this interval is unknown, not evidence that the selected player
+stopped; otherwise an already-playing peer can take over before the refreshed
+status arrives. Once a status is available, the normal manual-selection policy
+applies.

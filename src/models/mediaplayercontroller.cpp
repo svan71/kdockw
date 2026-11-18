@@ -507,6 +507,14 @@ void MediaPlayerController::updateAutomaticSelection()
             updateVisibility();
             return;
         }
+        // Keep a manual choice while the player is reporting an unknown status.
+        // MPRIS may invalidate PlaybackStatus while refreshing it; treating that
+        // transient empty value as a stopped player lets another source steal
+        // the user's selection before the replacement properties arrive.
+        if (manual && manual->playbackStatus.isEmpty()) {
+            updateVisibility();
+            return;
+        }
         if (manual && manual->playbackStatus == QLatin1String("Stopped") && m_stoppedHideDelayMs > 0) {
             if (!m_stoppedHideTimer.isActive()) m_stoppedHideTimer.start(m_stoppedHideDelayMs);
             updateVisibility();

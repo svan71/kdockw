@@ -93,7 +93,7 @@ QtObject {
     property string applicationLauncherStyle: "launchpad"
     property bool mediaPlayerEnabled: true
     property int mediaPlayerDisplayMode: 0
-    property int mediaPlayerExpandedWidth: 250
+    property int mediaPlayerExpandedWidth: 200
     property bool mediaPlayerUseArtwork: true
     property bool mediaPlayerAutoVisibility: true
     property bool mediaPlayerShowPaused: true

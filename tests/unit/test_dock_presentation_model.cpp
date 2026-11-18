@@ -276,8 +276,10 @@ TEST_CASE("Application Launcher and compact media participate in dock magnificat
     CHECK_FALSE(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
     model.setMediaPlayerDisplayMode(2);
     const auto expandedSpecs = model.zoomLayoutSpecs(48);
-    CHECK(expandedSpecs.at(3).toMap().value(QStringLiteral("size")).toDouble() == 250.0);
+    CHECK(expandedSpecs.at(3).toMap().value(QStringLiteral("size")).toDouble() == 200.0);
     CHECK_FALSE(expandedSpecs.at(3).toMap().value(QStringLiteral("canMagnify")).toBool());
+    model.setMediaPlayerExpandedWidth(203);
+    CHECK(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("size")).toDouble() == 205.0);
     model.setMediaPlayerExpandedWidth(275);
     CHECK(model.zoomLayoutSpecs(48).at(3).toMap().value(QStringLiteral("size")).toDouble() == 275.0);
     model.setMediaPlayerExpandedWidth(500);

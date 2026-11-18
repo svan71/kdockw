@@ -34,10 +34,10 @@ SettingsPage {
             visible: DockSettings.mediaPlayerEnabled && DockSettings.mediaPlayerDisplayMode === 2
             text: i18n("Expanded widget width")
             description: i18n("Sets the dock widget width in logical pixels. The full player popup keeps its own size.")
-            from: 250; to: 300; stepSize: 5
+            from: 200; to: 300; stepSize: 5
             value: DockSettings.mediaPlayerExpandedWidth
             valueText: i18nc("@label pixels", "%1 px", value)
-            onMoved: value => DockSettings.mediaPlayerExpandedWidth = Math.max(250, Math.min(300, Math.round(value / 5) * 5))
+            onMoved: value => DockSettings.mediaPlayerExpandedWidth = Math.max(200, Math.min(300, 200 + Math.round((value - 200) / 5) * 5))
         }
         FormCard.FormDelegateSeparator { visible: DockSettings.mediaPlayerEnabled }
         FormCard.FormSwitchDelegate {
