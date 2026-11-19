@@ -1203,7 +1203,7 @@ Item {
             }
             const slotItem = slot >= 0 ? dockRepeater.itemAt(slot) : null
             if (slotItem) {
-                const hitScale = entryEnvelope
+                const hitScale = entryEnvelope && !outsideRowDepth
                     ? Math.max(slotItem.currentScale, DockSettings.maxZoomFactor) : slotItem.currentScale
                 const span = _secondarySpan(slotItem, hitScale)
                 if (sampleY >= span.near && sampleY <= span.far)
@@ -1221,7 +1221,7 @@ Item {
                 const distance = Math.abs(sampleX - item.itemCenterX)
                 const halfPrimary = ((DockView.isVertical ? item.height : item.width) * hitScale) / 2
                 const normalizedDistance = distance / Math.max(0.001, halfPrimary)
-                const sticky = i === hoveredIndex
+                const sticky = !outsideRowDepth && i === hoveredIndex
                 if (normalizedDistance >= (sticky ? 1.0 + hysteresisFactor : 1.0)) continue
                 const span = _secondarySpan(item, hitScale)
                 if (sampleY < span.near || sampleY > span.far) continue
