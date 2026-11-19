@@ -88,6 +88,11 @@ foreach(test_name IN LISTS KDOCKW_QML_TEST_FILES)
     )
 endforeach()
 
+# The dock main test includes multi-roundtrip media popup hit-testing with
+# stationary-pointer dwell on each edge/zoom-style combination. Keep its
+# runtime budget separate from the shorter baseline QML tests.
+set_tests_properties(qml_tst_dock_main PROPERTIES TIMEOUT 240)
+
 # The production catalog reads the KDE Sycoca database. Keep its cache private
 # to this test build and build it before the real-popup visual integration test.
 add_test(NAME qml_prepare_application_catalog_cache

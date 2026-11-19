@@ -2713,8 +2713,10 @@ Item {
                 "a row-depth miss inside the Compact widget discarded its candidate")
             verify(DockView.mediaHoverEvents.some(event =>
                 event.event === "magnification-hit-test"
-                && event.details.fallbackReason === "inside-visible-compact-widget-outside-row-depth"),
-                "the row-depth miss did not resolve through the bounded Compact geometry fallback")
+                && (event.details.fallbackReason === "active-compact-visible-geometry"
+                    || event.details.fallbackReason === "popup-compact-visible-geometry")
+                && event.details.hitTestProcedure === "dock-item-geometry"),
+                "the row-depth miss did not resolve through the shared dock-item geometry procedure")
             compare(dock.hoveredIndex, media.index)
             verify(dock._zoomActive)
             compare(spring.targetAmount, 1.0)
@@ -2819,8 +2821,11 @@ Item {
             tryCompare(media, "index", 1)
             compare(dock._mediaPopupHoldIndex, heldIndex,
                     "fixture should retain the stale popup index while the model reorders")
-            compare(dock.compactMediaCandidateIndex(), -1,
-                    "a stale popup index resolved to a different dock entry")
+            compare(dock.compactMediaCandidateIndex(), media.index,
+                    "popup identity should follow the same entry after model reorder")
+            compare(items(dock)[dock.compactMediaCandidateIndex()].dockEntryId,
+                    "widget:mediaPlayer:stale-index",
+                    "the popup candidate must never resolve to the entry at its stale index")
 
             widget.openPinned()
             tryVerify(() => !widget.diagnosticPopupVisible, 1500)
@@ -2916,6 +2921,174 @@ Item {
 
         function test_compactMediaMagnificationFollowsPointerAcrossPopup_data() {
             return dockEdges()
+        }
+
+        function test_compactHoverPopupReentryFollowsDockItemHitTest_data() {
+            const data = []
+            for (const edge of dockEdges()) {
+                for (const zoomStyle of [0, 1])
+                    data.push({ tag: `${edge.tag}-zoom-${zoomStyle}`, edge: edge.edge, zoomStyle })
+            }
+            return data
+        }
+
+        // This exercises the input path with QTest mouse events and a real
+        // hover-open Popup.Window. DockView focus properties model compositor
+        // observations; the hit/anchor/zoom state under test is never seeded.
+        // The offscreen backend cannot emulate KWin's actual surface handoff.
+        function test_compactHoverPopupReentryFollowsDockItemHitTest(data) {
+            DockView.edge = data.edge
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.zoomStyle = data.zoomStyle
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.mediaPlayerHoverPopup = true
+            DockSettings.mediaPlayerHoverDelay = 40
+            DockSettings.maxZoomFactor = 1.7
+            DockView.mediaHoverDebugEnabled = true
+            DockView.mediaHoverEvents = []
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: `widget:mediaPlayer:wayland-reentry-${data.tag}`,
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Neighbor",
+                entryId: `task:wayland-reentry-neighbor-${data.tag}`,
+                AppId: "org.example.wayland-reentry-neighbor",
+                IsWindow: true,
+                IsLauncher: false,
+            })
+
+            const dock = makeDock(2)
+            const media = items(dock).find(item => item.isMediaPlayer)
+            const neighbor = items(dock).find(item => !item.isMediaPlayer)
+            const panel = findChild(dock, "dockPanel")
+            const spring = findChild(dock, "dockSpringZoomController")
+            const widget = media && media.mediaPlayerWidget
+            verify(media && neighbor && panel && spring && widget)
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+
+            const start = centerOf(media)
+            mouseMove(stage, start.x, start.y, 10)
+            // MouseArea ownership cannot be crossed between top-level windows
+            // by Qt's offscreen platform. Feed its production enter handler
+            // with the same root-space position observed by the real surface.
+            dock._handleDockPointerEntered(start.x, start.y)
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryVerify(() => widget.diagnosticPopupVisible, 2000,
+                      "the actual hover path did not open the media popup")
+            tryVerify(() => spring.targetAmount > 0.99 && media.currentScale > 1.05,
+                      1500, "initial Compact hover did not magnify")
+            compare(widget.popupPinned, false)
+            const openedEvents = DockView.mediaHoverEvents.filter(event =>
+                event.event === "popup-visibility" && event.details.visible).length
+            compare(openedEvents, 1, "the fixture must observe exactly one hover popup opening")
+
+            function dockZoneMissPoint() {
+                if (data.edge === 0) return Qt.point(start.x, stage.height - 1)
+                if (data.edge === 1) return Qt.point(start.x, 1)
+                if (data.edge === 2) return Qt.point(stage.width - 1, start.y)
+                return Qt.point(1, start.y)
+            }
+            function visibleBoundaryPoint() {
+                const rect = drawnBounds(widget, stage)
+                if (data.edge === 0) return Qt.point(rect.x + rect.width / 2, rect.y + rect.height - 1)
+                if (data.edge === 1) return Qt.point(rect.x + rect.width / 2, rect.y + 1)
+                if (data.edge === 2) return Qt.point(rect.x + rect.width - 1, rect.y + rect.height / 2)
+                return Qt.point(rect.x + 1, rect.y + rect.height / 2)
+            }
+            function justOutsideWidgetPoint() {
+                const rect = drawnBounds(widget, stage)
+                if (data.edge === 0) return Qt.point(rect.x + rect.width / 2, rect.y + rect.height + 4)
+                if (data.edge === 1) return Qt.point(rect.x + rect.width / 2, rect.y - 4)
+                if (data.edge === 2) return Qt.point(rect.x + rect.width + 4, rect.y + rect.height / 2)
+                return Qt.point(rect.x - 4, rect.y + rect.height / 2)
+            }
+
+            for (let transition = 0; transition < 3; ++transition) {
+                // The popup is already open; move focus to its observed Wayland
+                // surface, then dispatch the production dock-leave handler.
+                DockView.pointerFocusWindow = widget.popupWindow
+                dock._pointerLeft()
+                DockView.pointerInside = false
+                tryCompare(spring, "targetAmount", 0.0, 1000,
+                           "leaving the dock for popup did not release magnification")
+                compare(dock._compactMediaMagnificationIndex, -1,
+                        "the surface exit must clear the active Compact anchor")
+                compare(panel.mouseX, -1)
+                tryVerify(() => media.currentScale < 1.05, 1800,
+                          "the icon should return to rest while the pointer is on popup")
+                verify(widget.diagnosticPopupVisible && !widget.popupPinned,
+                       "magnification release changed the hover popup lifecycle")
+
+                // Simulate KWin reporting the pointer back on the layer surface.
+                // Its first position is outside the layer-shell input/zoom zone.
+                DockView.pointerInside = true
+                DockView.pointerFocusWindow = dock.Window.window
+                const zoneMiss = dockZoneMissPoint()
+                dock._handleDockPointerEntered(zoneMiss.x, zoneMiss.y)
+                compare(panel.mouseX, -1,
+                        "the first dock-entry sample should remain outside the dock zone")
+                compare(spring.targetAmount, 0.0,
+                        "an invalid entry sample must not activate magnification")
+                compare(dock._compactMediaMagnificationIndex, -1)
+
+                // Feed subsequent ordinary pointer-motion events toward the
+                // widget. The outside-widget sample is a negative hit; the
+                // final sample enters the actual visible boundary, not center.
+                const outsideWidget = justOutsideWidgetPoint()
+                dock.trackPointer(outsideWidget.x, outsideWidget.y, false,
+                                  "dockMouseArea.onPositionChanged")
+                verify(dock.hoveredIndex !== media.index,
+                       "the popup candidate must not count as a hit outside Compact geometry")
+                compare(spring.targetAmount, 0.0,
+                        "a popup hold alone must not hold the spring target")
+                const boundary = visibleBoundaryPoint()
+                dock.trackPointer(boundary.x, boundary.y, false,
+                                  "dockMouseArea.onPositionChanged")
+                tryCompare(dock, "hoveredIndex", media.index)
+                tryCompare(spring, "targetAmount", 1.0, 1000,
+                           "the valid boundary hit did not restore the normal spring target")
+                tryVerify(() => media.currentScale > 1.05, 1500,
+                          "the hit did not animate the visible Compact item")
+                verify(panel.mouseX >= 0 && panel.mouseInside && dock._zoomActive,
+                       "the restored hit did not flow through the dock's normal zoom state")
+                compare(dock._compactMediaMagnificationIndex, media.index)
+                verify(widget.diagnosticPopupVisible && !widget.popupPinned,
+                       "returning to Compact closed or pinned the popup")
+                compare(DockView.mediaHoverEvents.filter(event =>
+                    event.event === "popup-visibility" && event.details.visible).length,
+                    openedEvents, "re-entry must not reopen the existing popup")
+
+                if (transition === 0) {
+                    wait(3100)
+                    compare(dock.hoveredIndex, media.index,
+                            "stationary pointer lost Compact hover during the three-second dwell")
+                    compare(spring.targetAmount, 1.0)
+                    verify(media.currentScale > 1.05,
+                           "stationary pointer did not keep the actual Compact scale magnified")
+                    verify(widget.diagnosticPopupVisible,
+                           "stationary pointer dwell changed popup visibility")
+                }
+            }
+
+            // A popup hold cannot steal a real neighboring item hit.
+            const neighborPoint = centerOf(neighbor)
+            dock.trackPointer(neighborPoint.x, neighborPoint.y, false,
+                              "dockMouseArea.onPositionChanged")
+            tryCompare(dock, "hoveredIndex", neighbor.index)
+            compare(spring.targetAmount, 1.0)
+            tryVerify(() => neighbor.currentScale > 1.05, 1500,
+                      "the neighboring ordinary dock item did not receive magnification")
         }
 
         function test_compactMediaMagnificationFollowsPointerAcrossPopup(data) {

@@ -78,19 +78,20 @@ Item {
     readonly property real taskZoneGap: taskZoneBoundary >= 0
         ? DockSettings.iconSpacing + taskZoneSeparatorThickness : 0
     property string hoveredName: ""
-    // Compact media has a stable 36px rest slot while its spring magnifies.
-    // Retain that entry as the hit-test anchor if the animated bounds move
-    // away from a stationary pointer; a real hit on a neighbour wins.
+    // The ordinary item resolver retains a validated Compact identity only
+    // while applying its in-motion maximum-zoom envelope.
     property int _compactMediaMagnificationIndex: -1
+    property string _compactMediaMagnificationEntryId: ""
+    property var _lastHitTestResolution: ({})
     property int _hoverTraceScenarioSerial: 0
     property int _hoverTraceInteractionSerial: 0
     property int _lastHoverTraceDelegateIndex: -1
     property int _lastTracedCompactAnchor: -2
+    property string _lastTracedCompactAnchorEntryId: ""
     property string _hoverTraceScenarioId: "unmarked"
     property string _hoverTraceInteractionId: "unmarked"
     property string _hoverTraceInteractionKind: "none"
     property string _lastHoverTraceHitSignature: ""
-    property string _lastCompactFallbackTraceSignature: ""
     property real _lastHoverTracePointerMs: -1000
 
     function hoverTraceContext() {
@@ -162,6 +163,7 @@ Item {
             hoveredIndex: hoveredIndex,
             magnificationAnchor: hoveredIndex,
             compactMagnificationIndex: _compactMediaMagnificationIndex,
+            compactMagnificationEntryId: _compactMediaMagnificationEntryId,
             zoomActive: _zoomActive,
             mouseInside: dockPanel.mouseInside,
             dragActive: _dragActive,
@@ -172,6 +174,7 @@ Item {
             currentScale: item ? item.currentScale : 1,
             popupVisible: media ? media.diagnosticPopupVisible : false,
             popupHoldIndex: _mediaPopupHoldIndex,
+            popupHoldEntryId: _mediaPopupHoldEntryId,
             mediaHoverGate: media ? media.pointerOverDockWidget : false,
             previewVisible: PreviewController.visible
         }
@@ -179,29 +182,44 @@ Item {
         return details
     }
 
-    function traceHitTestResolution(source, rawIndex, resolvedIndex, fallbackReason = "") {
+    function traceHitTestResolution(source, rawIndex, resolvedIndex, fallbackReason = "",
+                                    procedure = "dock-item-geometry", candidateIndex = -1) {
         if (!DockView.mediaHoverDebugEnabled) return
         const target = dockPanel.magnificationMode === 1
             ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0)
         const signature = [rawIndex, resolvedIndex, hoveredIndex,
-            _compactMediaMagnificationIndex, _zoomActive, dockPanel.mouseInside, target].join(":")
+            _compactMediaMagnificationIndex, _zoomActive, dockPanel.mouseInside, target,
+            fallbackReason, procedure, candidateIndex].join(":")
         if (signature === _lastHoverTraceHitSignature) return
         _lastHoverTraceHitSignature = signature
-        if (_lastTracedCompactAnchor !== _compactMediaMagnificationIndex) {
+        if (_lastTracedCompactAnchor !== _compactMediaMagnificationIndex
+                || _lastTracedCompactAnchorEntryId !== _compactMediaMagnificationEntryId) {
             const previousAnchor = _lastTracedCompactAnchor
+            const previousEntryId = _lastTracedCompactAnchorEntryId
             _lastTracedCompactAnchor = _compactMediaMagnificationIndex
+            _lastTracedCompactAnchorEntryId = _compactMediaMagnificationEntryId
             traceMagnificationState("compact-anchor-changed",
                 _compactMediaMagnificationIndex >= 0 ? _compactMediaMagnificationIndex : previousAnchor,
                 source, rawIndex, resolvedIndex, {
                     previousAnchor: previousAnchor,
+                    previousEntryId: previousEntryId,
                     compactMagnificationIndex: _compactMediaMagnificationIndex,
+                    compactMagnificationEntryId: _compactMediaMagnificationEntryId,
                     reason: fallbackReason || "standard-hit-test-resolution"
                 })
         }
         traceMagnificationState("magnification-hit-test", resolvedIndex >= 0 ? resolvedIndex : hoveredIndex,
             source, rawIndex, resolvedIndex, {
                 fallbackApplied: rawIndex < 0 && resolvedIndex >= 0,
-                fallbackReason: fallbackReason
+                fallbackReason: fallbackReason,
+                hitTestProcedure: procedure,
+                candidateIndex: candidateIndex,
+                candidateEntryId: candidateIndex >= 0 && candidateIndex < dockRepeater.count
+                    ? dockRepeater.itemAt(candidateIndex).dockEntryId : "",
+                candidateGeometry: candidateIndex >= 0 && candidateIndex < dockRepeater.count
+                    ? _dockItemHitGeometry(dockRepeater.itemAt(candidateIndex)) : null,
+                candidateWidgetGeometry: candidateIndex >= 0 && candidateIndex < dockRepeater.count
+                    ? _compactMediaWidgetGeometry(candidateIndex) : null
             })
     }
 
@@ -212,23 +230,9 @@ Item {
         _lastHoverTracePointerMs = now
         traceMagnificationState("pointer-sample", hoveredIndex, source, null, hoveredIndex, {
             entryEnvelope: entryEnvelope,
-            pointerRoot: { x: _pointerRootX, y: _pointerRootY }
+            pointerRoot: { x: _pointerRootX, y: _pointerRootY },
+            hitTestResolution: _lastHitTestResolution
         })
-    }
-
-    function traceCompactFallback(source, appliedIndex, reason, rawIndex) {
-        if (!DockView.mediaHoverDebugEnabled) return
-        const signature = [source, appliedIndex, reason, rawIndex,
-            _compactMediaMagnificationIndex].join(":")
-        if (signature === _lastCompactFallbackTraceSignature) return
-        _lastCompactFallbackTraceSignature = signature
-        traceMagnificationState(appliedIndex >= 0 ? "compact-fallback-applied" : "compact-fallback-rejected",
-            appliedIndex >= 0 ? appliedIndex : _compactMediaMagnificationIndex,
-            source, rawIndex, appliedIndex, {
-                fallbackApplied: appliedIndex >= 0,
-                fallbackReturnedIndex: appliedIndex,
-                fallbackReason: reason
-            })
     }
 
     Connections {
@@ -726,6 +730,7 @@ Item {
     // from the layer-shell dock. This marker keeps the dock visible and allows
     // hover re-hit-testing after dismissal; it is not a zoom anchor.
     property int _mediaPopupHoldIndex: -1
+    property string _mediaPopupHoldEntryId: ""
     // Explicit activation hides the preview and prevents hover-triggered
     // reopening until the pointer leaves that task's icon.
     function dismissPreviewAfterTaskAction(index, dispatched, action) {
@@ -1068,274 +1073,83 @@ Item {
             trackPointer(x, y, true, "_handleDockPointerEntered")
     }
 
-    function updateHoveredItem(entryEnvelope = false,
-                               sampleX = dockPanel.mouseX,
-                               sampleY = dockPanel.mouseY,
-                               source = "updateHoveredItem") {
-        // Geometry/scale callbacks must not move the held hover.
-        if (_hoverHeld) return
-        if (sampleX < 0) {
-            const previousAnchor = _compactMediaMagnificationIndex
-            hoveredIndex = -1
-            hoveredName = ""
-            _zoomActive = false
-            _compactMediaMagnificationIndex = -1
-            if (DockView.mediaHoverDebugEnabled)
-                traceHitTestResolution(source, -1, -1,
-                    previousAnchor >= 0 ? "pointer-outside-dock-zone" : "pointer-outside-dock-zone-no-anchor")
-            return
-        }
-        // Hit-test only a pointer the dock has. After the pointer left for the
-        // preview, onExited keeps mouseX/mouseY as the zoom anchor; icons that
-        // move under that stale position (re-centring for a new task row) must
-        // not re-hover an item, or its preview reopens with the pointer away.
-        if (!_pointerOnDock)
-            return
-
-        // Rough secondary-axis check: outside the dockRow + zoom extension on
-        // the side icons grow toward (away from the screen edge) → reset zoom.
-        let maxExt = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
-        let rowNear, rowFar
-        if (DockView.isVertical) {
-            rowNear = dockRow.x
-            rowFar = dockRow.x + dockRow.width
-        } else {
-            rowNear = dockRow.y
-            rowFar = dockRow.y + dockRow.height
-        }
-        // Edge 1 = Bottom, 3 = Right: far side pinned; icons grow toward "near".
-        // Edge 0 = Top, 2 = Left: near side pinned; icons grow toward "far".
-        if (DockView.edge === 0 || DockView.edge === 2) {
-            rowFar += maxExt
-        } else {
-            rowNear -= maxExt
-        }
-        if (sampleY < rowNear || sampleY > rowFar) {
-            // The row-depth guard is intentionally coarse. A Compact widget's
-            // live visual rectangle can extend just beyond it while the spring
-            // is moving. Resolve real icon geometry first so neighboring items
-            // keep priority, then allow only the actual Compact widget bounds.
-            const visibleHit = visibleDockItemHit(sampleX, sampleY)
-            if (visibleHit >= 0) {
-                applyHoveredItemHit(visibleHit, source, visibleHit, "visible-item-bounds-outside-row-depth")
-                return
-            }
-            const compactCandidate = compactMediaCandidateIndex()
-            if (compactMediaWidgetContainsPointer(compactCandidate, sampleX, sampleY)) {
-                applyHoveredItemHit(compactCandidate, source, -1, "inside-visible-compact-widget-outside-row-depth")
-                return
-            }
-            const previousAnchor = _compactMediaMagnificationIndex
-            hoveredIndex = -1
-            hoveredName = ""
-            _zoomActive = false
-            _compactMediaMagnificationIndex = -1
-            if (DockView.mediaHoverDebugEnabled)
-                traceHitTestResolution(source, -1, -1,
-                    previousAnchor >= 0 ? "pointer-outside-row-depth" : "pointer-outside-row-depth-no-anchor")
-            return
-        }
-
-        if (dockPanel.zoomStyle !== 1) {
-            // Parabolic: the item whose VISIBLE slot contains the cursor on the
-            // primary axis — rest centre + current offset, current scale — so
-            // tooltip and click follow what is on screen, including while
-            // zoomAmount eases in or out.
-            let slot = -1
-            let bestDist = Infinity
-            for (let i = 0; i < dockRepeater.count; i++) {
-                let it = dockRepeater.itemAt(i)
-                if (!it) continue
-                let dist = Math.abs(sampleX - (it.itemCenterX + it.currentOffset))
-                let hitScale = entryEnvelope ? Math.max(it.currentScale, DockSettings.maxZoomFactor) : it.currentScale
-                let half = DockSettings.iconSize * hitScale / 2 + DockSettings.iconSpacing / 2
-                if (dist <= half && dist < bestDist) { slot = i; bestDist = dist }
-            }
-            let slotItem = slot >= 0 ? dockRepeater.itemAt(slot) : null
-            let hit = false
-            if (slotItem) {
-                // Secondary axis: scaled extent honours the edge-pinned Scale origin
-                let hitScale = entryEnvelope
-                    ? Math.max(slotItem.currentScale, DockSettings.maxZoomFactor) : slotItem.currentScale
-                let span = _secondarySpan(slotItem, hitScale)
-                hit = sampleY >= span.near && sampleY <= span.far
-            }
-            const rawHitTestIndex = hit ? slot : -1
-            let resolvedHitTestIndex = rawHitTestIndex
-            let fallbackReason = ""
-            if (!hit) {
-                resolvedHitTestIndex = compactMediaMagnificationHit(sampleX, sampleY, source)
-                if (resolvedHitTestIndex >= 0)
-                    fallbackReason = "inside-compact-maximum-zoom-envelope"
-            }
-            if (hit) {
-                _zoomActive = true  // Activate zoom; stays until mouse leaves panel
-                const hitItem = dockRepeater.itemAt(slot)
-                _compactMediaMagnificationIndex = hitItem && hitItem.isMediaPlayer
-                    && DockSettings.mediaPlayerDisplayMode === 0 ? slot : -1
-                if (hoveredIndex !== slot) {
-                    hoveredIndex = slot
-                    hoveredName = slotItem.displayName
-                    if (!externalDropArea.externalFileDragActive)
-                        tooltipTimer.restart()
-                }
-            } else {
-                const heldIndex = resolvedHitTestIndex
-                if (heldIndex >= 0) {
-                    _zoomActive = true
-                    _compactMediaMagnificationIndex = heldIndex
-                    if (hoveredIndex !== heldIndex) {
-                        hoveredIndex = heldIndex
-                        hoveredName = dockRepeater.itemAt(heldIndex).displayName
-                    }
-                    if (DockView.mediaHoverDebugEnabled)
-                        traceHitTestResolution(source, rawHitTestIndex, heldIndex, fallbackReason)
-                    return
-                }
-                _compactMediaMagnificationIndex = -1
-                // _zoomActive kept, same hysteresis as in-place mode below.
-                hoveredIndex = -1
-                hoveredName = ""
-            }
-            if (DockView.mediaHoverDebugEnabled)
-                traceHitTestResolution(source, rawHitTestIndex, resolvedHitTestIndex, fallbackReason)
-            return
-        }
-
-        // In-place mode: find the closest icon whose SCALED 2D bounds contain the mouse.
-        // Uses Schmitt-trigger hysteresis: the currently-hovered icon has a wider
-        // effective claim radius (exit threshold), so small mouse movements toward
-        // a neighbor don't immediately switch the selection. This prevents
-        // accidental clicks on the wrong icon when the hovered icon is largest.
-        // Ref: Grossman & Balakrishnan (CHI 2005, Bubble Cursor), Amazon mega-menu.
-        let bestIndex = -1
-        let bestNormDist = Infinity
-        // Hysteresis factor: 0.15 (light) – 0.35 (strong). Default 0.25.
-        let hysteresisFactor = 0.25
-        for (let i = 0; i < dockRepeater.count; i++) {
-            let item = dockRepeater.itemAt(i)
-            if (!item) continue
-
-            // Primary axis: normalized distance (0 = center, 1 = edge of scaled
-            // icon). Primary extent is item.width (horizontal) / item.height
-            // (vertical); itemCenterX is already axis-aware.
-            let dist = Math.abs(sampleX - item.itemCenterX)
-            let hitScale = entryEnvelope ? Math.max(item.currentScale, DockSettings.maxZoomFactor) : item.currentScale
-            let scaledHalfWidth = ((DockView.isVertical ? item.height : item.width)
-                                   * hitScale) / 2
-            let normDist = dist / scaledHalfWidth
-
-            // Hysteresis: currently-hovered icon uses wider exit threshold
-            let keepCurrentItemSticky = i === hoveredIndex
-            let maxNorm = keepCurrentItemSticky ? (1.0 + hysteresisFactor) : 1.0
-            if (normDist >= maxNorm) continue
-
-            // Secondary-axis check: scaled extent honours the edge-pinned
-            // Scale origin (grows away from the screen edge)
-            let span = _secondarySpan(item, hitScale)
-            if (sampleY < span.near || sampleY > span.far) continue
-
-            // Comparison: currently-hovered icon gets distance bonus (sticky)
-            let effectiveDist = keepCurrentItemSticky ? normDist * (1.0 - hysteresisFactor) : normDist
-            if (effectiveDist < bestNormDist) { bestIndex = i; bestNormDist = effectiveDist }
-        }
-
-        const rawHitTestIndex = bestIndex
-        let fallbackReason = ""
-        // A compact media icon has a fixed rest slot but its visual bounds
-        // animate. If those bounds move away from an unmoved pointer, keep the
-        // spring target while the pointer remains inside the icon's maximum
-        // zoom envelope. A hit on any other entry above takes precedence.
-        if (bestIndex < 0) {
-            bestIndex = compactMediaMagnificationHit(sampleX, sampleY, source)
-            if (bestIndex >= 0)
-                fallbackReason = "inside-compact-maximum-zoom-envelope"
-        }
-
-        if (bestIndex >= 0) {
-            _zoomActive = true  // Activate zoom; stays until mouse leaves panel
-            const hitItem = dockRepeater.itemAt(bestIndex)
-            _compactMediaMagnificationIndex = hitItem && hitItem.isMediaPlayer
-                && DockSettings.mediaPlayerDisplayMode === 0 ? bestIndex : -1
-            if (hoveredIndex !== bestIndex) {
-                hoveredIndex = bestIndex
-                hoveredName = dockRepeater.itemAt(bestIndex).displayName
-                if (!externalDropArea.externalFileDragActive)
-                    tooltipTimer.restart()
-            }
-        } else {
-            _compactMediaMagnificationIndex = -1
-            hoveredIndex = -1
-            hoveredName = ""
-            // _zoomActive intentionally NOT reset here for primary-axis gap hysteresis.
-            // When mouse crosses tiny gaps between icons, zoom stays active to prevent
-            // flickering. Zoom deactivates only when mouse leaves the depth zone
-            // (rough check above) or the panel zone entirely (mouseX becomes -1).
-        }
-        if (DockView.mediaHoverDebugEnabled)
-            traceHitTestResolution(source, rawHitTestIndex, bestIndex, fallbackReason)
+    function _dockItemHitGeometry(item) {
+        if (!item) return null
+        const a = item.mapToItem(root, 0, 0)
+        const b = item.mapToItem(root, item.width, 0)
+        const c = item.mapToItem(root, 0, item.height)
+        const d = item.mapToItem(root, item.width, item.height)
+        const left = Math.min(a.x, b.x, c.x, d.x)
+        const top = Math.min(a.y, b.y, c.y, d.y)
+        const right = Math.max(a.x, b.x, c.x, d.x)
+        const bottom = Math.max(a.y, b.y, c.y, d.y)
+        return { x: left, y: top, width: right - left, height: bottom - top,
+            currentScale: item.currentScale, targetScale: item.zoomScale }
     }
 
-    function visibleDockItemHit(sampleX, sampleY) {
-        let bestIndex = -1
-        let bestDistance = Infinity
-        for (let i = 0; i < dockRepeater.count; i++) {
-            const item = dockRepeater.itemAt(i)
-            if (!item) continue
-            if (item.isMediaPlayer && DockSettings.mediaPlayerDisplayMode === 0) continue
-            const scale = item.currentScale
-            const parabolic = dockPanel.zoomStyle !== 1
-            const halfPrimary = parabolic
-                ? DockSettings.iconSize * scale / 2 + DockSettings.iconSpacing / 2
-                : (DockView.isVertical ? item.height : item.width) * scale / 2
-            const center = item.itemCenterX + (parabolic ? item.currentOffset : 0)
-            const distance = Math.abs(sampleX - center)
-            if (distance > halfPrimary) continue
-            const span = _secondarySpan(item, scale)
-            if (sampleY < span.near || sampleY > span.far) continue
-            if (dockPanel.zoomStyle === 1) {
-                const normalizedDistance = distance / Math.max(0.001, halfPrimary)
-                if (normalizedDistance < bestDistance) {
-                    bestDistance = normalizedDistance
-                    bestIndex = i
-                }
-            } else if (distance < bestDistance) {
-                bestDistance = distance
-                bestIndex = i
-            }
-        }
-        return bestIndex
-    }
-
-    function applyHoveredItemHit(index, source, rawIndex, resolution) {
+    function _compactMediaWidgetGeometry(index) {
         const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
-        if (!item) return
-        _zoomActive = true
-        _compactMediaMagnificationIndex = item.isMediaPlayer
-            && DockSettings.mediaPlayerDisplayMode === 0 ? index : -1
-        if (hoveredIndex !== index) {
-            hoveredIndex = index
-            hoveredName = item.displayName
-            if (!externalDropArea.externalFileDragActive)
-                tooltipTimer.restart()
-        }
-        if (DockView.mediaHoverDebugEnabled)
-            traceHitTestResolution(source, rawIndex, index, resolution)
+        const widget = item ? item.mediaPlayerWidget : null
+        if (!widget) return null
+        const a = widget.mapToItem(root, 0, 0)
+        const b = widget.mapToItem(root, widget.width, 0)
+        const c = widget.mapToItem(root, 0, widget.height)
+        const d = widget.mapToItem(root, widget.width, widget.height)
+        const left = Math.min(a.x, b.x, c.x, d.x)
+        const top = Math.min(a.y, b.y, c.y, d.y)
+        const right = Math.max(a.x, b.x, c.x, d.x)
+        const bottom = Math.max(a.y, b.y, c.y, d.y)
+        return { x: left, y: top, width: right - left, height: bottom - top,
+            visible: widget.visible }
     }
 
-    function compactMediaCandidateIndex() {
-        if (DockSettings.mediaPlayerDisplayMode !== 0) return -1
-        const candidates = [_compactMediaMagnificationIndex, _mediaPopupHoldIndex]
-        for (const index of candidates) {
-            if (index < 0 || index >= dockRepeater.count) continue
-            const item = dockRepeater.itemAt(index)
-            if (!item || !item.isMediaPlayer) continue
-            if (index === _mediaPopupHoldIndex
-                    && (!item.mediaPlayerWidget || !item.mediaPlayerWidget.diagnosticPopupVisible))
-                continue
-            return index
+    function _dockIndexForEntryId(entryId) {
+        if (!entryId) return -1
+        for (let i = 0; i < dockRepeater.count; ++i) {
+            const item = dockRepeater.itemAt(i)
+            if (item && item.dockEntryId === entryId) return i
         }
         return -1
+    }
+
+    function _setCompactMagnificationAnchor(index) {
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        const isCompactMedia = item && item.isMediaPlayer
+            && DockSettings.mediaPlayerDisplayMode === 0
+        _compactMediaMagnificationIndex = isCompactMedia ? index : -1
+        _compactMediaMagnificationEntryId = isCompactMedia ? item.dockEntryId : ""
+    }
+
+    function _currentCompactMagnificationAnchor() {
+        if (DockSettings.mediaPlayerDisplayMode !== 0) return -1
+        const index = _compactMediaMagnificationEntryId.length > 0
+            ? _dockIndexForEntryId(_compactMediaMagnificationEntryId)
+            : _compactMediaMagnificationIndex
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        if (!item || !item.isMediaPlayer) {
+            _setCompactMagnificationAnchor(-1)
+            return -1
+        }
+        _compactMediaMagnificationIndex = index
+        _compactMediaMagnificationEntryId = item.dockEntryId
+        return index
+    }
+
+    // The popup hold tracks popup lifecycle. Its entry ID is resolved against
+    // the current delegate order; the held index alone never constitutes a hit.
+    function compactMediaCandidateIndex() {
+        if (DockSettings.mediaPlayerDisplayMode !== 0 || _mediaPopupHoldIndex < 0)
+            return -1
+        const index = _mediaPopupHoldEntryId.length > 0
+            ? _dockIndexForEntryId(_mediaPopupHoldEntryId) : _mediaPopupHoldIndex
+        if (index < 0 || index >= dockRepeater.count) return -1
+        const item = dockRepeater.itemAt(index)
+        if (!item || !item.isMediaPlayer
+                || (_mediaPopupHoldEntryId.length > 0
+                    && item.dockEntryId !== _mediaPopupHoldEntryId)
+                || !item.mediaPlayerWidget || !item.mediaPlayerWidget.diagnosticPopupVisible)
+            return -1
+        return index
     }
 
     function compactMediaWidgetContainsPointer(index, sampleX, sampleY) {
@@ -1351,40 +1165,205 @@ Item {
             && localPoint.y >= 0 && localPoint.y <= widget.height
     }
 
-    function compactMediaMagnificationHit(sampleX, sampleY, source = "hit-test") {
-        const index = _compactMediaMagnificationIndex
-        if (index < 0 || index >= dockRepeater.count) {
-            if (DockView.mediaHoverDebugEnabled)
-                traceCompactFallback(source, -1, "no-saved-compact-anchor", -1)
-            return -1
+    // Resolve every pointer sample through this single dock-item geometry pass.
+    // The established Parabolic and In-place calculations remain unchanged;
+    // Compact retention is only considered after an ordinary item hit misses.
+    function resolveDockItemHit(sampleX, sampleY, entryEnvelope = false, source = "hit-test") {
+        let rawIndex = -1
+        let bestDistance = Infinity
+        let bestNormalizedDistance = Infinity
+        const parabolic = dockPanel.zoomStyle !== 1
+        const hysteresisFactor = 0.25
+        const maxExtension = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
+        let rowNear = DockView.isVertical ? dockRow.x : dockRow.y
+        let rowFar = rowNear + (DockView.isVertical ? dockRow.width : dockRow.height)
+        if (DockView.edge === 0 || DockView.edge === 2)
+            rowFar += maxExtension
+        else
+            rowNear -= maxExtension
+        const outsideRowDepth = sampleY < rowNear || sampleY > rowFar
+
+        if (parabolic) {
+            let slot = -1
+            let slotDistance = Infinity
+            for (let i = 0; i < dockRepeater.count; ++i) {
+                const item = dockRepeater.itemAt(i)
+                if (!item) continue
+                if (outsideRowDepth && item.isMediaPlayer
+                        && DockSettings.mediaPlayerDisplayMode === 0)
+                    continue
+                const distance = Math.abs(sampleX - (item.itemCenterX + item.currentOffset))
+                const hitScale = entryEnvelope && !outsideRowDepth
+                    ? Math.max(item.currentScale, DockSettings.maxZoomFactor) : item.currentScale
+                const halfPrimary = DockSettings.iconSize * hitScale / 2 + DockSettings.iconSpacing / 2
+                if (distance <= halfPrimary && distance < slotDistance) {
+                    slot = i
+                    slotDistance = distance
+                }
+            }
+            const slotItem = slot >= 0 ? dockRepeater.itemAt(slot) : null
+            if (slotItem) {
+                const hitScale = entryEnvelope
+                    ? Math.max(slotItem.currentScale, DockSettings.maxZoomFactor) : slotItem.currentScale
+                const span = _secondarySpan(slotItem, hitScale)
+                if (sampleY >= span.near && sampleY <= span.far)
+                    rawIndex = slot
+            }
+        } else {
+            for (let i = 0; i < dockRepeater.count; ++i) {
+                const item = dockRepeater.itemAt(i)
+                if (!item) continue
+                if (outsideRowDepth && item.isMediaPlayer
+                        && DockSettings.mediaPlayerDisplayMode === 0)
+                    continue
+                const hitScale = entryEnvelope && !outsideRowDepth
+                    ? Math.max(item.currentScale, DockSettings.maxZoomFactor) : item.currentScale
+                const distance = Math.abs(sampleX - item.itemCenterX)
+                const halfPrimary = ((DockView.isVertical ? item.height : item.width) * hitScale) / 2
+                const normalizedDistance = distance / Math.max(0.001, halfPrimary)
+                const sticky = i === hoveredIndex
+                if (normalizedDistance >= (sticky ? 1.0 + hysteresisFactor : 1.0)) continue
+                const span = _secondarySpan(item, hitScale)
+                if (sampleY < span.near || sampleY > span.far) continue
+                const score = sticky ? normalizedDistance * (1.0 - hysteresisFactor) : normalizedDistance
+                if (score < bestNormalizedDistance) {
+                    rawIndex = i
+                    bestNormalizedDistance = score
+                }
+            }
         }
-        if (DockSettings.mediaPlayerDisplayMode !== 0) {
-            if (DockView.mediaHoverDebugEnabled)
-                traceCompactFallback(source, -1, "media-display-mode-is-not-compact", -1)
-            return -1
+
+        if (rawIndex >= 0) {
+            const item = dockRepeater.itemAt(rawIndex)
+            const procedure = parabolic ? "parabolic-visible-slot" : "in-place-scaled-bounds"
+            _lastHitTestResolution = {
+                source: source, procedure: procedure, reason: "ordinary-item-geometry",
+                rawIndex: rawIndex, resolvedIndex: rawIndex,
+                candidateEntryId: item.dockEntryId, geometry: _dockItemHitGeometry(item)
+            }
+            return { rawIndex: rawIndex, resolvedIndex: rawIndex,
+                reason: "ordinary-item-geometry", procedure: procedure, candidateIndex: rawIndex }
         }
-        const item = dockRepeater.itemAt(index)
-        if (!item || !item.isMediaPlayer) {
-            if (DockView.mediaHoverDebugEnabled)
-                traceCompactFallback(source, -1, "saved-anchor-is-not-media", -1)
-            return -1
+
+        // Preserve the existing out-of-row actual-widget geometry and the
+        // in-row in-motion envelope for the active stable-ID anchor.
+        const activeIndex = _currentCompactMagnificationAnchor()
+        if (activeIndex >= 0) {
+            const item = dockRepeater.itemAt(activeIndex)
+            if (outsideRowDepth
+                    && compactMediaWidgetContainsPointer(activeIndex, sampleX, sampleY)) {
+                _lastHitTestResolution = {
+                    source: source, procedure: "dock-item-geometry",
+                    reason: "active-compact-visible-geometry", rawIndex: -1,
+                    resolvedIndex: activeIndex, candidateEntryId: item.dockEntryId,
+                    geometry: _dockItemHitGeometry(item),
+                    widgetGeometry: _compactMediaWidgetGeometry(activeIndex)
+                }
+                return { rawIndex: -1, resolvedIndex: activeIndex,
+                    reason: "active-compact-visible-geometry",
+                    procedure: "dock-item-geometry", candidateIndex: activeIndex,
+                    releaseZoom: false }
+            }
+            const scale = DockSettings.maxZoomFactor
+            const center = item.itemCenterX + item.currentOffset
+            const halfPrimary = ((DockView.isVertical ? item.height : item.width) * scale) / 2
+            const span = _secondarySpan(item, scale)
+            if (!outsideRowDepth && Math.abs(sampleX - center) <= halfPrimary
+                    && sampleY >= span.near && sampleY <= span.far) {
+                _lastHitTestResolution = {
+                    source: source, procedure: "dock-item-geometry",
+                    reason: "active-compact-zoom-envelope", rawIndex: -1,
+                    resolvedIndex: activeIndex, candidateEntryId: item.dockEntryId,
+                    geometry: _dockItemHitGeometry(item)
+                }
+                return { rawIndex: -1, resolvedIndex: activeIndex,
+                    reason: "active-compact-zoom-envelope",
+                    procedure: "dock-item-geometry", candidateIndex: activeIndex }
+            }
         }
-        const scale = DockSettings.maxZoomFactor
-        const center = item.itemCenterX + item.currentOffset
-        const halfPrimary = ((DockView.isVertical ? item.height : item.width) * scale) / 2
-        const span = _secondarySpan(item, scale)
-        const insideEnvelope = Math.abs(sampleX - center) <= halfPrimary
-                && sampleY >= span.near && sampleY <= span.far
+
+        // A popup candidate may recover a lost anchor, but only a sample inside
+        // the widget's current transformed rectangle can select it. Since this
+        // follows the normal loop, any actual neighbor hit has priority.
+        const popupCandidate = compactMediaCandidateIndex()
+        if (popupCandidate >= 0 && compactMediaWidgetContainsPointer(popupCandidate, sampleX, sampleY)) {
+            const item = dockRepeater.itemAt(popupCandidate)
+            _lastHitTestResolution = {
+                source: source, procedure: "dock-item-geometry",
+                reason: "popup-compact-visible-geometry", rawIndex: -1,
+                resolvedIndex: popupCandidate, candidateEntryId: item.dockEntryId,
+                geometry: _dockItemHitGeometry(item)
+            }
+            return { rawIndex: -1, resolvedIndex: popupCandidate,
+                reason: "popup-compact-visible-geometry",
+                procedure: "dock-item-geometry", candidateIndex: popupCandidate }
+        }
+
+        const reason = outsideRowDepth ? "outside-row-depth"
+            : popupCandidate >= 0 ? "popup-candidate-outside-visible-geometry"
+            : activeIndex >= 0 ? "outside-active-compact-envelope" : "no-ordinary-hit"
+        const candidateIndex = popupCandidate >= 0 ? popupCandidate : activeIndex
+        _lastHitTestResolution = {
+            source: source, procedure: "dock-item-geometry", reason: reason,
+            rawIndex: -1, resolvedIndex: -1, candidateIndex: candidateIndex,
+            candidateEntryId: candidateIndex >= 0 && candidateIndex < dockRepeater.count
+                ? dockRepeater.itemAt(candidateIndex).dockEntryId : ""
+        }
+        return { rawIndex: -1, resolvedIndex: -1, reason: reason,
+            procedure: "dock-item-geometry", candidateIndex: candidateIndex }
+    }
+
+    function updateHoveredItem(entryEnvelope = false,
+                               sampleX = dockPanel.mouseX,
+                               sampleY = dockPanel.mouseY,
+                               source = "updateHoveredItem") {
+        if (_hoverHeld) return
+        if (sampleX < 0) {
+            const previousAnchor = _compactMediaMagnificationIndex
+            hoveredIndex = -1
+            hoveredName = ""
+            _zoomActive = false
+            _setCompactMagnificationAnchor(-1)
+            _lastHitTestResolution = { source: source, procedure: "none",
+                reason: "sample-outside-dock-zone", rawIndex: -1, resolvedIndex: -1 }
+            if (DockView.mediaHoverDebugEnabled)
+                traceHitTestResolution(source, -1, -1,
+                    previousAnchor >= 0 ? "sample-outside-dock-zone" : "sample-outside-dock-zone-no-anchor",
+                    "none", compactMediaCandidateIndex())
+            return
+        }
+        // Do not re-hover stale coordinates while another surface owns input.
+        // A subsequent valid enter/motion sample always reaches the resolver.
+        if (!_pointerOnDock) return
+
+        const resolution = resolveDockItemHit(sampleX, sampleY, entryEnvelope, source)
+        const index = resolution.resolvedIndex
+        if (index >= 0) {
+            _zoomActive = true
+            _setCompactMagnificationAnchor(index)
+            if (hoveredIndex !== index) {
+                hoveredIndex = index
+                hoveredName = dockRepeater.itemAt(index).displayName
+                if (!externalDropArea.externalFileDragActive)
+                    tooltipTimer.restart()
+            }
+        } else {
+            _setCompactMagnificationAnchor(-1)
+            hoveredIndex = -1
+            hoveredName = ""
+            if (resolution.releaseZoom === true || resolution.reason === "outside-row-depth")
+                _zoomActive = false
+            // Keep zoom active across the ordinary primary-axis gap hysteresis.
+            // A true outside-zone sample above still releases it immediately.
+        }
         if (DockView.mediaHoverDebugEnabled)
-            traceCompactFallback(source, insideEnvelope ? index : -1,
-                insideEnvelope ? "inside-compact-maximum-zoom-envelope" : "outside-compact-maximum-zoom-envelope",
-                -1)
-        return insideEnvelope ? index : -1
+            traceHitTestResolution(source, resolution.rawIndex, index, resolution.reason,
+                                   resolution.procedure, resolution.candidateIndex)
     }
 
     function _shouldRetainCompactMediaMagnificationOnSurfaceLeave(failures = null) {
         if (!failures) {
-            const index = _compactMediaMagnificationIndex
+            const index = _currentCompactMagnificationAnchor()
             if (DockSettings.magnificationMode !== 1
                     || DockSettings.mediaPlayerDisplayMode !== 0
                     || _dragActive || !_pointerOnDock || !_zoomActive
@@ -1397,7 +1376,7 @@ Item {
             return !!item && item.isMediaPlayer
         }
         const rejected = []
-        const index = _compactMediaMagnificationIndex
+        const index = _currentCompactMagnificationAnchor()
         if (DockSettings.magnificationMode !== 1) rejected.push("not-spring-mode")
         if (DockSettings.mediaPlayerDisplayMode !== 0) rejected.push("not-compact-media-mode")
         if (_dragActive) rejected.push("drag-active")
@@ -1449,7 +1428,8 @@ Item {
         _pointerOnDock = false
         _hoverReconciling = false
         const anchorBeforeLeave = _compactMediaMagnificationIndex
-        _compactMediaMagnificationIndex = -1
+        const anchorEntryIdBeforeLeave = _compactMediaMagnificationEntryId
+        _setCompactMagnificationAnchor(-1)
         PreviewController.clearDismissedTask()
         if (mediaPopupKeepsDockVisible) {
             // Keep the dock visible for the independent media popup lifecycle,
@@ -1468,8 +1448,12 @@ Item {
         hoveredName = ""
         if (anchorBeforeLeave >= 0) {
             _lastTracedCompactAnchor = -1
+            _lastTracedCompactAnchorEntryId = ""
             traceMagnificationState("compact-anchor-cleared", anchorBeforeLeave,
-                "_pointerLeft", anchorBeforeLeave, -1, { clearReason: "real-surface-leave" })
+                "_pointerLeft", anchorBeforeLeave, -1, {
+                    clearReason: "real-surface-leave",
+                    compactMagnificationEntryId: anchorEntryIdBeforeLeave
+                })
         }
         // Hide preview with delay (allows mouse to move to preview surface)
         PreviewController.hidePreviewDelayed()
@@ -1491,8 +1475,20 @@ Item {
     }
 
     function holdMediaPopup(index) {
-        if (index >= 0 && index < dockRepeater.count)
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        if (item) {
             _mediaPopupHoldIndex = index
+            _mediaPopupHoldEntryId = item.isMediaPlayer ? item.dockEntryId : ""
+            if (DockView.mediaHoverDebugEnabled)
+                traceMagnificationState("media-popup-hit-test-candidate-held", index,
+                    "holdMediaPopup", hoveredIndex, index, {
+                        popupHoldIndex: index,
+                        popupHoldEntryId: _mediaPopupHoldEntryId,
+                        candidateGeometry: _dockItemHitGeometry(item),
+                        candidateWidgetGeometry: item.isMediaPlayer
+                            ? _compactMediaWidgetGeometry(index) : null
+                    })
+        }
     }
 
     function mediaPopupGeometrySnapshot(index) {
@@ -1511,7 +1507,9 @@ Item {
             pointerPanel: dockPanel ? { x: dockPanel.mouseX, y: dockPanel.mouseY } : null,
             hoveredIndex: hoveredIndex,
             mediaPopupHoldIndex: _mediaPopupHoldIndex,
+            mediaPopupHoldEntryId: _mediaPopupHoldEntryId,
             compactMagnificationIndex: _compactMediaMagnificationIndex,
+            compactMagnificationEntryId: _compactMediaMagnificationEntryId,
             zoomActive: _zoomActive,
             springFactor: dockPanel ? dockPanel.zoomAmount : 0,
             springTargetAmount: dockPanel && dockPanel.magnificationMode === 1
@@ -1525,9 +1523,26 @@ Item {
     }
 
     function releaseMediaPopup(index) {
-        if (_mediaPopupHoldIndex !== index)
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        const releasingId = item ? item.dockEntryId : ""
+        if (_mediaPopupHoldEntryId.length > 0) {
+            if (releasingId.length > 0 && releasingId !== _mediaPopupHoldEntryId)
+                return
+            if (releasingId.length === 0 && _mediaPopupHoldIndex !== index)
+                return
+        } else if (_mediaPopupHoldIndex !== index) {
             return
+        }
         _mediaPopupHoldIndex = -1
+        const releasedEntryId = _mediaPopupHoldEntryId
+        _mediaPopupHoldEntryId = ""
+        if (DockView.mediaHoverDebugEnabled)
+            traceMagnificationState("media-popup-hit-test-candidate-released", index,
+                "releaseMediaPopup", hoveredIndex, -1, {
+                    releasedEntryId: releasedEntryId,
+                    popupHoldIndex: -1,
+                    popupHoldEntryId: ""
+                })
         Qt.callLater(() => {
             if (!DockView.pointerInside) {
                 root._pointerLeft()
