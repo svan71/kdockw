@@ -19,6 +19,7 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
+- Kept Compact media magnification targeted through the synthetic dock-surface leave while the pointer remains on the dock, so opening the hover popup no longer retargets the spring to rest.
 - Kept media-widget hover activation available while Spring Magnification briefly reports no hit-tested dock item, including over composite control buttons.
 - Kept the media hover popup open across QtWayland's synthetic dock leave while the pointer remains on the media widget, and tracked hover across composite media controls.
 - Preserved media-widget hover ownership through the synthetic Qt Quick leave caused by opening its popup, resolving that ownership only after real dock pointer motion.

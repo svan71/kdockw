@@ -2529,8 +2529,13 @@ Item {
             const its = items(dock)
             const media = its.find(item => item.isMediaPlayer)
             const neighbor = its.find(item => !item.isMediaPlayer)
+            const panel = media.parent.parent
             const spring = findChild(dock, "dockSpringZoomController")
             verify(media && neighbor && spring)
+            DockView.mediaHoverDebugEnabled = true
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
             const mediaCenter = media.mapToItem(dock, media.width / 2, media.height / 2)
             dock._handleDockPointerEntered(mediaCenter.x, mediaCenter.y)
             tryCompare(dock, "hoveredIndex", media.index)
@@ -2541,6 +2546,22 @@ Item {
             tryVerify(() => spring.targetAmount > 0.99, 1000,
                 "the spring target did not rise on Compact hover")
 
+            const scaleBeforeSurfaceLeave = media.currentScale
+            dock._pointerLeft()
+            compare(dock.hoveredIndex, media.index,
+                "a transient surface leave cleared the Compact media anchor")
+            verify(dock._zoomActive,
+                "a transient surface leave deactivated Compact Spring Magnification")
+            verify(panel.mouseX >= 0,
+                "a transient surface leave discarded the stationary pointer anchor")
+            compare(spring.targetAmount, 1.0,
+                "a transient surface leave retargeted the spring before popup open")
+            verify(media.currentScale >= scaleBeforeSurfaceLeave - 0.02,
+                "the Compact icon began shrinking before the popup opened")
+            verify(DockView.mediaHoverEvents.some(event =>
+                event.event === "compact-media-surface-leave-retained"),
+                "the transient Compact leave was not identified in the hover trace")
+
             const loader = T.findFirst(media, item => item.objectName === "mediaPlayerWidgetLoader")
             tryVerify(() => loader && loader.item, 1000)
             const widget = loader.item
@@ -2548,6 +2569,8 @@ Item {
             const scaleBeforePopup = media.currentScale
             widget.openPinned()
             tryVerify(() => popup.visible, 1500, "the explicit popup did not open")
+            tryCompare(spring, "targetAmount", 1.0, 1000,
+                "the spring target dropped while the Compact popup opened")
             compare(spring.targetAmount, 1.0,
                 "opening the popup must not retarget magnification to rest")
             verify(media.currentScale >= scaleBeforePopup - 0.05,
@@ -2556,6 +2579,8 @@ Item {
 
             hoverItem(neighbor)
             tryCompare(dock, "hoveredIndex", neighbor.index)
+            tryCompare(spring, "targetAmount", 1.0, 1000,
+                "neighbor hover did not take over the spring target")
             tryVerify(() => media.currentScale < 1.05, 1500,
                 "moving to a neighbor did not return the media icon to rest")
             tryVerify(() => neighbor.currentScale > 1.05, 1500,

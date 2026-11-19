@@ -1102,6 +1102,20 @@ Item {
                 && sampleY >= span.near && sampleY <= span.far ? index : -1
     }
 
+    function _shouldRetainCompactMediaMagnificationOnSurfaceLeave() {
+        const index = _compactMediaMagnificationIndex
+        if (DockSettings.magnificationMode !== 1
+                || DockSettings.mediaPlayerDisplayMode !== 0
+                || _dragActive || !_pointerOnDock || !_zoomActive
+                || index < 0 || index >= dockRepeater.count
+                || hoveredIndex !== index
+                || !DockView.pointerInside || !DockView.pointerFocusKnown
+                || DockView.pointerFocusWindow !== root.Window.window)
+            return false
+        const item = dockRepeater.itemAt(index)
+        return !!item && item.isMediaPlayer
+    }
+
     // Pointer left the dock: release zoom and hover unless the preview keeps
     // them (dock→preview transition), and end a drag as a drag-out.
     function _pointerLeft() {
@@ -1110,6 +1124,23 @@ Item {
             _hoverReconciling = false
             PreviewController.cancelHide()
             DockVisibility.setHovered(true)
+            return
+        }
+        // Qt Quick can send a local MouseArea leave while the compositor still
+        // reports the stationary pointer on the dock surface as the media
+        // popup is being prepared. Preserve the Compact target through that
+        // surface-local transition; real pointer movement or surface focus
+        // leaving the dock will take the normal cleanup path below.
+        if (_shouldRetainCompactMediaMagnificationOnSurfaceLeave()) {
+            DockView.traceMediaHover("compact-media-surface-leave-retained", {
+                index: _compactMediaMagnificationIndex,
+                hoveredIndex: hoveredIndex,
+                pointerMotionSerial: pointerMotionSerial,
+                springTargetAmount: dockPanel && dockPanel.magnificationMode === 1
+                    ? springZoom.targetAmount : 0,
+                pointerInside: DockView.pointerInside,
+                focusIsDock: DockView.pointerFocusWindow === root.Window.window
+            })
             return
         }
         _pointerOnDock = false

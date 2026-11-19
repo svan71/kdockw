@@ -725,3 +725,25 @@ to a neighboring icon to confirm the existing close delay and magnification
 handoff. Repeat the stationary open in Controls and Expanded. After the
 review, restore stable v0.6.0 with
 `tools/kdockw-v070-dev-stop-and-restore`.
+
+## Compact magnification correction — 2026-11-19
+
+### Trace finding and correction
+
+The eighth-cycle trace `diagnostics/v070-dev/logs/media-hover-media-hover-stationary-20261118-20261118-174605343396216.jsonl` records the spring target at `1` and current scale `1.0653` at monotonic `53516109`. At `53516110`, `dock-hit-test-changed` records `hoveredIndex=-1`, `zoomActive=false`, and `springTargetAmount=0`, while the compositor still reports the pointer inside and focused on the dock and `pointerMotionSerial` remains `607`. The hover-open timer fires at `53516373`; the popup hold is acquired at `53516374`, after the target has already fallen. Popup open is requested at `53516378`; the icon reaches scale `1.0` by popup activation/visibility (`53516456`/`53516636`).
+
+In `main.qml`, `_pointerLeft()` clears the dock pointer coordinates and `_zoomActive` before popup hold exists. Those assignments make `dockPanel.mouseInside` false and retarget Spring Magnification to zero. The trace confirms this state sequence and rules out actual pointer motion or a compositor surface leave at the reset moment. A synthetic local leave is consistent with the path and the owner's video, but the previous trace did not record the direct caller. A diagnostic event now marks the narrow retained-leave branch for the next run.
+
+The minimal change retains the existing Compact media anchor only while Spring mode is active, the same Compact media item remains hit-tested, no drag is active, and the compositor still reports the pointer inside/focused on the dock surface. No popup gate, timer, lifecycle, or spring parameter changed. Once focus/pointer leaves the dock, or a real pointer hit moves to a neighbor, normal cleanup and spring handoff continue. The trace's ordinary Window Preview control kept `springTargetAmount=1` with scale above `1.4`; the owner's video likewise shows the Obsidian icon remaining magnified while its preview is open.
+
+### Regression and verification
+
+- `test_compactMediaSpringStartsBeforePopupAndTracksPointerAfterward` now checks current scale and target through hover, simulated surface leave, popup open, and neighbor handoff. It also checks the diagnostic marker. The exact isolated test passed: 3 QtTest phases, 0 failed.
+- The first full affected QML suite run failed because the new test referenced a non-exported `dock.dockPanel` alias. The test now obtains the actual panel from the media delegate; the isolated scenario passed afterward. The failed initial run is retained here; the corrected full runs below passed.
+- Production Release CTest: **230/230 passed** (195.28 s). Diagnostic Release CTest: **234/234 passed** (198.22 s), both with `TMPDIR=/tmp`.
+- Launcher `--preflight-only --profile media-compact-scale-20261119 --media-hover-debug` passed. Source executable, staged ELF, and running candidate all have GNU Build ID `0b0dba5b23145366b27dac5092766297ceebe1f8`; version is `0.7.0-dev`. Source/stage Russian MO SHA-256 matches: `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`. `msgfmt --check --check-format`, launcher shell syntax, and `git diff --check` passed.
+- The candidate is active in isolated profile `media-compact-scale-20261119` with `--media-hover-debug`; trace: `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-091101399801831.jsonl`. Stable `/usr/bin/kdockw` v0.6.0 is paused for owner visual review. Production config was backed up with mode/owner preserved; both files hash to `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`.
+
+### Acceptance status
+
+Automated verification confirms the spring target remains at `1` through the simulated transient leave and popup opening, then transfers to a neighbor in the QML test. Real Plasma/Wayland visual verification of the corrected Compact icon is **NOT VERIFIED** until owner review. Do not mark the feature or stage done; keep both PM Compass cards in `review`. No release, tag, or push was created.
