@@ -2622,6 +2622,210 @@ Item {
                 "Spring Magnification did not transfer to the neighbor")
         }
 
+        function test_compactHitTestSurvivesRowDepthMissAndPopupRoundTrip_data() {
+            const data = []
+            for (const edge of dockEdges()) {
+                for (const zoomStyle of [0, 1])
+                    data.push({ tag: `${edge.tag}-zoom-${zoomStyle}`, edge: edge.edge, zoomStyle })
+            }
+            return data
+        }
+
+        function test_compactHitTestSurvivesRowDepthMissAndPopupRoundTrip(data) {
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.zoomStyle = data.zoomStyle
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.maxZoomFactor = 1.7
+            DockView.edge = data.edge
+            DockView.mediaHoverDebugEnabled = true
+            DockView.mediaHoverEvents = []
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:row-depth-round-trip",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            addTasks(["Neighbor"])
+
+            const dock = makeDock(2)
+            const media = items(dock).find(item => item.isMediaPlayer)
+            const panel = findChild(dock, "dockPanel")
+            const row = media ? media.parent : null
+            const spring = findChild(dock, "dockSpringZoomController")
+            verify(media && panel && row && spring)
+            tryVerify(() => media.mediaPlayerWidget, 2000)
+            const widget = media.mediaPlayerWidget
+
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            const initial = centerOf(media)
+            dock._handleDockPointerEntered(initial.x, initial.y)
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryCompare(spring, "targetAmount", 1.0)
+            tryCompare(media, "currentScale", DockSettings.maxZoomFactor)
+
+            widget.openPinned()
+            tryVerify(() => widget.diagnosticPopupVisible, 1500)
+            compare(dock._mediaPopupHoldIndex, media.index)
+
+            // Reproduce the captured edge case at every edge/style: the pointer
+            // remains in the visible widget while crossing the coarse row-depth
+            // boundary by a fraction of a logical pixel.
+            const maxExt = Math.ceil(DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0))
+            const rowNear = DockView.isVertical ? row.x : row.y
+            const rowFar = rowNear + (DockView.isVertical ? row.width : row.height)
+            const growTowardFar = DockView.edge === 0 || DockView.edge === 2
+            const hitNear = growTowardFar ? rowNear : rowNear - maxExt
+            const hitFar = growTowardFar ? rowFar + maxExt : rowFar
+            let missPoint = null
+            for (let cross = 0.1; cross < (DockView.isVertical ? widget.width : widget.height); cross += 0.1) {
+                const localX = DockView.isVertical ? cross : widget.width / 2
+                const localY = DockView.isVertical ? widget.height / 2 : cross
+                const point = widget.mapToItem(panel, localX, localY)
+                const secondary = DockView.isVertical ? point.x : point.y
+                if (secondary < hitNear || secondary > hitFar) {
+                    missPoint = { cross, panelPoint: point,
+                        primary: DockView.isVertical ? point.y : point.x,
+                        secondary: DockView.isVertical ? point.x : point.y,
+                        rootPoint: widget.mapToItem(dock, localX, localY) }
+                    break
+                }
+            }
+            verify(missPoint, "fixture did not find a Compact point outside row depth")
+            verify(missPoint.cross >= 0 && missPoint.cross <= (DockView.isVertical ? widget.width : widget.height),
+                "the reproduced point must remain inside the visible widget bounds")
+            verify(dock.compactMediaWidgetContainsPointer(media.index,
+                missPoint.primary, missPoint.secondary),
+                "the test point must be inside the mapped visible Compact bounds")
+            dock._pointerRootX = missPoint.rootPoint.x
+            dock._pointerRootY = missPoint.rootPoint.y
+            dock._pointerOnDock = true
+            dock.updateHoveredItem(false, missPoint.primary, missPoint.secondary,
+                "test-row-depth-boundary")
+            compare(dock._compactMediaMagnificationIndex, media.index,
+                "a row-depth miss inside the Compact widget discarded its candidate")
+            verify(DockView.mediaHoverEvents.some(event =>
+                event.event === "magnification-hit-test"
+                && event.details.fallbackReason === "inside-visible-compact-widget-outside-row-depth"),
+                "the row-depth miss did not resolve through the bounded Compact geometry fallback")
+            compare(dock.hoveredIndex, media.index)
+            verify(dock._zoomActive)
+            compare(spring.targetAmount, 1.0)
+            verify(widget.diagnosticPopupVisible, "row-depth resolution changed popup visibility")
+            compare(dock._mediaPopupHoldIndex, media.index)
+
+            // Detached surface ownership releases the active spring target,
+            // while the popup's item identity remains available for re-entry.
+            DockView.pointerFocusWindow = widget.popupWindow
+            dock._pointerLeft()
+            tryCompare(spring, "targetAmount", 0.0)
+            verify(!dock._zoomActive)
+            compare(dock._mediaPopupHoldIndex, media.index)
+            verify(widget.diagnosticPopupVisible)
+
+            DockView.pointerFocusWindow = dock.Window.window
+            dock._pointerOnDock = true
+            const returnPoint = centerOf(media)
+            dock._pointerRootX = returnPoint.x
+            dock._pointerRootY = returnPoint.y
+            dock.trackPointer(returnPoint.x, returnPoint.y, true, "test-popup-return")
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryCompare(spring, "targetAmount", 1.0)
+            compare(dock._compactMediaMagnificationIndex, media.index)
+            verify(widget.diagnosticPopupVisible, "returning to Compact closed the popup")
+            compare(dock._mediaPopupHoldIndex, media.index)
+
+            // The saved popup candidate must never activate outside the actual
+            // widget rectangle, even when its old maximum-scale envelope does.
+            let outside = null
+            const crossExtent = DockView.isVertical ? widget.width : widget.height
+            for (let cross = -2; cross <= crossExtent + 2; cross += 0.1) {
+                const localX = DockView.isVertical ? cross : widget.width / 2
+                const localY = DockView.isVertical ? widget.height / 2 : cross
+                const point = widget.mapToItem(panel, localX, localY)
+                const secondary = DockView.isVertical ? point.x : point.y
+                if ((secondary < hitNear || secondary > hitFar)
+                        && !dock.compactMediaWidgetContainsPointer(media.index,
+                            DockView.isVertical ? point.y : point.x, secondary)) {
+                    outside = { point, localX, localY, secondary,
+                        primary: DockView.isVertical ? point.y : point.x,
+                        root: widget.mapToItem(dock, localX, localY) }
+                    break
+                }
+            }
+            verify(outside, "fixture did not find an outside point beyond the row-depth envelope")
+            const outsidePrimary = outside.primary
+            const outsideSecondary = outside.secondary
+            dock._pointerRootX = outside.root.x
+            dock._pointerRootY = outside.root.y
+            dock.updateHoveredItem(false, outsidePrimary, outsideSecondary,
+                "test-compact-visible-bounds-negative")
+            verify(!dock.compactMediaWidgetContainsPointer(media.index, outsidePrimary, outsideSecondary))
+            verify(dock.hoveredIndex !== media.index,
+                "popup candidate activated Compact outside its visible bounds")
+
+            const targets = DockView.mediaHoverEvents
+                .filter(event => event.event === "spring-target-change")
+                .map(event => event.details.springTargetAmount)
+            verify(targets.indexOf(1) >= 0 && targets.indexOf(0) > targets.indexOf(1)
+                   && targets.lastIndexOf(1) > targets.indexOf(0),
+                "Compact → popup → Compact must target 1 → 0 → 1")
+            widget.openPinned()
+            tryVerify(() => !widget.diagnosticPopupVisible, 1500)
+            tryCompare(dock, "_mediaPopupHoldIndex", -1)
+        }
+
+        function test_staleMediaPopupIndexCannotSelectAnotherDockEntry() {
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:stale-index",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Neighbor",
+                entryId: "task:stale-index-neighbor",
+                AppId: "org.example.stale-index-neighbor",
+                IsWindow: true,
+                IsLauncher: false,
+            })
+
+            const dock = makeDock(2)
+            const media = items(dock).find(item => item.isMediaPlayer)
+            const widget = media && media.mediaPlayerWidget
+            verify(media && widget)
+            widget.openPinned()
+            tryVerify(() => widget.diagnosticPopupVisible, 1500)
+            const heldIndex = dock._mediaPopupHoldIndex
+            compare(heldIndex, media.index)
+
+            verify(DockModel.tasksModel.moveByEntryId("task:stale-index-neighbor",
+                "widget:mediaPlayer:stale-index"))
+            tryCompare(media, "index", 1)
+            compare(dock._mediaPopupHoldIndex, heldIndex,
+                    "fixture should retain the stale popup index while the model reorders")
+            compare(dock.compactMediaCandidateIndex(), -1,
+                    "a stale popup index resolved to a different dock entry")
+
+            widget.openPinned()
+            tryVerify(() => !widget.diagnosticPopupVisible, 1500)
+        }
+
         function test_comparativeHoverTraceCapturesNormalIconStateAndOwnerMarkers() {
             DockSettings.previewEnabled = false
             DockSettings.magnificationMode = 1

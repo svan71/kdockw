@@ -1111,6 +1111,20 @@ Item {
             rowNear -= maxExt
         }
         if (sampleY < rowNear || sampleY > rowFar) {
+            // The row-depth guard is intentionally coarse. A Compact widget's
+            // live visual rectangle can extend just beyond it while the spring
+            // is moving. Resolve real icon geometry first so neighboring items
+            // keep priority, then allow only the actual Compact widget bounds.
+            const visibleHit = visibleDockItemHit(sampleX, sampleY)
+            if (visibleHit >= 0) {
+                applyHoveredItemHit(visibleHit, source, visibleHit, "visible-item-bounds-outside-row-depth")
+                return
+            }
+            const compactCandidate = compactMediaCandidateIndex()
+            if (compactMediaWidgetContainsPointer(compactCandidate, sampleX, sampleY)) {
+                applyHoveredItemHit(compactCandidate, source, -1, "inside-visible-compact-widget-outside-row-depth")
+                return
+            }
             const previousAnchor = _compactMediaMagnificationIndex
             hoveredIndex = -1
             hoveredName = ""
@@ -1260,6 +1274,81 @@ Item {
         }
         if (DockView.mediaHoverDebugEnabled)
             traceHitTestResolution(source, rawHitTestIndex, bestIndex, fallbackReason)
+    }
+
+    function visibleDockItemHit(sampleX, sampleY) {
+        let bestIndex = -1
+        let bestDistance = Infinity
+        for (let i = 0; i < dockRepeater.count; i++) {
+            const item = dockRepeater.itemAt(i)
+            if (!item) continue
+            if (item.isMediaPlayer && DockSettings.mediaPlayerDisplayMode === 0) continue
+            const scale = item.currentScale
+            const parabolic = dockPanel.zoomStyle !== 1
+            const halfPrimary = parabolic
+                ? DockSettings.iconSize * scale / 2 + DockSettings.iconSpacing / 2
+                : (DockView.isVertical ? item.height : item.width) * scale / 2
+            const center = item.itemCenterX + (parabolic ? item.currentOffset : 0)
+            const distance = Math.abs(sampleX - center)
+            if (distance > halfPrimary) continue
+            const span = _secondarySpan(item, scale)
+            if (sampleY < span.near || sampleY > span.far) continue
+            if (dockPanel.zoomStyle === 1) {
+                const normalizedDistance = distance / Math.max(0.001, halfPrimary)
+                if (normalizedDistance < bestDistance) {
+                    bestDistance = normalizedDistance
+                    bestIndex = i
+                }
+            } else if (distance < bestDistance) {
+                bestDistance = distance
+                bestIndex = i
+            }
+        }
+        return bestIndex
+    }
+
+    function applyHoveredItemHit(index, source, rawIndex, resolution) {
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        if (!item) return
+        _zoomActive = true
+        _compactMediaMagnificationIndex = item.isMediaPlayer
+            && DockSettings.mediaPlayerDisplayMode === 0 ? index : -1
+        if (hoveredIndex !== index) {
+            hoveredIndex = index
+            hoveredName = item.displayName
+            if (!externalDropArea.externalFileDragActive)
+                tooltipTimer.restart()
+        }
+        if (DockView.mediaHoverDebugEnabled)
+            traceHitTestResolution(source, rawIndex, index, resolution)
+    }
+
+    function compactMediaCandidateIndex() {
+        if (DockSettings.mediaPlayerDisplayMode !== 0) return -1
+        const candidates = [_compactMediaMagnificationIndex, _mediaPopupHoldIndex]
+        for (const index of candidates) {
+            if (index < 0 || index >= dockRepeater.count) continue
+            const item = dockRepeater.itemAt(index)
+            if (!item || !item.isMediaPlayer) continue
+            if (index === _mediaPopupHoldIndex
+                    && (!item.mediaPlayerWidget || !item.mediaPlayerWidget.diagnosticPopupVisible))
+                continue
+            return index
+        }
+        return -1
+    }
+
+    function compactMediaWidgetContainsPointer(index, sampleX, sampleY) {
+        if (index < 0 || index >= dockRepeater.count) return false
+        const item = dockRepeater.itemAt(index)
+        const widget = item ? item.mediaPlayerWidget : null
+        if (!widget || !widget.visible || widget.width <= 0 || widget.height <= 0) return false
+        const rootPoint = DockView.isVertical
+            ? dockPanel.mapToItem(root, sampleY, sampleX)
+            : dockPanel.mapToItem(root, sampleX, sampleY)
+        const localPoint = widget.mapFromItem(root, rootPoint.x, rootPoint.y)
+        return localPoint.x >= 0 && localPoint.x <= widget.width
+            && localPoint.y >= 0 && localPoint.y <= widget.height
     }
 
     function compactMediaMagnificationHit(sampleX, sampleY, source = "hit-test") {
