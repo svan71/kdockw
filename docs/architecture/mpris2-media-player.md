@@ -85,6 +85,22 @@ synthetic local leave only while KWin still reports the pointer focused on the
 dock. Valid neighboring dock hits continue through normal hit-testing and can
 start a Window Preview. When the popup closes, the dock re-evaluates the current
 pointer position. Click-pinned behavior is separate from hover timers.
+
+Compact hit-testing also accounts for the coarse row-depth guard used before the
+per-item tests. If that guard rejects a sample, KDockW first checks exact,
+current-scale geometry for ordinary dock entries; those hits take priority over
+media. It then resolves only a valid Compact candidate (the active anchor or a
+media widget whose popup still owns the dock hold) against the widget's mapped
+visible rectangle. The retained popup index identifies a possible widget but
+does not itself activate magnification or hold the spring target. Pointer
+samples are mapped from dock-panel primary/secondary coordinates with the dock
+orientation taken into account. Samples outside the visible widget continue
+through the normal leave path, and a stale hold index that now names another
+entry is rejected. Regressions cover the `1 → 0 → 1` spring-target sequence,
+popup continuity, candidate bounds, model reordering, both zoom styles, and all
+four dock edges. Automated coverage does not replace owner verification in a
+live Plasma/Wayland session.
+
 The detached `Popup.Window` is positioned and clamped against the selected
 screen and dock edge. The popup reference is explicitly named `dockDelegate`;
 this avoids shadowing the enclosing `DockItem.qml` id, which previously created

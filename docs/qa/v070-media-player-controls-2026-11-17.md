@@ -955,3 +955,74 @@ focused four-edge test passed.
   active for owner testing. Restore stable after testing with
   `tools/kdockw-v070-dev-stop-and-restore`. Visual comparison remains
   **NOT VERIFIED**; no release, tag or push was made.
+
+### 2026-11-19 — Compact row-depth hit-test correction
+
+The comparative trace
+`diagnostics/v070-dev/logs/media-hover-media-comparison-20261119-ipc-20261119-145932974940326.jsonl`
+(SHA-256 `7950b8c2820e85070abce5bbf51992463f056f65b835f2c39372d4a0d050b125`)
+confirmed that the pointer remained in the live Compact widget at `387623 ms`
+with target `1` and scale `1.6997`, then the coarse row-depth guard at
+`387624 ms` cleared the Compact anchor and retargeted the spring to `0`.
+At `387627 ms` the widget was still under the pointer. After popup surface focus
+changed at `387671 ms`, the return at `389397 ms` still hit-tested as `-1`
+because the saved anchor had been discarded. The trace shows the row-depth
+rejection and stale identity; it does not establish the duration of any
+stationary visual effect or explain all earlier reports of spring jitter.
+
+The new QML regression reproduced that failure before the source change: the
+widget was visible and the pointer sample mapped inside it, but the Compact
+anchor became `-1`. The correction limits row-depth recovery to current-geometry
+hits on other dock entries followed by a mapped visible-rectangle check for the
+active Compact anchor or a still-open popup candidate. A popup index by itself
+does not activate the spring; normal neighboring hits win, and the popup
+candidate is rejected if its index now names another model entry. Regression
+coverage checks target `1 → 0 → 1`, popup continuity, an outside-widget negative
+sample, model reordering, both zoom styles, and all four dock edges.
+
+The focused regressions passed **10/10 data cases**; the stale-index regression
+passed **3/3 QtTest phases**. Full Dock Main QML passed (100.57 s), and full Media
+Player Widget QML passed (33.39 s). Production Release CTest initially failed
+214/230 because `codex-build run` replaces outer `TMPDIR` with a long registered
+run directory; D-Bus tests failed before entering their harness with
+`Socket name too long`. Setting `TMPDIR=/tmp` inside the wrapped command fixed
+the environment: an isolated failed CLI D-Bus test passed, then full Production
+Release CTest passed **230/230** (380.30 s). Full Diagnostic Release CTest passed
+**234/234** (367.69 s).
+
+Diagnostic source and stage are version `0.7.0-dev` with matching GNU Build ID
+`e69308e1c3153fadd95e57f13a1c636eead621e6`. KService preflight passed without
+stopping stable; build/stage Russian MO catalogs match (SHA-256
+`d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`).
+`msgfmt --check --check-format`, launcher shell syntax, Python AST checks for
+the marker and runtime-observer tools, and `git diff --check` passed. Owner
+verification in live Plasma/Wayland is still pending. Keep the media feature
+card in `review`; no release, tag, or push was made.
+
+### Candidate prepared for owner hit-test review — 2026-11-19
+
+Functional change and QML regressions were committed locally as
+`97d0a8ed4786cdb5b5c78b1146e2fd3ad2a30be2`. The final guarded launcher
+preflight refreshed the isolated install tree; source, stage, and running ELF
+all report GNU Build ID `e69308e1c3153fadd95e57f13a1c636eead621e6` and version
+`0.7.0-dev`.
+
+The first launch attempt correctly refused to start beside stable PID 112061.
+With the owner's existing authorization, only
+`kdockw-v051-restored.service` was stopped; the diagnostic candidate then
+started as PID 363306 from the staged executable. Its isolated profile is
+`media-hit-test-20261119`, with `--media-hover-debug` enabled. The production
+configuration `/home/stout/.config/kdockwrc` and the permission-preserving
+profile backup
+`diagnostics/v070-dev/backups/kdockwrc.production.media-hit-test-20261119`
+both remain mode 0600, UID/GID 1000:1001, and SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`.
+
+The owner-review trace is
+`diagnostics/v070-dev/logs/media-hover-media-hit-test-20261119-20261119-161133182671671.jsonl`;
+its session-start record includes the expected executable, PID, profile,
+version, build ID, and monotonic time. The candidate is left active for the
+owner's visual check. Restore stable after the check with
+`tools/kdockw-v070-dev-stop-and-restore`. The media feature card remains
+`review`; visual behavior is **NOT VERIFIED** until owner acceptance. No
+release, tag, or push was made.

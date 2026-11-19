@@ -19,6 +19,7 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
+- Restored Compact media hit-testing when the coarse dock-row depth check misses the visible widget, while keeping ordinary item hits ahead of the bounded widget fallback.
 - Kept Compact media magnification targeted through the synthetic dock-surface leave while the pointer remains on the dock, so opening the hover popup no longer retargets the spring to rest.
 - Separated Compact magnification from the media popup lifecycle: the icon now follows pointer departure and return while the popup remains open.
 - Kept media-widget hover activation available while Spring Magnification briefly reports no hit-tested dock item, including over composite control buttons.
