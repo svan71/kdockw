@@ -96,7 +96,10 @@ does not itself activate magnification or hold the spring target. Pointer
 samples are mapped from dock-panel primary/secondary coordinates with the dock
 orientation taken into account. Samples outside the visible widget continue
 through the normal leave path, and a stale hold index that now names another
-entry is rejected. Regressions cover the `1 → 0 → 1` spring-target sequence,
+entry is rejected. The maximum-zoom envelope and In-place sticky hit are
+disabled after a coarse row-depth miss, preserving the ordinary dock row's hit
+boundary rather than extending it with Compact recovery. Regressions cover the
+`1 → 0 → 1` spring-target sequence,
 popup continuity, candidate bounds, model reordering, both zoom styles, and all
 four dock edges. Automated coverage does not replace owner verification in a
 live Plasma/Wayland session.

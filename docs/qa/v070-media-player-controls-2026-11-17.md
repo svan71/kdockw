@@ -1094,3 +1094,43 @@ profile-specific backup are mode 0600, have matching SHA-256
 `1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`, and the
 production file remains unchanged. No owner pointer sequence has yet been
 observed on this candidate.
+
+### 2026-11-19 — final row-depth parity correction and owner handoff
+
+Final code review found that the ordinary maximum-zoom envelope and In-place
+sticky hit path still bypassed the coarse row-depth rejection. They could make
+the normal resolver's accepted bounds differ from the Compact fallback's
+visible-widget bounds. Commit `8029452` gates both ordinary extensions on the
+row-depth result; no fixed-pixel compensation, extra timer, or popup lifecycle
+change was added. This preserves the single ordinary resolver and keeps the
+Compact candidate bounded by current mapped visible geometry.
+
+On this final source, the focused `qml_tst_dock_main` passed in Production
+(134.96 s) and Diagnostic (134.46 s). Full Production Release CTest passed
+**230/230** in **399.38 s**; full Diagnostic Release CTest passed **234/234** in
+**398.45 s**. `msgfmt --check --check-format`, Bash syntax, Python AST and
+`git diff --check` passed. Diagnostic source and stage are version `0.7.0-dev`
+with matching GNU Build ID `b8923699c624e5331488ee8a427a26cd956c2cb6`; Russian
+source/stage catalogs match at SHA-256
+`d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`. The
+launcher preflight passed, resolving the candidate Desktop Entry through
+KService. CMake printed `fatal: no upstream configured for branch
+codex/v0.7.0-media-controls` while checking repository metadata; configuration,
+stage install, Build ID comparison, KService preflight and launch all still
+completed. No upstream or push configuration was changed.
+
+For owner verification, one diagnostic candidate is active: PID `1198295`,
+executable
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+profile `compact-unified-20261119`, Build ID
+`b8923699c624e5331488ee8a427a26cd956c2cb6`, with `--media-hover-debug`. Trace:
+`diagnostics/v070-dev/logs/media-hover-compact-unified-20261119-20261119-200538674435992.jsonl`.
+Stable v0.6.0 is paused and launcher restore state is present. Production
+configuration `/home/stout/.config/kdockwrc` and its mode-0600 profile backup
+match SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`; the
+production file was not modified. Offscreen tests do not emulate KWin's
+detached-surface handoff: owner visual behavior remains **NOT VERIFIED**. Keep
+card `187d5445ee4d474d` in `review`; no release, tag or push was made. Restore
+the stable dock after the owner scenario with
+`tools/kdockw-v070-dev-stop-and-restore`.
