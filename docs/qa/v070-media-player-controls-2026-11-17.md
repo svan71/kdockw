@@ -1081,3 +1081,16 @@ catalogs match (SHA-256
 PID 393451 remained active. Owner acceptance in Plasma/Wayland remains
 **NOT VERIFIED**; keep the existing card in `review`. No release, tag, or push
 was created.
+
+The staged candidate is now active for owner review as PID `669381` from
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+profile `compact-unified-20261119`, with `--media-hover-debug`. The running
+executable reports GNU Build ID
+`d2cd6d947c688ac15e9f8f2a3ceddf1c90cc3b4d`. Its trace is
+`diagnostics/v070-dev/logs/media-hover-compact-unified-20261119-20261119-172904712074031.jsonl`.
+Stable v0.6.0 is paused by the approved launcher flow; one KDockW process is
+active and the restore state is recorded. Production config and its
+profile-specific backup are mode 0600, have matching SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`, and the
+production file remains unchanged. No owner pointer sequence has yet been
+observed on this candidate.
