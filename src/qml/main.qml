@@ -926,6 +926,15 @@ Item {
         // Geometry/scale callbacks must not move the held hover.
         if (_hoverHeld || (_mediaPopupHoldIndex >= 0 && !pointerSampleDuringMediaPopup)) return
         if (sampleX < 0) {
+            if (_shouldRetainCompactMagnificationDuringMediaPopup()) {
+                // The popup is a separate Wayland surface. Its handoff can
+                // produce an outside-dock hit test before popup hover/focus
+                // arrives. Keep the existing spring anchor through that
+                // handoff; the popup's normal close path releases this hold.
+                hoveredIndex = -1
+                hoveredName = ""
+                return
+            }
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -1100,6 +1109,22 @@ Item {
         const span = _secondarySpan(item, scale)
         return Math.abs(sampleX - center) <= halfPrimary
                 && sampleY >= span.near && sampleY <= span.far ? index : -1
+    }
+
+    function _shouldRetainCompactMagnificationDuringMediaPopup() {
+        const index = _mediaPopupHoldIndex
+        if (DockSettings.magnificationMode !== 1
+                || DockSettings.mediaPlayerDisplayMode !== 0
+                || _dragActive || !_zoomActive
+                || index < 0 || index >= dockRepeater.count
+                || _compactMediaMagnificationIndex !== index)
+            return false
+        const item = dockRepeater.itemAt(index)
+        const widget = item ? item.mediaPlayerWidget : null
+        return !!item && item.isMediaPlayer && !!widget
+                && widget.magnificationHeld && widget.popupOpenRequested
+                && !widget.popupPinned
+                && widget.popupState !== widget.popupStateClosed
     }
 
     function _shouldRetainCompactMediaMagnificationOnSurfaceLeave() {

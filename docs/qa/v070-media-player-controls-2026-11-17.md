@@ -747,3 +747,41 @@ The minimal change retains the existing Compact media anchor only while Spring m
 ### Acceptance status
 
 Automated verification confirms the spring target remains at `1` through the simulated transient leave and popup opening, then transfers to a neighbor in the QML test. Real Plasma/Wayland visual verification of the corrected Compact icon is **NOT VERIFIED** until owner review. Do not mark the feature or stage done; keep both PM Compass cards in `review`. No release, tag, or push was created.
+
+## Ninth owner acceptance and Compact popup round-trip follow-up — 2026-11-19
+
+The owner reported the primary Compact checklist **4/4** on candidate Build ID
+`0b0dba5b23145366b27dac5092766297ceebe1f8` in profile
+`media-compact-scale-20261119`: Compact magnifies smoothly, keeps its size when
+the popup opens, does not flicker, and transfers magnification to a neighboring
+icon. A separate video review at 09:27:13 exposed one additional transition
+defect: moving from Compact into its popup shrinks the icon, and returning from
+the popup does not restore magnification. The popup itself remains stable.
+This additional visual behavior is not accepted yet.
+
+### Trace finding
+
+In `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-091101399801831.jsonl`, the relevant sequence at monotonic 979719–979729 is:
+
+- At 979719 the dock hit test changes to `-1` while `mediaPopupHoldIndex=28`, `zoomActive=true`, and `springTargetAmount=1`.
+- At 979720 the media pointer gate records `hoveredIndex=-1`, retains `mediaPopupHoldIndex=28`, but changes `zoomActive=false` and the spring target to `0`.
+- At 979729 Wayland focus moves from the dock surface through `unknown` to `media-popup-surface`; by then the spring target is already zero. The popup-hover handler arrives at 979741, too late to prevent the target reset.
+- When the pointer returns toward the dock at 981232, hit-testing sets `zoomActive=true` and target `1`, but the icon is already at scale `1.0` and the original Compact magnification anchor was lost.
+
+The cause is confirmed in `main.qml`: during a held media popup, `trackPointer()` intentionally preserves the dock panel cursor but still calls `updateHoveredItem()` with the transient outside-dock sample. Its `sampleX < 0` branch unconditionally clears `_zoomActive` and `_compactMediaMagnificationIndex`. The popup hold therefore preserved hit-test tracking and panel coordinates, but not the compact spring anchor during the separate-surface handoff. This confirms the user's hypothesis about the gap between dock-surface leave and popup-surface hover. The earlier c085340 guard applies to `_pointerLeft()` and does not cover this `updateHoveredItem()` branch.
+
+### Correction and regression coverage
+
+The QML correction retains the existing Compact spring anchor only while the same media entry owns the existing popup magnification hold, the popup is actively open in a non-pinned state, and the transient hit test has no dock item. It clears the ordinary hovered item so media popup dismissal and neighboring hit-testing remain active. Pinned popup state is excluded. The normal popup close path releases the hold and re-hit-tests the current pointer; a real neighbor hit continues to supersede Compact after release. No timer, popup lifecycle, popup geometry, hover gate, or spring parameters changed.
+
+`test_compactMediaMagnificationSurvivesPopupSurfaceRoundTrips` covers the popup-to-Compact round trip repeatedly on all four dock edges, checks the spring's intermediate target, and confirms neighbor hit-testing and release. `test_compactMagnificationHoldRequiresActiveHoverPopup` verifies pinned and stale closed-popup states do not qualify for retention. The earlier stationary-cursor test remains in place. Automated pass does not replace owner visual acceptance; the Compact popup interaction remains `review`.
+
+Verification results and the new source/stage Build ID will be appended after the final candidate preflight. Stable v0.6.0 remains untouched; no release, tag, or push.
+
+### Final technical verification for popup round-trip correction
+
+- Targeted `qml_tst_dock_main`: **1/1 passed**, including all four dock edges; the suite exercises three Compact ↔ popup cycles, retained target, close-time neighbor hit-testing, pinned/stale-state rejection, and target release.
+- Full Production Release CTest: **230/230 passed** (371.45 s, `TMPDIR=/tmp`). Full Diagnostic Release CTest: **234/234 passed** (366.78 s, `TMPDIR=/tmp`).
+- Diagnostic launcher stage preflight passed, then the isolated candidate started with profile `media-compact-scale-20261119` and `--media-hover-debug`. Source binary, staged binary, and running `/proc/<pid>/exe` match GNU Build ID `55fdc159671c1ce7cf0a0236da4ab2e58ca78bfb`; version is `0.7.0-dev`. Russian source/stage MO SHA-256 matches: `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`.
+- `msgfmt --check --check-format`, launcher shell syntax, and `git diff --check` passed. The original production configuration backup remains unchanged and verified at SHA-256 `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`, mode 0600.
+- New candidate PID `1068663` is active from the staged path. Specialized trace is `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-095014507570660.jsonl`. Stable `/usr/bin/kdockw` v0.6.0 is paused with the owner's prior authorization. The manual Compact popup→icon visual retest is pending; do not mark the defect accepted or the task done. No release, tag, or push.

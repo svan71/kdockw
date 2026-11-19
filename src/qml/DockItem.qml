@@ -47,6 +47,7 @@ Item {
     }
     readonly property int taskIndex: model.taskIndex !== undefined ? model.taskIndex : index
     readonly property string dockEntryId: model.entryId || ""
+    readonly property var mediaPlayerWidget: mediaPlayerWidgetLoader.item
     readonly property string iconName: isFolderStack ? (model.iconName || "folder")
         : isApplicationLauncher ? (usesDefaultLauncherIcon ? defaultLauncherIconName : (model.iconName || defaultLauncherIconName))
         : isBuiltInWidget ? "" : DockModel.iconName(taskIndex)

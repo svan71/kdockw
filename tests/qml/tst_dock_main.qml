@@ -2587,6 +2587,141 @@ Item {
                 "Spring Magnification did not transfer to the neighbor")
         }
 
+        function test_compactMediaMagnificationSurvivesPopupSurfaceRoundTrips_data() {
+            return dockEdges()
+        }
+
+        function test_compactMediaMagnificationSurvivesPopupSurfaceRoundTrips(data) {
+            DockView.edge = data.edge
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.maxZoomFactor = 1.7
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: `widget:mediaPlayer:popup-roundtrip-${data.tag}`,
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Neighbor",
+                AppId: "org.example.popup-roundtrip-neighbor",
+                IsWindow: true,
+                IsLauncher: false,
+            })
+
+            const dock = makeDock(2)
+            const its = items(dock)
+            const media = its.find(item => item.isMediaPlayer)
+            const neighbor = its.find(item => !item.isMediaPlayer)
+            const spring = findChild(dock, "dockSpringZoomController")
+            const widget = media && media.mediaPlayerWidget
+            verify(media && neighbor && spring && widget,
+                   "Compact fixture must expose its widget and spring controller")
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            DockView.mediaHoverDebugEnabled = true
+
+            const mediaCenter = media.mapToItem(dock, media.width / 2, media.height / 2)
+            dock._handleDockPointerEntered(mediaCenter.x, mediaCenter.y)
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryVerify(() => spring.targetAmount > 0.99, 1000,
+                      "Compact hover did not set the normal spring target")
+            tryVerify(() => media.currentScale > 1.05, 1500,
+                      "Compact hover did not begin magnifying")
+
+            widget.popupOpenRequested = true
+            widget.popupState = widget.popupStateHoverOpen
+            widget.magnificationHeld = true
+            dock.holdMediaPopup(media.index)
+            compare(spring.targetAmount, 1.0)
+            widget.popupHovered = true
+            DockView.pointerFocusKnown = false
+
+            // Model the dock-surface leave sample emitted before the separate
+            // popup surface receives hover/focus. The anchor and spring target
+            // must survive that intermediate no-hit-test state.
+            dock.trackPointer(-20, -20)
+            verify(dock._shouldRetainCompactMagnificationDuringMediaPopup(),
+                   "the active hover popup should retain its Compact spring anchor")
+            verify(dock._zoomActive, "popup surface handoff disabled magnification")
+            compare(dock._compactMediaMagnificationIndex, media.index)
+            compare(spring.targetAmount, 1.0,
+                    "outside-dock handoff reset the Compact spring target")
+
+            for (let transition = 0; transition < 3; ++transition) {
+                dock._pointerLeft()
+                widget.popupHovered = true
+                DockView.pointerFocusKnown = false
+                dock.trackPointer(-20 - transition, -20)
+                compare(spring.targetAmount, 1.0,
+                        "repeated popup entry reset the Compact spring target")
+
+                widget.popupHovered = false
+                DockView.pointerInside = true
+                DockView.pointerFocusKnown = true
+                DockView.pointerFocusWindow = dock.Window.window
+                const point = media.mapToItem(dock, media.width / 2, media.height / 2)
+                dock._handleDockPointerEntered(point.x, point.y)
+                compare(dock.hoveredIndex, media.index,
+                        "returning from popup did not restore Compact hover")
+                compare(spring.targetAmount, 1.0,
+                        "returning to Compact did not retain its spring target")
+            }
+
+            const neighborCenter = neighbor.mapToItem(dock,
+                neighbor.width / 2, neighbor.height / 2)
+            dock._handleDockPointerEntered(neighborCenter.x, neighborCenter.y)
+            compare(dock.hoveredIndex, neighbor.index,
+                    "popup magnification hold blocked neighbor hit-testing")
+            compare(spring.targetAmount, 1.0,
+                    "the existing popup hold should remain until popup dismissal")
+
+            widget.popupState = widget.popupStateClosed
+            widget.popupOpenRequested = false
+            widget.magnificationHeld = false
+            dock.releaseMediaPopup(media.index)
+            tryVerify(() => spring.targetAmount > 0.99 && dock.hoveredIndex === neighbor.index,
+                      1000, "popup close did not hand the spring back to the neighbor")
+        }
+
+        function test_compactMagnificationHoldRequiresActiveHoverPopup() {
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:popup-hold-state",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            const dock = makeDock(1)
+            const media = items(dock)[0]
+            const widget = media.mediaPlayerWidget
+            dock._zoomActive = true
+            dock._compactMediaMagnificationIndex = media.index
+            dock._mediaPopupHoldIndex = media.index
+            widget.popupOpenRequested = true
+            widget.popupState = widget.popupStatePinnedOpen
+            widget.magnificationHeld = true
+            verify(!dock._shouldRetainCompactMagnificationDuringMediaPopup(),
+                   "a click-pinned popup must not retain Compact magnification")
+            widget.popupState = widget.popupStateClosed
+            widget.popupOpenRequested = false
+            verify(!dock._shouldRetainCompactMagnificationDuringMediaPopup(),
+                   "a stale popup hold without an open popup must not retain magnification")
+        }
+
         function test_mediaPopupHoldTracksNeighborPreviewWithoutMovingMagnification() {
             DockSettings.previewEnabled = false
             addTasks(["Media anchor", "Neighbor", "Far task"])
