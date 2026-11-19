@@ -1026,3 +1026,58 @@ owner's visual check. Restore stable after the check with
 `tools/kdockw-v070-dev-stop-and-restore`. The media feature card remains
 `review`; visual behavior is **NOT VERIFIED** until owner acceptance. No
 release, tag, or push was made.
+
+### 2026-11-19 — unified Compact hit-test resolution
+
+The thirteenth owner review remained **3/5**: Compact increased on initial
+hover, released its scale while the popup owned the pointer, and did not
+reliably restore magnification when the pointer returned. The prior `97d0a8e`
+change addressed one row-depth miss but did not resolve this owner-visible
+result. The available historical traces do not prove the exact cause of every
+failed manual attempt.
+
+`updateHoveredItem()` now sends valid pointer samples through one resolver.
+It applies the existing Parabolic visible-slot or In-place scaled-bounds rule
+to ordinary dock items first. The active Compact maximum-zoom envelope and the
+visible widget bounds are considered only after those ordinary hits. A live
+popup candidate is resolved by stable `dockEntryId` after model reorder, and a
+sample must fall inside the candidate's current visible widget geometry; the
+popup hold alone cannot count as a hit or hold the spring. A neighbor hit wins.
+An outside-zone sample still clears hover and magnification, and a later valid
+boundary sample can restore the ordinary spring target without a previous
+Compact anchor. Popup lifecycle, hover gate, synthetic-leave handling, timers,
+pinned behavior, and `dockHoverLease` were not changed.
+
+The new `test_compactHoverPopupReentryFollowsDockItemHitTest` opens the
+hover-triggered popup, exercises the production dock-entry/leave and pointer
+sample handlers, checks a negative outside sample and visible-boundary return,
+and repeats the sequence three times for all four edges and both zoom styles.
+It checks the spring target and actual `currentScale`, includes a 3.1-second
+stationary dwell, verifies popup continuity, and confirms a neighbor receives
+magnification. It does not seed the hover, anchor, or spring state under test.
+However, after adapting the offscreen harness to dispatch the production entry
+handler, this new case also passed on the pre-change source; it therefore is
+not a red-before/green-after reproducer of the owner's compositor-specific
+failure. Offscreen QML cannot model KWin's detached Wayland surface handoff.
+The exact historical user failure remains **NOT VERIFIED as reproduced** and
+live visual acceptance remains pending.
+
+Focused dock hit-test and media-popup regressions passed **20/20**; the new
+multi-edge Compact return case passed **8/8**. The first full Production
+Release CTest ended **229/230** because `qml_tst_dock_main` exceeded its existing
+120-second CTest timeout without an assertion failure. The isolated suite
+passed in **134.86 s**; its timeout was raised to 240 seconds without changing
+assertions. The subsequent full Production Release CTest passed **230/230** in
+**401.51 s**, and full Diagnostic Release CTest passed **234/234** in
+**402.73 s**. Both full runs passed the complete Dock Main and Media Player
+Widget QML suites.
+
+Diagnostic source and stage report version `0.7.0-dev` and matching GNU Build
+ID `d2cd6d947c688ac15e9f8f2a3ceddf1c90cc3b4d`. Build and stage Russian MO
+catalogs match (SHA-256
+`d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`);
+`msgfmt --check --check-format`, launcher Bash syntax, Python AST, and
+`git diff --check` passed. Launcher KService/stage preflight passed while stable
+PID 393451 remained active. Owner acceptance in Plasma/Wayland remains
+**NOT VERIFIED**; keep the existing card in `review`. No release, tag, or push
+was created.

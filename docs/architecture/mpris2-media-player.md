@@ -234,16 +234,31 @@ not replace live pointer verification in Plasma/Wayland; that remains pending.
 
 ### Spring anchor through the detached-popup gap — 2026-11-19
 
-Window Preview retains the dock's last `mouseX`/`mouseY` spring anchor while its
-separate surface owns the pointer. Compact media uses the same anchor rule while
-its non-pinned hover popup owns the existing magnification hold. A no-hit sample
-in the popup-facing cross-axis gap clears the ordinary hovered item but keeps
-the Compact anchor and spring target; a valid hit on another dock item still
-takes precedence. Closing the popup releases the hold and re-hit-tests the
-current pointer. This does not add a transition zone, timeout, or pointer
-polling. Pinned popups and genuine dismissal continue through their existing
-paths. Four-edge QML coverage checks a delayed gap dwell and the return to the
-widget; real Plasma/Wayland acceptance remains pending.
+The initial correction retained the Compact anchor through the detached-popup
+gap. The thirteenth owner review showed that this did not reliably restore the
+scale after the pointer returned to the dock, so that anchor-retention behavior
+was superseded by the shared hit-test resolution below.
+
+### Unified Compact hit-test resolution — 2026-11-19
+
+Pointer samples now pass through one dock-item geometry resolver. The existing
+Parabolic visible-slot and In-place scaled-bounds rules select ordinary items
+first, preserving neighbor priority and existing gap hysteresis. Compact's
+maximum-zoom envelope and visible widget rectangle are evaluated in that same
+resolver. A popup hold identifies the current media entry by stable
+`dockEntryId`; it does not establish a hit or keep magnification active. A
+negative sample outside the dock zone clears hover and magnification, while a
+later valid boundary sample can hit Compact and restore the normal spring
+target without a prior anchor. Popup visibility and lifecycle remain
+independent, and no transition zone, timer, or pointer polling was added.
+
+The offscreen regression opens a real hover popup through production QML event
+handlers, drives the dock-leave and subsequent pointer samples, repeats the
+handoff, and checks target and `currentScale` during a stationary dwell, all
+four edges, both zoom styles, and a real neighbor hit. It passed, but it also
+passed against the pre-change implementation; therefore it does not reproduce
+the compositor-specific failure and is not proof of the live Wayland fix.
+Plasma/Wayland acceptance remains pending.
 
 ### Manual selection during status refresh
 
