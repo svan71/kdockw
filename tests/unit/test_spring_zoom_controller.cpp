@@ -46,8 +46,10 @@ TEST_CASE("Spring zoom follows a sudden cursor move and settles at its target", 
 {
     kdockw::SpringZoomController controller;
     controller.synchronize(200.0, 0.0);
+    REQUIRE_THAT(controller.targetAmount(), WithinAbs(0.0, 1e-9));
     controller.setTarget(850.0, 1.0, 170.0, 0.60, 1.0, 0.0, 1000.0);
 
+    REQUIRE_THAT(controller.targetAmount(), WithinAbs(1.0, 1e-9));
     controller.advance(1.0 / 60.0);
     REQUIRE(controller.cursor() > 200.0);
     REQUIRE(controller.cursor() < 850.0);
@@ -62,6 +64,7 @@ TEST_CASE("Spring zoom follows a sudden cursor move and settles at its target", 
     REQUIRE_THAT(controller.amount(), WithinAbs(1.0, 0.002));
 
     controller.setTarget(850.0, 0.0, 170.0, 0.60, 1.0, 0.0, 1000.0);
+    REQUIRE_THAT(controller.targetAmount(), WithinAbs(0.0, 1e-9));
     for (int frame = 0; frame < 600 && !controller.settled(); ++frame) {
         controller.advance(1.0 / 60.0);
     }

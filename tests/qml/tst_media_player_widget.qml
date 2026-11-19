@@ -16,6 +16,7 @@ Item {
     property int mediaPopupHoldCount: 0
     property int mediaPopupReleaseCount: 0
     property int hoveredIndex: -1
+    property int pointerMotionSerial: 0
     function holdMediaPopup(index) { ++mediaPopupHoldCount; mediaPopupHoldIndex = index }
     function releaseMediaPopup(index) {
         if (mediaPopupHoldIndex === index) {
@@ -67,6 +68,7 @@ Item {
             widget.popupState = widget.popupStateClosed
             widget.popupOpenRequested = false
             widget.magnificationHeld = false
+            widget.dockHoverLease = false
             stage.mediaPopupHoldIndex = -1
             stage.mediaPopupHoldCount = 0
             stage.mediaPopupReleaseCount = 0
@@ -82,6 +84,9 @@ Item {
             DockView.pointerInside = false
             DockView.pointerFocusKnown = false
             DockView.pointerFocusWindow = null
+            DockView.mediaHoverDebugEnabled = false
+            DockView.mediaHoverEvents = []
+            stage.pointerMotionSerial = 0
             DockView.screenGeometry = Qt.rect(0, 0, stage.width, stage.height)
             mouseMove(stage, 12, 12)
             hoverDockIndex(-1)
@@ -106,6 +111,22 @@ Item {
             compare(findChild(widget, "mediaPlayerCompactIcon").visible, true)
             compare(findChild(widget, "mediaPlayerDockArtwork").visible, false)
             compare(widget.controller.title, "Fixture track")
+        }
+
+        function test_media_hover_diagnostic_sink_is_opt_in_and_records_events() {
+            DockView.mediaHoverEvents = []
+            widget.traceMediaHover("disabled-check", { marker: "must-not-record" })
+            compare(DockView.mediaHoverEvents.length, 0)
+
+            DockView.mediaHoverDebugEnabled = true
+            widget.traceMediaHover("fixture-event", { marker: "recorded" })
+            compare(DockView.mediaHoverEvents.length, 1)
+            compare(DockView.mediaHoverEvents[0].event, "fixture-event")
+            compare(DockView.mediaHoverEvents[0].details.marker, "recorded")
+
+            DockView.mediaHoverDebugEnabled = false
+            widget.traceMediaHover("disabled-again", { marker: "must-not-record" })
+            compare(DockView.mediaHoverEvents.length, 1)
         }
 
         function test_controls_mode_has_three_direct_commands_and_does_not_open_popup() {
@@ -239,6 +260,118 @@ Item {
             }
         }
 
+        function test_dock_surface_hover_survives_stale_magnification_hit_test() {
+            DockSettings.mediaPlayerHoverPopup = true
+            DockSettings.mediaPlayerHoverDelay = 30
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const hoverHandler = findChild(widget, "mediaPlayerDockHoverHandler")
+            const dockWindow = stage.Window.window
+            verify(popup && hoverHandler && dockWindow)
+
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dockWindow
+            DockView.pointerInside = true
+            DockView.mediaHoverDebugEnabled = true
+
+            for (const mode of [0, 1, 2]) {
+                DockSettings.mediaPlayerDisplayMode = mode
+                tryVerify(() => widget.displayMode === mode)
+                DockView.mediaHoverEvents = []
+                const targetName = mode === 0 ? "mediaPlayerCompactIcon"
+                    : mode === 1 ? "mediaPlayerControlsPlayPause" : "mediaPlayerExpandedTitle"
+                let target
+                tryVerify(() => {
+                    target = findChild(widget, targetName)
+                    return target && target.width > 0 && target.height > 0
+                }, 1000,
+                    "mode content must finish layout before pointer input")
+                const center = target.mapToItem(widget, target.width / 2, target.height / 2)
+                hoverDockIndex(-1)
+                mouseMove(widget, center.x, center.y)
+                tryVerify(() => hoverHandler.hovered, 1000,
+                    "the real QML hover handler must see the widget area")
+
+                // Magnification hit-testing can briefly report no dock item
+                // while the pointer remains on the dock's own Wayland surface.
+                compare(dockAnchor.hoveredIndex, -1)
+                compare(widget.dockHovered, false)
+                verify(widget.pointerOverDockWidget,
+                    "dock-surface hover must survive a transient empty magnification hit-test")
+                tryVerify(() => DockView.mediaHoverEvents.some(event =>
+                    event.event === "open-timer-fired" && event.details.allowed), 1000,
+                    "a transient empty hit-test must not cancel the hover-open timer")
+                if (popup.visible) {
+                    DockView.pointerFocusWindow = popup.contentItem.Window.window
+                    wait(20)
+                    popup.close()
+                    tryVerify(() => !popup.visible, 1000)
+                    DockView.pointerFocusWindow = dockWindow
+                }
+                mouseMove(stage, 12, 12)
+            }
+
+            DockView.pointerFocusKnown = false
+            DockView.pointerFocusWindow = null
+            DockView.mediaHoverDebugEnabled = false
+            hoverDockIndex(-1)
+        }
+
+        function test_stationary_hover_opens_once_and_only_real_motion_releases_it() {
+            DockSettings.mediaPlayerHoverDelay = 30
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const hideTimer = findChild(widget, "mediaPlayerHideTimer")
+            verify(popup && hideTimer)
+            DockView.mediaHoverDebugEnabled = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = stage.Window.window
+            DockView.pointerInside = true
+
+            for (const mode of [0, 1, 2]) {
+                DockSettings.mediaPlayerDisplayMode = mode
+                tryVerify(() => widget.displayMode === mode)
+                DockView.mediaHoverEvents = []
+                widget.popupState = widget.popupStateClosed
+                widget.dockHovered = false
+                widget.dockHoverLease = true
+                dockAnchor.pointerOnDock = false
+                dockAnchor.hoveredIndex = -1
+                stage.hoveredIndex = -1
+
+                // Model the synthetic HoverHandler leave caused by popup
+                // creation: dock-surface focus remains and no motion is sent.
+                verify(widget.pointerOverDockWidget,
+                    "stationary pointer ownership must survive a synthetic hover leave")
+                widget.reconcilePopupInteraction("stationary-hover-regression")
+                tryVerify(() => popup.visible, 1000, "stationary hover did not open the popup")
+                wait(260)
+                verify(popup.visible, "popup closed without real pointer motion")
+                verify(!hideTimer.running, "synthetic leave started a close timer")
+                compare(DockView.mediaHoverEvents.filter(event => event.event === "popup-visibility"
+                    && event.details.visible).length, 1, "one hover must open exactly once")
+
+                // Real motion to a neighbor resolves the lease and follows the
+                // normal 200 ms close path.
+                dockAnchor.hoveredIndex = dockAnchor.index + 1
+                stage.hoveredIndex = dockAnchor.index + 1
+                stage.pointerMotionSerial++
+                tryVerify(() => !widget.dockHoverLease, 1000,
+                    "real motion to a neighbor did not release the media hover lease")
+                tryVerify(() => hideTimer.running, 1000,
+                    "neighbor motion did not start the ordinary close timer")
+                wait(230)
+                tryVerify(() => !popup.visible, 1000)
+                compare(DockView.mediaHoverEvents.filter(event => event.event === "popup-visibility"
+                    && event.details.visible).length, 1, "the same hover opened the popup more than once")
+                compare(DockView.mediaHoverEvents.filter(event => event.event === "popup-visibility"
+                    && !event.details.visible).length, 1, "the popup should close once after real motion")
+            }
+
+            DockView.pointerFocusKnown = false
+            DockView.pointerFocusWindow = null
+            DockView.mediaHoverDebugEnabled = false
+            widget.dockHoverLease = false
+        }
+
         function test_controls_buttons_open_popup_and_surface_focus_holds_it() {
             DockSettings.mediaPlayerHoverPopup = true
             DockSettings.mediaPlayerHoverDelay = 30
@@ -285,6 +418,7 @@ Item {
                             DockView.pointerInside = true
                             dockAnchor.hoveredIndex = dockAnchor.index + 1
                             stage.hoveredIndex = dockAnchor.index + 1
+                            mouseMove(stage, 12, 12)
                             tryVerify(() => hideTimer.running, 1000)
                             DockView.pointerFocusWindow = popup.contentItem.Window.window
                             tryVerify(() => !hideTimer.running, 1000,
@@ -297,6 +431,7 @@ Item {
                         DockView.pointerInside = true
                         dockAnchor.hoveredIndex = dockAnchor.index + 1
                         stage.hoveredIndex = dockAnchor.index + 1
+                        mouseMove(stage, 12, 12)
                         tryVerify(() => hideTimer.running,
                             1000, "moving from popup to a neighbor must start close timer")
                         wait(230)

@@ -13,12 +13,17 @@ Item {
     objectName: "mediaPlayerWidget"
     required property Item dockDelegate
     property bool dockHovered: false
+    // Keep hover ownership across the synthetic leave emitted when a popup
+    // opens; the next real dock motion resolves whether the pointer left.
+    property bool dockHoverLease: false
     readonly property var dockWindow: dockDelegate && dockDelegate.dockRoot
         ? dockDelegate.dockRoot.Window.window : null
     readonly property bool pointerOverDockWidget: DockView.pointerFocusKnown
         ? (dockWindow && DockView.pointerFocusWindow === dockWindow
-            && dockDelegate && dockDelegate.dockRoot
-            && dockDelegate.dockRoot.hoveredIndex === dockDelegate.index)
+            && (dockHovered || dockAreaHover.hovered
+                || dockHoverLease
+                || (dockDelegate && dockDelegate.dockRoot
+                    && dockDelegate.dockRoot.hoveredIndex === dockDelegate.index)))
         : (dockHovered || dockAreaHover.hovered
             || (DockView.pointerInside && dockDelegate && dockDelegate.dockRoot
                 && dockDelegate.dockRoot.hoveredIndex === dockDelegate.index))
@@ -53,6 +58,9 @@ Item {
     property real popupHeight: nominalPopupHeight
     readonly property real popupPreferredHeight: nominalPopupHeight
     property int popupTraceEvents: 0
+    property string lastDiagnosticRegion: ""
+    property bool lastPointerFocusKnown: false
+    property string lastPointerFocusClass: "no-focus"
     readonly property color surface: DockView.backgroundColor.a > 0
         ? BadgeTextColor.composite(DockView.backgroundColor, Kirigami.Theme.backgroundColor)
         : BadgeTextColor.composite(Qt.alpha(Kirigami.Theme.backgroundColor, DockSettings.backgroundOpacity),
@@ -82,7 +90,220 @@ Item {
         return "other-client-surface"
     }
 
+    function displayModeName() {
+        if (root.verticalDock && root.displayMode === 2)
+            return "compact-vertical-expanded-setting"
+        return root.displayMode === 0 ? "compact"
+            : root.displayMode === 1 ? "controls" : "expanded"
+    }
+
+    function itemRectInDock(item) {
+        if (!item || !dockDelegate || !dockDelegate.dockRoot)
+            return null
+        const point = item.mapToItem(dockDelegate.dockRoot, 0, 0)
+        return { x: point.x, y: point.y, width: item.width, height: item.height }
+    }
+
+    function pointerPositionSnapshot() {
+        const point = hoverRegionProbe.hovered ? hoverRegionProbe.point : dockAreaHover.point
+        const local = point.position
+        const scene = point.scenePosition
+        const geometry = dockDelegate && dockDelegate.dockRoot
+            && dockDelegate.dockRoot.mediaPopupGeometrySnapshot
+            ? dockDelegate.dockRoot.mediaPopupGeometrySnapshot(dockDelegate.index) : null
+        return {
+            widget: { x: local.x, y: local.y },
+            scene: { x: scene.x, y: scene.y },
+            dockRoot: geometry ? geometry.pointerRoot : null,
+            dockPanel: geometry ? geometry.pointerPanel : null
+        }
+    }
+
+    function itemContainsLocalPoint(item, point) {
+        if (!item || !item.visible)
+            return false
+        const local = item.mapFromItem(root, point.x, point.y)
+        return local.x >= 0 && local.y >= 0 && local.x < item.width && local.y < item.height
+    }
+
+    function findVisualItem(item, objectName) {
+        if (!item)
+            return null
+        if (item.objectName === objectName)
+            return item
+        for (let i = 0; i < item.children.length; ++i) {
+            const found = findVisualItem(item.children[i], objectName)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    function pointerRegionAt(point) {
+        let buttonNames = []
+        if (root.displayMode === 1 && !root.verticalDock)
+            buttonNames = ["mediaPlayerControlsPrevious", "mediaPlayerControlsPlayPause", "mediaPlayerControlsNext"]
+        else if (root.displayMode === 2 && !root.verticalDock)
+            buttonNames = ["mediaPlayerExpandedPrevious", "mediaPlayerExpandedPlayPause", "mediaPlayerExpandedNext"]
+        else if (root.displayMode === 1 && root.verticalDock)
+            buttonNames = ["mediaPlayerVerticalControlsPrevious", "mediaPlayerVerticalControlsPlayPause",
+                "mediaPlayerVerticalControlsNext"]
+        else if (root.displayMode === 2 && root.verticalDock)
+            buttonNames = ["mediaPlayerVerticalPrevious", "mediaPlayerVerticalPlayPause", "mediaPlayerVerticalNext"]
+        for (let i = 0; i < buttonNames.length; ++i) {
+            const button = findVisualItem(dockVisual, buttonNames[i])
+            if (itemContainsLocalPoint(button, point)) {
+                if (buttonNames[i].endsWith("Previous")) return "previous-button"
+                if (buttonNames[i].endsWith("Next")) return "next-button"
+                return "play-pause-button"
+            }
+        }
+        if (root.displayMode === 2 && !root.verticalDock) {
+            if (itemContainsLocalPoint(expandedArtworkArea, point)) return "artwork"
+            if (itemContainsLocalPoint(expandedTitle, point)) return "title"
+            if (itemContainsLocalPoint(expandedArtist, point)) return "artist"
+            if (itemContainsLocalPoint(expandedProgress, point)) return "progress"
+        } else if (root.displayMode === 2 && root.verticalDock) {
+            if (itemContainsLocalPoint(verticalArtworkArea, point)) return "artwork"
+            if (itemContainsLocalPoint(verticalTitle, point)) return "title"
+            if (itemContainsLocalPoint(verticalArtist, point)) return "artist"
+            if (itemContainsLocalPoint(verticalProgress, point)) return "progress"
+        } else {
+            if (itemContainsLocalPoint(dockArtwork, point) || itemContainsLocalPoint(compactIcon, point))
+                return "compact-icon"
+        }
+        return itemContainsLocalPoint(dockVisual, point) ? "widget-surface" : "outside-widget"
+    }
+
+    function traceMediaHover(event, details = ({})) {
+        if (!DockView.mediaHoverDebugEnabled)
+            return
+        const dockRoot = dockDelegate && dockDelegate.dockRoot
+        const hitIndex = dockRoot ? dockRoot.hoveredIndex : -1
+        const focusWindow = DockView.pointerFocusWindow
+        const detailsCopy = {
+            mode: displayModeName(),
+            displayMode: root.displayMode,
+            edge: DockView.edge,
+            verticalDock: root.verticalDock,
+            widgetGeometry: itemRectInDock(root),
+            visualGeometry: itemRectInDock(dockVisual),
+            pointer: pointerPositionSnapshot(),
+            parentHover: dockAreaHover.hovered,
+            dockItemHover: root.dockHovered,
+            dockHoverLease: root.dockHoverLease,
+            pointerMotionSerial: dockRoot ? dockRoot.pointerMotionSerial : -1,
+            pointerFocusKnown: DockView.pointerFocusKnown,
+            pointerFocusClass: pointerFocusKind(),
+            pointerInsideDockSurface: DockView.pointerInside,
+            dockWindowActive: dockWindow ? dockWindow.active : false,
+            dockActiveFocusItem: dockWindow && dockWindow.activeFocusItem
+                ? dockWindow.activeFocusItem.objectName : "",
+            popupWindowActive: popupWindow ? popupWindow.active : false,
+            popupActiveFocusItem: popupWindow && popupWindow.activeFocusItem
+                ? popupWindow.activeFocusItem.objectName : "",
+            hitTestIndex: hitIndex,
+            hitTestMatchesMedia: hitIndex === (dockDelegate ? dockDelegate.index : -1),
+            mediaIndex: dockDelegate ? dockDelegate.index : -1,
+            popupState: popupStateName(root.popupState),
+            popupVisible: popup.visible,
+            popupOpenRequested: popupOpenRequested,
+            openTimerRunning: openTimer.running,
+            closeTimerRunning: hideTimer.running,
+            magnificationHeld: magnificationHeld,
+            magnification: dockRoot && dockRoot.mediaPopupGeometrySnapshot
+                ? dockRoot.mediaPopupGeometrySnapshot(dockDelegate.index) : null,
+            focusWindowIsDock: focusWindow === dockWindow,
+            focusWindowIsPopup: focusWindow === popupWindow
+        }
+        for (const key in details)
+            detailsCopy[key] = details[key]
+        DockView.traceMediaHover(event, detailsCopy)
+    }
+
+    function traceButtonHover(button, hovered) {
+        traceMediaHover("child-button-hover", {
+            target: button.objectName,
+            hovered: hovered,
+            buttonGeometry: itemRectInDock(button),
+            buttonEnabled: button.enabled
+        })
+    }
+
+    function recordPointerRegion() {
+        if (!DockView.mediaHoverDebugEnabled || !hoverRegionProbe.hovered)
+            return
+        const point = hoverRegionProbe.point.position
+        const region = pointerRegionAt(point)
+        if (region === lastDiagnosticRegion)
+            return
+        const previousRegion = lastDiagnosticRegion
+        lastDiagnosticRegion = region
+        traceMediaHover("pointer-region-transition", {
+            previousRegion: previousRegion,
+            region: region,
+            localPoint: { x: point.x, y: point.y },
+            failedConditions: pointerOpenFailureReasons()
+        })
+    }
+
+    function pointerOpenFailureReasons() {
+        const reasons = []
+        if (!DockSettings.mediaPlayerHoverPopup) reasons.push("hover-popup-disabled")
+        if (!pointerOverDockWidget) {
+            if (DockView.pointerFocusKnown && DockView.pointerFocusWindow !== dockWindow)
+                reasons.push("pointer-focus-not-dock-window")
+            if (!dockDelegate || !dockDelegate.dockRoot
+                    || dockDelegate.dockRoot.hoveredIndex !== dockDelegate.index)
+                reasons.push("hit-test-index-does-not-match-media")
+            if (!dockAreaHover.hovered && !root.dockHovered)
+                reasons.push("parent-hover-handlers-inactive")
+        }
+        if (popup.visible) reasons.push("popup-already-visible")
+        if (popupState !== popupStateOpeningPending) reasons.push("popup-not-opening-pending")
+        return reasons
+    }
+
+    function resolveDockHoverAfterMotion() {
+        const dockRoot = dockDelegate && dockDelegate.dockRoot
+        const stillOnDock = DockView.pointerFocusKnown
+            ? DockView.pointerFocusWindow === dockWindow
+            : DockView.pointerInside
+        dockHoverLease = stillOnDock && (dockAreaHover.hovered || dockHovered
+            || (dockRoot && dockRoot.hoveredIndex === dockDelegate.index))
+    }
+
+    function stopOpenTimer(reason) {
+        if (!openTimer.running)
+            return
+        traceMediaHover("open-timer-cancel", { reason: reason })
+        openTimer.stop()
+    }
+
+    function startOpenTimer(reason) {
+        traceMediaHover("open-timer-start", { reason: reason, intervalMs: openTimer.interval })
+        openTimer.restart()
+    }
+
+    function stopCloseTimer(reason) {
+        if (!hideTimer.running)
+            return
+        traceMediaHover("close-timer-cancel", { reason: reason })
+        hideTimer.stop()
+    }
+
+    function startCloseTimer(reason) {
+        traceMediaHover("close-timer-start", { reason: reason, intervalMs: hideTimer.interval })
+        hideTimer.restart()
+    }
+
     function logPopupState(phase, reason = "", oldState = popupState, newState = popupState) {
+        traceMediaHover("popup-controller-state", {
+            phase: phase,
+            reason: reason,
+            previousState: popupStateName(oldState),
+            nextState: popupStateName(newState)
+        })
         if (!DockView.mediaPopupTraceEnabled && !DockModel.taskDiagnosticsEnabled)
             return
         if (popupTraceEvents >= 256)
@@ -104,6 +325,7 @@ Item {
             dockHovered: pointerOverDockWidget,
             dockItemHovered: dockHovered,
             compositeAreaHovered: dockAreaHover.hovered,
+            dockHoverLease: dockHoverLease,
             compositorPointerInside: DockView.pointerInside,
             popupHovered: popupHovered,
             pointerOverPopup: pointerOverPopup,
@@ -137,8 +359,9 @@ Item {
     }
 
     function openPinned() {
-        openTimer.stop()
-        hideTimer.stop()
+        traceMediaHover("popup-click-action", { action: popup.visible ? "toggle-or-pin" : "open" })
+        stopOpenTimer("pinned-click")
+        stopCloseTimer("pinned-click")
         if (popupOpenRequested && !popup.visible) {
             setPopupState(popupStatePinnedOpen, "click-pin-opening-popup")
             return
@@ -149,16 +372,18 @@ Item {
             } else {
                 // Hover → pinned is a state transition on the existing window;
                 // reopening it would flash and briefly release the dock anchor.
-                openTimer.stop()
-                hideTimer.stop()
+                stopOpenTimer("pin-existing-popup")
+                stopCloseTimer("pin-existing-popup")
                 setPopupState(popupStatePinnedOpen, "click-pin-existing-popup")
                 popup.forceActiveFocus()
                 logPopupState("pin-hover-popup")
             }
             return
         }
-        if (!positionPopup())
+        if (!positionPopup()) {
+            traceMediaHover("popup-open-rejected", { source: "click", reason: "invalid-popup-anchor" })
             return
+        }
         holdDockForPopup()
         popupOpenRequested = true
         setPopupState(popupStatePinnedOpen, "click-open-pinned")
@@ -189,32 +414,42 @@ Item {
     }
 
     function reconcilePopupInteraction(reason) {
-        if (handlingPopupClose)
+        if (handlingPopupClose) {
+            traceMediaHover("hover-open-rejected", { reason: "popup-close-handler-active" })
             return
-        if (popupPinned)
+        }
+        if (popupPinned) {
+            traceMediaHover("hover-open-rejected", { reason: "popup-pinned" })
             return
+        }
+        traceMediaHover("hover-open-gate", {
+            reason: reason,
+            eligible: pointerOverDockWidget && DockSettings.mediaPlayerHoverPopup
+                && !popup.visible && popupState !== popupStatePinnedOpen,
+            failedConditions: pointerOpenFailureReasons()
+        })
         if (pointerOverDockWidget) {
-            hideTimer.stop()
+            stopCloseTimer(reason)
             if (popup.visible || popupOpenRequested) {
                 setPopupState(popup.visible ? popupStateHoverOpen : popupStateOpeningPending, reason)
             } else if (DockSettings.mediaPlayerHoverPopup && !openTimer.running) {
                 setPopupState(popupStateOpeningPending, reason)
-                openTimer.restart()
+                startOpenTimer(reason)
             }
             return
         }
         if (pointerOverPopup || interactionHeld) {
-            openTimer.stop()
-            hideTimer.stop()
+            stopOpenTimer(reason)
+            stopCloseTimer(reason)
             if (popup.visible || popupOpenRequested)
                 setPopupState(popup.visible ? popupStateHoverOpen : popupStateOpeningPending, reason)
             return
         }
-        openTimer.stop()
+        stopOpenTimer(reason)
         if (popup.visible || popupOpenRequested) {
             if (popupState !== popupStateClosingPending) {
                 setPopupState(popupStateClosingPending, reason)
-                hideTimer.restart()
+                startCloseTimer(reason)
             }
         } else {
             setPopupState(popupStateClosed, reason)
@@ -287,28 +522,132 @@ Item {
     }
 
     onPointerOverDockWidgetChanged: {
+        traceMediaHover("media-pointer-gate-changed", {
+            accepted: pointerOverDockWidget,
+            failedConditions: pointerOpenFailureReasons()
+        })
         logPopupState(pointerOverDockWidget ? "dock-hover-enter" : "dock-hover-leave")
         reconcilePopupInteraction(pointerOverDockWidget ? "dock-enter" : "dock-leave")
     }
-    onPointerOverPopupChanged: reconcilePopupInteraction(pointerOverPopup ? "popup-enter" : "popup-leave")
-    onPopupHoveredChanged: reconcilePopupInteraction(popupHovered ? "popup-hover-enter" : "popup-hover-leave")
-    onInteractionHeldChanged: reconcilePopupInteraction(interactionHeld ? "control-interaction-enter" : "control-interaction-leave")
-    onWidthChanged: if (popup.visible) positionPopup()
-    onHeightChanged: if (popup.visible) positionPopup()
+    onDockHoveredChanged: traceMediaHover("dock-item-hover-changed", { hovered: dockHovered })
+    onPointerOverPopupChanged: {
+        traceMediaHover("popup-pointer-gate-changed", { accepted: pointerOverPopup })
+        reconcilePopupInteraction(pointerOverPopup ? "popup-enter" : "popup-leave")
+    }
+    onPopupHoveredChanged: {
+        traceMediaHover("popup-hover-handler-changed", { hovered: popupHovered })
+        reconcilePopupInteraction(popupHovered ? "popup-hover-enter" : "popup-hover-leave")
+    }
+    onInteractionHeldChanged: {
+        traceMediaHover("media-control-interaction-changed", { held: interactionHeld })
+        reconcilePopupInteraction(interactionHeld ? "control-interaction-enter" : "control-interaction-leave")
+    }
+    onDisplayModeChanged: {
+        lastDiagnosticRegion = ""
+        traceMediaHover("scenario-segment", { segment: displayModeName() })
+    }
+    onWidthChanged: {
+        traceMediaHover("widget-geometry-changed", { geometry: itemRectInDock(root) })
+        if (popup.visible) positionPopup()
+    }
+    onHeightChanged: {
+        traceMediaHover("widget-geometry-changed", { geometry: itemRectInDock(root) })
+        if (popup.visible) positionPopup()
+    }
     onProgressActiveChanged: controller.setProgressRequested(root, progressActive)
-    Component.onCompleted: controller.setProgressRequested(root, progressActive)
+    Component.onCompleted: {
+        controller.setProgressRequested(root, progressActive)
+        lastPointerFocusKnown = DockView.pointerFocusKnown
+        lastPointerFocusClass = pointerFocusKind()
+        traceMediaHover("scenario-segment", { segment: displayModeName(), phase: "initial" })
+        traceMediaHover("media-widget-ready", {
+            geometry: itemRectInDock(root),
+            dockVisualGeometry: itemRectInDock(dockVisual),
+            hoverDelayMs: DockSettings.mediaPlayerHoverDelay,
+            hoverPopupEnabled: DockSettings.mediaPlayerHoverPopup
+        })
+    }
     Component.onDestruction: {
         controller.setProgressRequested(root, false)
         releaseDockHold("widget-destroyed")
+    }
+
+    Connections {
+        target: DockView
+        function onPointerFocusWindowChanged() {
+            const nextKnown = DockView.pointerFocusKnown
+            const nextClass = root.pointerFocusKind()
+            const transition = !nextKnown ? "surface-leave"
+                : !root.lastPointerFocusKnown ? "surface-enter" : "surface-change"
+            root.traceMediaHover("wayland-surface-focus", {
+                transition: transition,
+                previousClass: root.lastPointerFocusClass,
+                currentClass: nextClass,
+                currentWindowIsDock: DockView.pointerFocusWindow === root.dockWindow,
+                currentWindowIsPopup: DockView.pointerFocusWindow === root.popupWindow
+            })
+            root.lastPointerFocusKnown = nextKnown
+            root.lastPointerFocusClass = nextClass
+            if (!nextKnown || DockView.pointerFocusWindow !== root.dockWindow)
+                root.dockHoverLease = false
+        }
+    }
+    Connections {
+        target: root.dockDelegate ? root.dockDelegate.dockRoot : null
+        function onPointerMotionSerialChanged() { root.resolveDockHoverAfterMotion() }
+    }
+    Connections {
+        target: root.dockWindow
+        function onActiveChanged() {
+            root.traceMediaHover("dock-window-activation", { active: root.dockWindow.active })
+        }
+        function onActiveFocusItemChanged() {
+            root.traceMediaHover("dock-keyboard-focus", {
+                activeFocusItem: root.dockWindow.activeFocusItem
+                    ? root.dockWindow.activeFocusItem.objectName : ""
+            })
+        }
+    }
+    Connections {
+        target: root.popupWindow
+        function onActiveChanged() {
+            root.traceMediaHover("popup-window-activation", { active: root.popupWindow.active })
+        }
+        function onActiveFocusItemChanged() {
+            root.traceMediaHover("popup-keyboard-focus", {
+                activeFocusItem: root.popupWindow.activeFocusItem
+                    ? root.popupWindow.activeFocusItem.objectName : ""
+            })
+        }
+    }
+    Connections {
+        target: dockDelegate && dockDelegate.dockRoot ? dockDelegate.dockRoot : null
+        function onHoveredIndexChanged() {
+            root.traceMediaHover("dock-hit-test-changed", {
+                hitTestIndex: root.dockDelegate.dockRoot.hoveredIndex,
+                hitTestMatchesMedia: root.dockDelegate.dockRoot.hoveredIndex === root.dockDelegate.index,
+                failedConditions: root.pointerOpenFailureReasons()
+            })
+        }
     }
 
     Timer {
         id: openTimer
         interval: DockSettings.mediaPlayerHoverDelay
         onTriggered: {
-            if (root.pointerOverDockWidget && DockSettings.mediaPlayerHoverPopup
-                    && !popup.visible && root.popupState === root.popupStateOpeningPending) {
-                if (root.positionPopup()) {
+            const failed = root.pointerOpenFailureReasons()
+            const allowed = failed.length === 0
+            root.traceMediaHover("open-timer-fired", { allowed: allowed, failedConditions: failed })
+            if (allowed) {
+                const positioned = root.positionPopup()
+                root.traceMediaHover("popup-position-result", {
+                    valid: positioned,
+                    requestedX: root.requestedPopupX,
+                    requestedY: root.requestedPopupY,
+                    width: root.popupWidth,
+                    height: root.popupHeight
+                })
+                if (positioned) {
                     root.holdDockForPopup()
                     root.popupOpenRequested = true
                     popup.open()
@@ -316,6 +655,8 @@ Item {
                 } else {
                     root.setPopupState(root.popupStateClosed, "invalid-popup-anchor")
                 }
+            } else if (root.popupState === root.popupStateOpeningPending) {
+                root.setPopupState(root.popupStateClosed, "open-timer-rejected:" + failed.join(","))
             }
         }
     }
@@ -324,8 +665,17 @@ Item {
         objectName: "mediaPlayerHideTimer"
         interval: 200
         onTriggered: {
-            if (!root.popupPinned && !root.pointerOverMediaInteraction
-                    && root.popupState === root.popupStateClosingPending) {
+            const allowed = !root.popupPinned && !root.pointerOverMediaInteraction
+                && root.popupState === root.popupStateClosingPending
+            root.traceMediaHover("close-timer-fired", {
+                allowed: allowed,
+                failedConditions: [
+                    root.popupPinned ? "popup-pinned" : "",
+                    root.pointerOverMediaInteraction ? "pointer-over-media-interaction" : "",
+                    root.popupState !== root.popupStateClosingPending ? "state-not-closing-pending" : ""
+                ].filter(reason => reason.length > 0)
+            })
+            if (allowed) {
                 root.logPopupState("close-request", "hover-close-timer")
                 popup.close()
             }
@@ -338,6 +688,25 @@ Item {
         id: dockAreaHover
         objectName: "mediaPlayerDockHoverHandler"
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onHoveredChanged: {
+            if (hovered)
+                root.dockHoverLease = true
+            if (DockView.mediaHoverDebugEnabled)
+                root.traceMediaHover(hovered ? "parent-hover-enter" : "parent-hover-leave", {
+                point: { x: point.position.x, y: point.position.y },
+                scenePosition: { x: point.scenePosition.x, y: point.scenePosition.y },
+                failedConditions: root.pointerOpenFailureReasons()
+            })
+            if (!hovered)
+                root.lastDiagnosticRegion = ""
+        }
+    }
+    HoverHandler {
+        id: hoverRegionProbe
+        objectName: "mediaPlayerHoverDiagnosticProbe"
+        enabled: DockView.mediaHoverDebugEnabled
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onPointChanged: root.recordPointerRegion()
     }
 
     Item {
@@ -379,6 +748,7 @@ Item {
                 delegate: MediaPlayerControlButton {
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     required property int index
                     required property string modelData
                     objectName: index === 0 ? "mediaPlayerControlsPrevious"
@@ -406,6 +776,7 @@ Item {
             spacing: 3
             visible: root.displayMode === 2 && !root.verticalDock
             Item {
+                id: expandedArtworkArea
                 Layout.preferredWidth: Math.min(dockDelegate.iconSize, parent.height)
                 Layout.preferredHeight: Layout.preferredWidth
                 MediaArtworkItem {
@@ -440,6 +811,7 @@ Item {
                     color: root.foreground
                 }
                 QQC2.Label {
+                    id: expandedArtist
                     objectName: "mediaPlayerExpandedArtist"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
@@ -450,6 +822,7 @@ Item {
                     color: root.secondary
                 }
                 Item {
+                    id: expandedProgress
                     objectName: "mediaPlayerDockProgress"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
@@ -475,6 +848,7 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 spacing: 0
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
                     objectName: "mediaPlayerExpandedPrevious"
@@ -489,6 +863,7 @@ Item {
                     onClicked: controller.previous()
                 }
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
                     objectName: "mediaPlayerExpandedPlayPause"
@@ -503,6 +878,7 @@ Item {
                     onClicked: controller.playPause()
                 }
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
                     objectName: "mediaPlayerExpandedNext"
@@ -529,6 +905,7 @@ Item {
                 delegate: MediaPlayerControlButton {
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     required property int index
                     required property string modelData
                     objectName: index === 0 ? "mediaPlayerVerticalControlsPrevious"
@@ -554,6 +931,7 @@ Item {
             spacing: 1
             visible: root.displayMode === 2 && root.verticalDock
             Item {
+                id: verticalArtworkArea
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Math.min(dockDelegate.iconSize, parent.width)
                 Layout.preferredHeight: Layout.preferredWidth
@@ -570,6 +948,7 @@ Item {
                 }
             }
             QQC2.Label {
+                id: verticalTitle
                 objectName: "mediaPlayerVerticalTitle"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
@@ -581,6 +960,8 @@ Item {
                 color: root.foreground
             }
             QQC2.Label {
+                id: verticalArtist
+                objectName: "mediaPlayerVerticalArtist"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 width: parent.width
@@ -591,6 +972,7 @@ Item {
                 color: root.secondary
             }
             Item {
+                id: verticalProgress
                 objectName: "mediaPlayerVerticalProgress"
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
@@ -618,6 +1000,7 @@ Item {
                 Layout.preferredHeight: 32
                 Layout.fillWidth: true
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     anchors.centerIn: parent
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
@@ -638,6 +1021,7 @@ Item {
                 Layout.preferredHeight: 32
                 Layout.fillWidth: true
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     anchors.centerIn: parent
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
@@ -658,6 +1042,7 @@ Item {
                 Layout.preferredHeight: 32
                 Layout.fillWidth: true
                 MediaPlayerControlButton {
+                    hoverTraceOwner: DockView.mediaHoverDebugEnabled ? root : null
                     anchors.centerIn: parent
                     mediaForeground: root.foreground
                     mediaSecondary: root.secondary
@@ -1018,8 +1403,10 @@ Item {
             root.popupHovered = false
             root.interactionHeld = false
             root.handlingPopupClose = false
+            root.traceMediaHover("popup-visibility", { visible: false, reason: "closed-signal" })
         }
         onOpened: {
+            root.traceMediaHover("popup-visibility", { visible: true, reason: "opened-signal" })
             root.holdDockForPopup()
             if (root.popupPinned) {
                 root.setPopupState(root.popupStatePinnedOpen, "popup-surface-opened")
@@ -1027,7 +1414,7 @@ Item {
                 root.setPopupState(root.popupStateHoverOpen, "popup-surface-opened")
             } else {
                 root.setPopupState(root.popupStateClosingPending, "popup-opened-after-pointer-left")
-                hideTimer.restart()
+                root.startCloseTimer("opened-after-pointer-left")
             }
             root.logPopupState("opened")
         }

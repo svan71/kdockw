@@ -122,6 +122,20 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerFocusChanged,
             this, &DockView::pointerFocusWindowChanged);
     m_mediaPopupTraceEnabled = qEnvironmentVariable("KDOCKW_MEDIA_POPUP_TRACE") == QLatin1String("1");
+    m_mediaHoverDebugEnabled = qEnvironmentVariable("KDOCKW_MEDIA_HOVER_DEBUG") == QLatin1String("1");
+    if (m_mediaHoverDebugEnabled) {
+        m_mediaHoverBuildId = qEnvironmentVariable("KDOCKW_MEDIA_HOVER_BUILD_ID");
+        m_mediaHoverTraceFile.setFileName(qEnvironmentVariable("KDOCKW_MEDIA_HOVER_TRACE_OUT"));
+        if (m_mediaHoverTraceFile.fileName().isEmpty()
+            || !m_mediaHoverTraceFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            qCWarning(lcDockView) << "Media hover diagnostic log could not be opened:" << m_mediaHoverTraceFile.fileName();
+            m_mediaHoverDebugEnabled = false;
+        } else {
+            traceMediaHover(QStringLiteral("session-start"), {
+                {QStringLiteral("profile"), qEnvironmentVariable("KDOCKW_MEDIA_HOVER_PROFILE")},
+            });
+        }
+    }
     m_launcherTimingEnabled = qEnvironmentVariable("KDOCKW_LAUNCHER_TIMING") == QLatin1String("1");
 
     // Register the icon image provider for QML
@@ -336,6 +350,11 @@ bool DockView::mediaPopupTraceEnabled() const
     return m_mediaPopupTraceEnabled;
 }
 
+bool DockView::mediaHoverDebugEnabled() const
+{
+    return m_mediaHoverDebugEnabled;
+}
+
 bool DockView::launcherTimingEnabled() const
 {
     return m_launcherTimingEnabled;
@@ -344,6 +363,24 @@ bool DockView::launcherTimingEnabled() const
 qint64 DockView::monotonicNowMs() const
 {
     return m_monotonicClock.elapsed();
+}
+
+void DockView::traceMediaHover(const QString &event, const QVariantMap &details) const
+{
+    if (!m_mediaHoverDebugEnabled || !m_mediaHoverTraceFile.isOpen()) {
+        return;
+    }
+
+    QJsonObject record = QJsonObject::fromVariantMap(details);
+    record.insert(QStringLiteral("event"), event);
+    record.insert(QStringLiteral("monotonicMs"), m_monotonicClock.elapsed());
+    record.insert(QStringLiteral("buildId"), m_mediaHoverBuildId);
+    record.insert(QStringLiteral("version"), QStringLiteral(KDOCKW_VERSION_STRING));
+    record.insert(QStringLiteral("executable"), QCoreApplication::applicationFilePath());
+    const QByteArray line = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
+    if (m_mediaHoverTraceFile.write(line) != line.size() || !m_mediaHoverTraceFile.flush()) {
+        qCWarning(lcDockView) << "Media hover diagnostic log write failed:" << m_mediaHoverTraceFile.fileName();
+    }
 }
 
 bool DockView::performanceDiagnosticsEnabled() const

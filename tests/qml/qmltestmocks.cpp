@@ -76,6 +76,21 @@ int MockTasksModel::count() const
     return rowCount();
 }
 
+int MockTasksModel::mediaPlayerDisplayMode() const
+{
+    return m_mediaPlayerDisplayMode;
+}
+
+void MockTasksModel::setMediaPlayerDisplayMode(int mode)
+{
+    const int bounded = std::clamp(mode, 0, 2);
+    if (m_mediaPlayerDisplayMode == bounded) {
+        return;
+    }
+    m_mediaPlayerDisplayMode = bounded;
+    Q_EMIT mediaPlayerDisplayModeChanged();
+}
+
 int MockTasksModel::activateRequests() const
 {
     return m_activateRequests;
@@ -254,7 +269,10 @@ QVariantList MockTasksModel::zoomLayoutSpecs(int iconSize) const
         const bool widget = type == QLatin1String("builtInWidget");
         const int widgetSize = get(row, QStringLiteral("widgetSize")).toInt();
         const int size = widget && widgetSize > 0 ? std::max(4, widgetSize) : std::max(1, iconSize);
-        specs.append(QVariantMap{{QStringLiteral("size"), size}, {QStringLiteral("canMagnify"), !widget}});
+        const bool mediaCanMagnify = kind == QLatin1String("mediaPlayer") && m_mediaPlayerDisplayMode == 0;
+        const bool launcherCanMagnify = kind == QLatin1String("applicationLauncher");
+        specs.append(QVariantMap{{QStringLiteral("size"), size},
+                                 {QStringLiteral("canMagnify"), !widget || launcherCanMagnify || mediaCanMagnify}});
     }
     return specs;
 }

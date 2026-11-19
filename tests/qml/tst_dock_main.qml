@@ -2501,6 +2501,67 @@ Item {
             compare(DockVisibility.hovered, false)
         }
 
+        function test_compactMediaSpringStartsBeforePopupAndTracksPointerAfterward() {
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.mediaPlayerHoverDelay = 1200
+            DockSettings.maxZoomFactor = 1.7
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:spring-regression",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Neighbor",
+                AppId: "org.example.neighbor",
+                IsWindow: true,
+                IsLauncher: false,
+            })
+
+            const dock = makeDock(2)
+            const its = items(dock)
+            const media = its.find(item => item.isMediaPlayer)
+            const neighbor = its.find(item => !item.isMediaPlayer)
+            const spring = findChild(dock, "dockSpringZoomController")
+            verify(media && neighbor && spring)
+            const mediaCenter = media.mapToItem(dock, media.width / 2, media.height / 2)
+            dock._handleDockPointerEntered(mediaCenter.x, mediaCenter.y)
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryVerify(() => spring.amount > 0.05, 1500,
+                "spring amount did not advance despite a raised target")
+            tryVerify(() => media.currentScale > 1.05, 1500,
+                "Compact media did not magnify before its popup opened")
+            tryVerify(() => spring.targetAmount > 0.99, 1000,
+                "the spring target did not rise on Compact hover")
+
+            const loader = T.findFirst(media, item => item.objectName === "mediaPlayerWidgetLoader")
+            tryVerify(() => loader && loader.item, 1000)
+            const widget = loader.item
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const scaleBeforePopup = media.currentScale
+            widget.openPinned()
+            tryVerify(() => popup.visible, 1500, "the explicit popup did not open")
+            compare(spring.targetAmount, 1.0,
+                "opening the popup must not retarget magnification to rest")
+            verify(media.currentScale >= scaleBeforePopup - 0.05,
+                "opening the popup caused a visible magnification drop")
+            popup.close()
+
+            hoverItem(neighbor)
+            tryCompare(dock, "hoveredIndex", neighbor.index)
+            tryVerify(() => media.currentScale < 1.05, 1500,
+                "moving to a neighbor did not return the media icon to rest")
+            tryVerify(() => neighbor.currentScale > 1.05, 1500,
+                "Spring Magnification did not transfer to the neighbor")
+        }
+
         function test_mediaPopupHoldTracksNeighborPreviewWithoutMovingMagnification() {
             DockSettings.previewEnabled = false
             addTasks(["Media anchor", "Neighbor", "Far task"])

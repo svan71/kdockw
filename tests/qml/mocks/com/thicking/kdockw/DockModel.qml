@@ -12,7 +12,9 @@ QtObject {
     readonly property MockMediaPlayerController mediaPlayerController: MockMediaPlayerController {}
     function noteDockDelegateCreated() { }
     function noteDockDelegateDestroyed() { }
-    readonly property MockTasksModel tasksModel: MockTasksModel {}
+    readonly property MockTasksModel tasksModel: MockTasksModel {
+        mediaPlayerDisplayMode: DockSettings.mediaPlayerDisplayMode
+    }
     readonly property var dockPresentationModel: tasksModel
     readonly property QtObject applicationCatalog: QtObject {
         signal catalogChanged()

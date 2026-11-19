@@ -21,12 +21,14 @@ class SpringZoomController : public QObject
     Q_OBJECT
     Q_PROPERTY(qreal cursor READ cursor NOTIFY stateChanged)
     Q_PROPERTY(qreal amount READ amount NOTIFY stateChanged)
+    Q_PROPERTY(qreal targetAmount READ targetAmount NOTIFY stateChanged)
 
 public:
     explicit SpringZoomController(QObject *parent = nullptr);
 
     [[nodiscard]] qreal cursor() const;
     [[nodiscard]] qreal amount() const;
+    [[nodiscard]] qreal targetAmount() const;
 
     /// Update the target while preserving velocity and current position.
     Q_INVOKABLE void setTarget(qreal cursor,

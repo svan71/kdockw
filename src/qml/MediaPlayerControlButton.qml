@@ -11,6 +11,12 @@ QQC2.ToolButton {
     required property color mediaForeground
     required property color mediaSecondary
     property bool prominent: false
+    property var hoverTraceOwner: null
+
+    onHoveredChanged: {
+        if (hoverTraceOwner)
+            hoverTraceOwner.traceButtonHover(control, hovered)
+    }
 
     palette.buttonText: enabled ? mediaForeground : mediaSecondary
     icon.color: enabled ? mediaForeground : mediaSecondary

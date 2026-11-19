@@ -35,6 +35,11 @@ qreal SpringZoomController::amount() const
     return m_amount.value;
 }
 
+qreal SpringZoomController::targetAmount() const
+{
+    return m_amount.target;
+}
+
 void SpringZoomController::setTarget(qreal cursorValue,
                                      qreal amountValue,
                                      qreal stiffness,

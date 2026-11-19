@@ -1115,6 +1115,19 @@ Item {
                     && dockItem.dockRoot.hoveredIndex === dockItem.index
             }
         }
+        onStatusChanged: {
+            if (DockView.mediaHoverDebugEnabled && dockItem.isMediaPlayer) {
+                DockView.traceMediaHover("media-widget-loader-status", {
+                    status: status,
+                    dockIndex: dockItem.index,
+                    enabled: active,
+                    itemCreated: item !== null,
+                    itemVisible: item ? item.visible : false,
+                    displayMode: item && item.displayMode !== undefined ? item.displayMode : -1,
+                    geometry: item ? { x: item.x, y: item.y, width: item.width, height: item.height } : null
+                })
+            }
+        }
     }
 
     // Attention glow effect (type 4) — MultiEffect shadow pulse on iconImage

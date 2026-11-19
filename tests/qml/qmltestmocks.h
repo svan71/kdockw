@@ -188,6 +188,7 @@ class MockTasksModel : public QStandardItemModel
 {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(int mediaPlayerDisplayMode READ mediaPlayerDisplayMode WRITE setMediaPlayerDisplayMode NOTIFY mediaPlayerDisplayModeChanged)
     Q_PROPERTY(int activateRequests READ activateRequests NOTIFY requestsChanged)
     Q_PROPERTY(int closeRequests READ closeRequests NOTIFY requestsChanged)
     Q_PROPERTY(int lastRequestRow READ lastRequestRow NOTIFY requestsChanged)
@@ -199,6 +200,8 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int count() const;
+    int mediaPlayerDisplayMode() const;
+    void setMediaPlayerDisplayMode(int mode);
     int activateRequests() const;
     int closeRequests() const;
     int lastRequestRow() const;
@@ -228,6 +231,7 @@ public:
 
 Q_SIGNALS:
     void countChanged();
+    void mediaPlayerDisplayModeChanged();
     void requestsChanged();
 
 private:
@@ -237,6 +241,7 @@ private:
 
     QHash<int, QByteArray> m_roleNames;
     int m_activateRequests = 0;
+    int m_mediaPlayerDisplayMode = 0;
     int m_closeRequests = 0;
     int m_lastRequestRow = -1;
     int m_lastRequestChild = -1;

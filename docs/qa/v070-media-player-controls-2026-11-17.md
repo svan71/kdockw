@@ -98,6 +98,22 @@ The live session exposed one service, `org.mpris.MediaPlayer2.chromium.instance3
 
 The candidate was stopped and stable `/usr/bin/kdockw` v0.6.0 restored at PID 3632233. Production config and permission-preserving backup both have mode 0600 and SHA-256 `3816001c577fac0a78ac71a3d58e0173521afa02dd93fc1f99cb7490582164f4`. No release, tag, or push was created. Media Player Controls remains `review` pending manual verification of popup visibility/hover transition, three-mode appearance, live multiple sessions, and visual geometry in Plasma/Wayland.
 
+## Eighth owner review — 2026-11-19
+
+The owner reviewed the diagnostic candidate with Build ID
+`9bd24b4262be4127d32ff93ecbe29ed9bc00b88e` and profile
+`media-hover-stationary-20261118`. The formal score was **13/14**, with zero
+errors and one skipped item; the owner additionally confirmed one visual defect
+in Compact mode. Popup flicker is resolved in all three modes, activation works
+with both stationary and moving pointers, hover covers every media control and
+the full Expanded widget, pointer transfer to and from the popup works, and
+leaving for a neighbor or desktop closes the popup while preserving ordinary
+Window Preview. Controls and Expanded were fully accepted. Compact popup opening
+is stable, but its icon returns to rest size when the popup appears. The owner
+video from 2026-11-19 08:42:43 also shows an ordinary Obsidian Window Preview
+keeping its icon magnified; that behavior is the comparison control. The
+remaining Compact scale defect stays open, and the task remains `review`.
+
 ## Fourth correction cycle — 2026-11-18
 
 ### Expanded widget sizing and media popup
@@ -573,3 +589,139 @@ and its mode-preserving backup both remain mode 0600 with SHA-256
 `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`. The
 candidate's isolated profile was preserved. Media Player Controls remains
 `review`; no release, tag, or push was created.
+
+## Owner follow-up and hover gate correction — 2026-11-18
+
+The owner manually exercised all three display modes on the preceding
+candidate and reported:
+
+- Compact: hover popup did not open reliably and magnification still jumped;
+  popup closed with a smooth shrink. Popup appeared only after clicking the
+  widget.
+- Controls: hover over Previous, Play/Pause, and Next did not open the popup;
+  movement between buttons did not flicker. Popup appeared only after clicking
+  narrow strips above or below the controls.
+- Expanded: popup did not open consistently across the widget; its appearance
+  was unchanged. Clicking narrow strips around the title/progress opened it.
+- The common popup handoff remained accepted: widget→popup worked, movement to
+  a neighboring icon or desktop closed it, and neighboring Window Preview
+  continued to work.
+
+The owner's report is consistent with the recorded `c96fe06fa3f2e914f184ecc8c960a8d9a70e2473`
+trace in
+`diagnostics/v070-dev/logs/media-hover-media-hover-owner-review-20261118-160448801709718.jsonl`.
+When `pointerFocusKnown` was true, the hover gate required dock-window focus
+and an exact `hoveredIndex === mediaIndex` match. The magnification hit-test
+briefly returned `-1` while the media widget or a child button still received
+QML hover. That made the gate false and canceled the open timer. This explains
+the click-only/narrow-strip behavior recorded for that candidate.
+
+A narrow correction now keeps the dock-window focus check but also accepts the
+media widget's actual dock HoverHandler while hit-testing is transiently
+empty. The regression test exercises Compact, Controls Play/Pause, and
+Expanded title with the stale `-1` hit-test and verifies that the hover-open
+timer fires. The `qml_tst_media_player_widget` target passed **1/1** in 31.80 s.
+
+The new isolated candidate is running as
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+version `0.7.0-dev`, GNU Build ID
+`d60c0957300e3fc68ade96b12d0e5234b0a56fe6`. Source and stage ELF IDs match;
+launcher preflight passed for profile `media-hover-owner-review`. Its new
+interaction trace is
+`diagnostics/v070-dev/logs/media-hover-media-hover-owner-review-20261118-162601813773503.jsonl`.
+Owner recheck on this Build ID is pending. Do not infer visual acceptance from
+the unit test.
+
+The reported Compact magnification jumps were not addressed by this hover-gate
+patch. The previous trace showed hover/hit-test flapping correlated with the
+popup timer cancellation, but did not isolate the cause of the scale jumps.
+Magnification smoothness, flicker-free popup appearance, and full-area hover
+remain **NOT VERIFIED** on the corrected candidate until the owner checks it.
+Stable `/usr/bin/kdockw` v0.6.0 is paused while the diagnostic candidate is
+active. No release, tag, or push was created.
+
+## Seventh owner review and stationary-pointer correction — 2026-11-18
+
+The owner rechecked Build ID `d60c0957300e3fc68ade96b12d0e5234b0a56fe6`
+across Compact, Controls, and Expanded and scored **12/15**. Hover over the
+Controls buttons, full-area Expanded hit-testing, widget→popup handoff,
+neighbor/desktop dismissal, and neighboring Window Preview were accepted.
+Popup flicker remained in all three modes, and Compact magnification still
+jumped. This report records the owner's result; the implementation below is a
+new correction and has not yet received visual acceptance.
+
+The diagnostic trace is
+`diagnostics/v070-dev/logs/media-hover-media-hover-owner-review-20261118-162601813773503.jsonl`
+(source and staged Build ID `d60c0957300e3fc68ade96b12d0e5234b0a56fe6`).
+For the stationary Expanded sample, the pointer entered at monotonic 5680 ms
+(`pointerRoot=(1617.68,84.01)`), and the open timer started at 5682 ms. The
+timer fired allowed at 5952 ms and the popup became visible at 5956 ms. At
+5957 ms the QML parent `HoverHandler` emitted leave while Wayland focus still
+identified the dock surface and the recorded pointer position was unchanged.
+No pointer-motion event followed. The close timer started at 5958 ms, was
+restarted when Popup reported opened at 6229 ms, fired at 6435 ms, and the
+popup became invisible at 6617 ms. This establishes that the synthetic QML
+leave, rather than an observed Wayland leave or pointer movement, triggered
+the stationary-pointer close.
+
+The trace also contains an open where the popup remained visible after region
+changes: the timer fired at 14415 ms, the parent HoverHandler left at 14418 ms,
+and re-entered at 14421 ms; the close timer was canceled at 14422 ms. However,
+that older trace has no pointer-motion serial/event and its recorded root
+coordinates stayed constant during those region transitions. It therefore
+does not prove that physical pointer motion caused the re-entry. The owner's
+manual A/B observation supports motion dependence, while the trace only
+confirms that hover reacquisition cancels the close timer. The new trace now
+records dock motion serials to distinguish real motion from hit-region/layout
+changes.
+
+For Compact, the old trace recorded the media row as hit (`hoveredIndex=29`)
+at 779197 ms, then `-1` at 779202 ms with the same pointer location while the
+spring had barely advanced. The trace did not expose the spring target, so it
+could not show whether the target itself changed at that moment. A read-only
+`SpringZoomController.targetAmount` property is now included in diagnostics.
+Hit-testing now retains the Compact media item inside its maximum-zoom
+envelope through transient misses while allowing a real hit on a neighbor to
+take precedence. This keeps pointer entry as the spring trigger; popup opening
+is not the magnification trigger.
+
+The hover state now latches when the media widget's HoverHandler receives a
+real enter. It survives the synthetic leave while Wayland focus remains on
+the dock, with no polling or dock-wide popup hold. A real dock motion is
+processed by the ordinary hit-test first and then resolves the latch against
+the current widget/neighbor. The allowed popup region remains the media widget
+and the popup itself; neighbor and desktop dismissal paths are unchanged.
+QML regressions cover a stationary pointer after entry and after popup open,
+one open per hover, no close timer without real motion, release to a neighbor
+after real motion, and Compact spring target/scale before and after popup open.
+
+### Seventh-cycle verification
+
+- Targeted Production QML tests: `qml_tst_dock_main` and
+  `qml_tst_media_player_widget` both passed.
+- Full Production Release CTest: **230/230 passed** (357.75 s).
+- Full Diagnostic Release CTest: **234/234 passed** (375.36 s).
+- Both full CTest runs used `TMPDIR=/tmp`; the earlier D-Bus socket-name
+  failures were avoided without changing test expectations.
+- Diagnostic stage preflight passed for profile
+  `media-hover-stationary-20261118`. Source and stage ELF GNU Build ID match:
+  `9bd24b4262be4127d32ff93ecbe29ed9bc00b88e`; version is `0.7.0-dev`.
+  Russian source/stage MO files match SHA-256
+  `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`.
+- `bash -n` and `git diff --check` passed. Stable config backup was verified
+  byte-for-byte, mode 0600, SHA-256
+  `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`.
+- The new isolated candidate is running as PID 685305 from the staged path
+  with `--media-hover-debug`; stable v0.6.0 is paused. The candidate's own
+  profile is `media-hover-stationary-20261118`. Owner visual recheck of the
+  stationary-pointer behavior and Compact animation is **NOT VERIFIED**.
+  Media Player Controls remains `review`; no release, tag, or push was created.
+
+For the owner recheck, leave the cursor still after entering the media widget
+until the popup opens; verify the popup opens once and stays open without a
+new pointer move. In Compact, confirm the icon begins its spring increase
+before popup opening and does not retarget when the popup appears. Then move
+to a neighboring icon to confirm the existing close delay and magnification
+handoff. Repeat the stationary open in Controls and Expanded. After the
+review, restore stable v0.6.0 with
+`tools/kdockw-v070-dev-stop-and-restore`.

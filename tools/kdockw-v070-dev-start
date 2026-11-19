@@ -39,6 +39,7 @@ kservice_trace=false
 launcher_page=""
 controls_style=""
 media_popup_trace=false
+media_hover_debug=false
 launcher_timing=false
 
 fail() { printf 'KDockW v0.7.0-dev launcher refused: %s\n' "$1" >&2; exit 1; }
@@ -72,6 +73,7 @@ while (($#)); do
             ;;
         --task-diagnostics) task_diagnostics=true; shift ;;
         --media-popup-trace) media_popup_trace=true; shift ;;
+        --media-hover-debug) media_hover_debug=true; shift ;;
         --launcher-timing) launcher_timing=true; shift ;;
         --model-debug) model_debug=true; shift ;;
         --performance-diagnostics) performance_diagnostics=true; shift ;;
@@ -92,7 +94,7 @@ while (($#)); do
             shift 2
             ;;
         --controls-style=*) controls_style="${1#*=}"; shift ;;
-        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--media-popup-trace] [--launcher-timing] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace] [--launcher-page PAGE] [--controls-style org.kde.desktop|Fusion|Basic]" ;;
+        *) fail "usage: $0 [--preflight-only] [--wayland-debug] [--profile NAME] [--preview-capture-mode auto|cpu-only] [--task-diagnostics] [--media-popup-trace] [--media-hover-debug] [--launcher-timing] [--model-debug] [--performance-diagnostics] [--qml-profiler] [--experiment-suppress-task-model-forwarding] [--gdb-attach] [--object-census] [--kservice-trace] [--launcher-page PAGE] [--controls-style org.kde.desktop|Fusion|Basic]" ;;
     esac
 done
 if [[ -n "$launcher_page" ]]; then
@@ -129,6 +131,11 @@ if [[ "$profile_name" == launcher-review ]]; then
     performance_diagnostics=true
     kservice_trace=true
 fi
+if [[ "$media_hover_debug" == true ]]; then
+    [[ -n "$profile_name" ]] || fail "--media-hover-debug requires an isolated --profile"
+    [[ "$task_diagnostics" == false && "$performance_diagnostics" == false && "$qml_profiler" == false ]] \
+        || fail "--media-hover-debug is a focused trace and cannot be combined with TaskManager/performance/QML profiling"
+fi
 if [[ "$kservice_trace" == true ]]; then
     [[ -r "${build_dir}/bin/kdockw-kservice-query-trace.so" ]] \
         || fail "KService query trace library is missing; build tools/kdockw-v070-kservice-query-trace.cpp first"
@@ -164,7 +171,7 @@ manager_config_home="$(sed -n 's/^XDG_CONFIG_HOME=//p' <<<"$manager_env")"
 [[ -S "/run/user/$(id -u)/${wayland_display}" ]] || fail "Wayland socket is unavailable"
 [[ "$dbus_address" == "unix:path=/run/user/$(id -u)/bus" && -S "/run/user/$(id -u)/bus" ]] || fail "user D-Bus is unavailable"
 grep -Fxq 'KWIN_WAYLAND_NO_PERMISSION_CHECKS=1' <<<"$manager_env" && fail "KWin permission checks are disabled"
-if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_MEDIA_POPUP_TRACE|KDOCKW_LAUNCHER_TIMING|KDOCKW_PREVIEW_CAPTURE_MODE|KDOCKW_PERF_DIAGNOSTICS|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
+if grep -Eq '^(KDOCKW_DIAGNOSTIC_[^=]*|KDOCKW_TASK_DIAGNOSTICS|KDOCKW_MEDIA_POPUP_TRACE|KDOCKW_MEDIA_HOVER_DEBUG|KDOCKW_MEDIA_HOVER_TRACE_OUT|KDOCKW_MEDIA_HOVER_BUILD_ID|KDOCKW_MEDIA_HOVER_PROFILE|KDOCKW_LAUNCHER_TIMING|KDOCKW_PREVIEW_CAPTURE_MODE|KDOCKW_PERF_DIAGNOSTICS|QT_LOGGING_RULES|QT_LOGGING_CONF)=' <<<"$manager_env"; then
     fail "Plasma manager has a pre-existing diagnostic override"
 fi
 for xdg_name in XDG_CONFIG_HOME XDG_CONFIG_DIRS XDG_DATA_HOME XDG_CACHE_HOME; do
@@ -387,6 +394,16 @@ media_popup_trace_args=()
 if [[ "$media_popup_trace" == true ]]; then
     media_popup_trace_args+=(--setenv=KDOCKW_MEDIA_POPUP_TRACE=1)
 fi
+media_hover_debug_args=()
+media_hover_debug_log=""
+if [[ "$media_hover_debug" == true ]]; then
+    media_hover_debug_log="${diagnostic_root}/logs/media-hover-${profile_name}-$(date +%Y%m%d-%H%M%S%N).jsonl"
+    install -m 0600 /dev/null "$media_hover_debug_log"
+    media_hover_debug_args+=(--setenv=KDOCKW_MEDIA_HOVER_DEBUG=1)
+    media_hover_debug_args+=(--setenv="KDOCKW_MEDIA_HOVER_TRACE_OUT=${media_hover_debug_log}")
+    media_hover_debug_args+=(--setenv="KDOCKW_MEDIA_HOVER_BUILD_ID=${staged_build_id}")
+    media_hover_debug_args+=(--setenv="KDOCKW_MEDIA_HOVER_PROFILE=${profile_name}")
+fi
 launcher_timing_args=()
 if [[ "$launcher_timing" == true ]]; then
     launcher_timing_args+=(--setenv=KDOCKW_LAUNCHER_TIMING=1)
@@ -455,6 +472,7 @@ systemd-run --user --no-block --collect --unit="$service" \
     --setenv="XDG_CONFIG_HOME=${diagnostic_xdg_config_home}" \
     "${task_diagnostic_args[@]}" \
     "${media_popup_trace_args[@]}" \
+    "${media_hover_debug_args[@]}" \
     "${launcher_timing_args[@]}" \
     "${model_logging_args[@]}" \
     "${performance_diagnostic_args[@]}" \
@@ -489,8 +507,11 @@ done
 restore_pending=false
 trap - EXIT
 
-printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview capture mode: %s\nTask diagnostics: %s\nMedia popup trace: %s\nLauncher timing: %s\nModel debug logging: %s\nPerformance diagnostics: %s\nQML Profiler: %s\nKService query trace: %s\nProduction config backup: %s\nSeparate config: %s\nIsolated XDG_CONFIG_HOME: %s\nIsolated XDG_DATA_HOME: %s\nIsolated XDG_CACHE_HOME: %s\nLog: %s\n' \
-    "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$media_popup_trace" "$launcher_timing" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_backup" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
+printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview capture mode: %s\nTask diagnostics: %s\nMedia popup trace: %s\nMedia hover debug: %s\nLauncher timing: %s\nModel debug logging: %s\nPerformance diagnostics: %s\nQML Profiler: %s\nKService query trace: %s\nProduction config backup: %s\nSeparate config: %s\nIsolated XDG_CONFIG_HOME: %s\nIsolated XDG_DATA_HOME: %s\nIsolated XDG_CACHE_HOME: %s\nLog: %s\n' \
+    "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$media_popup_trace" "$media_hover_debug" "$launcher_timing" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_backup" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
+if [[ "$media_hover_debug" == true ]]; then
+    printf 'Media hover event log: %s\n' "$media_hover_debug_log"
+fi
 if [[ "$kservice_trace" == true ]]; then
     printf 'KService trace: %s\n' "$kservice_trace_log"
 fi

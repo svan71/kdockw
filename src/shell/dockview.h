@@ -8,6 +8,7 @@
 #include "style/backgroundstyle.h"
 
 #include <QPointer>
+#include <QFile>
 #include <QQuickView>
 #include <QVariant>
 #include <QElapsedTimer>
@@ -63,6 +64,7 @@ class DockView : public QQuickView
     Q_PROPERTY(QWindow *pointerFocusWindow READ pointerFocusWindow NOTIFY pointerFocusWindowChanged)
     Q_PROPERTY(bool performanceDiagnosticsEnabled READ performanceDiagnosticsEnabled CONSTANT)
     Q_PROPERTY(bool mediaPopupTraceEnabled READ mediaPopupTraceEnabled CONSTANT)
+    Q_PROPERTY(bool mediaHoverDebugEnabled READ mediaHoverDebugEnabled CONSTANT)
     Q_PROPERTY(bool launcherTimingEnabled READ launcherTimingEnabled CONSTANT)
     Q_PROPERTY(QString launcherDiagnosticPage READ launcherDiagnosticPage CONSTANT)
 
@@ -156,8 +158,10 @@ public:
     [[nodiscard]] QWindow *pointerFocusWindow() const;
     [[nodiscard]] bool performanceDiagnosticsEnabled() const;
     [[nodiscard]] bool mediaPopupTraceEnabled() const;
+    [[nodiscard]] bool mediaHoverDebugEnabled() const;
     [[nodiscard]] bool launcherTimingEnabled() const;
     Q_INVOKABLE qint64 monotonicNowMs() const;
+    Q_INVOKABLE void traceMediaHover(const QString &event, const QVariantMap &details) const;
     [[nodiscard]] QString launcherDiagnosticPage() const;
     Q_INVOKABLE void traceLauncherUi(const QString &label, const QVariantMap &state) const;
 
@@ -205,6 +209,9 @@ private:
     QString m_geometryTraceAfterFrame;
     QString m_launcherDiagnosticPage;
     bool m_mediaPopupTraceEnabled = false;
+    bool m_mediaHoverDebugEnabled = false;
+    QString m_mediaHoverBuildId;
+    mutable QFile m_mediaHoverTraceFile;
     bool m_launcherTimingEnabled = false;
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     bool m_performanceDiagnosticsEnabled = false;

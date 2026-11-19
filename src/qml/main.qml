@@ -78,6 +78,10 @@ Item {
     readonly property real taskZoneGap: taskZoneBoundary >= 0
         ? DockSettings.iconSpacing + taskZoneSeparatorThickness : 0
     property string hoveredName: ""
+    // Compact media has a stable 36px rest slot while its spring magnifies.
+    // Retain that entry as the hit-test anchor if the animated bounds move
+    // away from a stationary pointer; a real hit on a neighbour wins.
+    property int _compactMediaMagnificationIndex: -1
 
     // Keyboard navigation state
     property bool keyboardNavigating: false
@@ -118,6 +122,8 @@ Item {
     // space trackPointer() takes. Not updated while context-menu hover is held.
     property real _pointerRootX: -1
     property real _pointerRootY: -1
+    // Changes only on real pointer input, not layout or hit-test updates.
+    property int pointerMotionSerial: 0
     property int _perfPointerEnters: 0
     property int _perfPointerMoves: 0
     property int _perfPointerLeaves: 0
@@ -923,6 +929,7 @@ Item {
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
+            _compactMediaMagnificationIndex = -1
             return
         }
         // Hit-test only a pointer the dock has. After the pointer left for the
@@ -954,6 +961,7 @@ Item {
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
+            _compactMediaMagnificationIndex = -1
             return
         }
 
@@ -983,6 +991,9 @@ Item {
             }
             if (hit) {
                 _zoomActive = true  // Activate zoom; stays until mouse leaves panel
+                const hitItem = dockRepeater.itemAt(slot)
+                _compactMediaMagnificationIndex = hitItem && hitItem.isMediaPlayer
+                    && DockSettings.mediaPlayerDisplayMode === 0 ? slot : -1
                 if (hoveredIndex !== slot) {
                     hoveredIndex = slot
                     hoveredName = slotItem.displayName
@@ -990,6 +1001,17 @@ Item {
                         tooltipTimer.restart()
                 }
             } else {
+                const heldIndex = compactMediaMagnificationHit(sampleX, sampleY)
+                if (heldIndex >= 0) {
+                    _zoomActive = true
+                    _compactMediaMagnificationIndex = heldIndex
+                    if (hoveredIndex !== heldIndex) {
+                        hoveredIndex = heldIndex
+                        hoveredName = dockRepeater.itemAt(heldIndex).displayName
+                    }
+                    return
+                }
+                _compactMediaMagnificationIndex = -1
                 // _zoomActive kept, same hysteresis as in-place mode below.
                 hoveredIndex = -1
                 hoveredName = ""
@@ -1035,8 +1057,18 @@ Item {
             if (effectiveDist < bestNormDist) { bestIndex = i; bestNormDist = effectiveDist }
         }
 
+        // A compact media icon has a fixed rest slot but its visual bounds
+        // animate. If those bounds move away from an unmoved pointer, keep the
+        // spring target while the pointer remains inside the icon's maximum
+        // zoom envelope. A hit on any other entry above takes precedence.
+        if (bestIndex < 0)
+            bestIndex = compactMediaMagnificationHit(sampleX, sampleY)
+
         if (bestIndex >= 0) {
             _zoomActive = true  // Activate zoom; stays until mouse leaves panel
+            const hitItem = dockRepeater.itemAt(bestIndex)
+            _compactMediaMagnificationIndex = hitItem && hitItem.isMediaPlayer
+                && DockSettings.mediaPlayerDisplayMode === 0 ? bestIndex : -1
             if (hoveredIndex !== bestIndex) {
                 hoveredIndex = bestIndex
                 hoveredName = dockRepeater.itemAt(bestIndex).displayName
@@ -1044,6 +1076,7 @@ Item {
                     tooltipTimer.restart()
             }
         } else {
+            _compactMediaMagnificationIndex = -1
             hoveredIndex = -1
             hoveredName = ""
             // _zoomActive intentionally NOT reset here for primary-axis gap hysteresis.
@@ -1051,6 +1084,22 @@ Item {
             // flickering. Zoom deactivates only when mouse leaves the depth zone
             // (rough check above) or the panel zone entirely (mouseX becomes -1).
         }
+    }
+
+    function compactMediaMagnificationHit(sampleX, sampleY) {
+        const index = _compactMediaMagnificationIndex
+        if (index < 0 || index >= dockRepeater.count
+                || DockSettings.mediaPlayerDisplayMode !== 0)
+            return -1
+        const item = dockRepeater.itemAt(index)
+        if (!item || !item.isMediaPlayer)
+            return -1
+        const scale = DockSettings.maxZoomFactor
+        const center = item.itemCenterX + item.currentOffset
+        const halfPrimary = ((DockView.isVertical ? item.height : item.width) * scale) / 2
+        const span = _secondarySpan(item, scale)
+        return Math.abs(sampleX - center) <= halfPrimary
+                && sampleY >= span.near && sampleY <= span.far ? index : -1
     }
 
     // Pointer left the dock: release zoom and hover unless the preview keeps
@@ -1065,6 +1114,7 @@ Item {
         }
         _pointerOnDock = false
         _hoverReconciling = false
+        _compactMediaMagnificationIndex = -1
         PreviewController.clearDismissedTask()
         // Keep zoom state when preview is visible (dock→preview mouse transition)
         if (!PreviewController.visible) {
@@ -1116,6 +1166,8 @@ Item {
             mediaPopupHoldIndex: _mediaPopupHoldIndex,
             zoomActive: _zoomActive,
             springFactor: dockPanel ? dockPanel.zoomAmount : 0,
+            springTargetAmount: dockPanel && dockPanel.magnificationMode === 1
+                ? springZoom.targetAmount : (dockPanel && dockPanel.mouseInside ? 1 : 0),
             springCursor: dockPanel ? dockPanel.zoomCursor : 0,
             previewVisible: PreviewController.visible,
             current: geometryFor(current),
@@ -1467,6 +1519,9 @@ Item {
                 root._reconcileAt(mouse.x, mouse.y)
             else
                 root.trackPointer(mouse.x, mouse.y)
+            // Notify composite widgets after the authoritative dock hit-test
+            // has consumed this real motion sample.
+            root.pointerMotionSerial++
         }
     }
 

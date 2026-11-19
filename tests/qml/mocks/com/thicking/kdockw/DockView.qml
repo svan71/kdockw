@@ -21,10 +21,16 @@ QtObject {
     property bool pointerFocusKnown: false
     property var pointerFocusWindow: null
     property bool mediaPopupTraceEnabled: false
+    property bool mediaHoverDebugEnabled: false
+    property var mediaHoverEvents: []
     property bool launcherTimingEnabled: false
     property int monotonicTimeMs: 0
     property string launcherDiagnosticPage: ""
     function monotonicNowMs() { return ++monotonicTimeMs }
+    function traceMediaHover(event, details) {
+        if (mediaHoverDebugEnabled)
+            mediaHoverEvents.push({ event: event, details: details })
+    }
 
     // Production DockView::zoomLayout (kdockw::computeDockZoom), not a copy.
     function zoomLayout(count, restStart, iconSize, spacing, boundary, boundaryGap,
@@ -43,7 +49,7 @@ QtObject {
     }
 
     // Restores every property listed in _resettable to its declared value.
-    readonly property var _resettable: ["edge", "backgroundStyleType", "backgroundColor", "floatingPadding", "iconCacheVersion", "tooltipReserve", "screenGeometry", "pointerInside", "pointerFocusKnown", "pointerFocusWindow", "mediaPopupTraceEnabled", "launcherTimingEnabled", "monotonicTimeMs", "launcherDiagnosticPage"]
+    readonly property var _resettable: ["edge", "backgroundStyleType", "backgroundColor", "floatingPadding", "iconCacheVersion", "tooltipReserve", "screenGeometry", "pointerInside", "pointerFocusKnown", "pointerFocusWindow", "mediaPopupTraceEnabled", "mediaHoverDebugEnabled", "mediaHoverEvents", "launcherTimingEnabled", "monotonicTimeMs", "launcherDiagnosticPage"]
     property var _defaults: ({})
     Component.onCompleted: {
         for (const k of _resettable) _defaults[k] = this[k]
