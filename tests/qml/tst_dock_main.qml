@@ -2691,6 +2691,135 @@ Item {
                       1000, "popup close did not hand the spring back to the neighbor")
         }
 
+        function test_compactMediaMagnificationSurvivesDelayedPopupGapRoundTrips_data() {
+            return dockEdges()
+        }
+
+        function test_compactMediaMagnificationSurvivesDelayedPopupGapRoundTrips(data) {
+            DockView.edge = data.edge
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.maxZoomFactor = 1.7
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: `widget:mediaPlayer:delayed-gap-${data.tag}`,
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            DockModel.tasksModel.addTask({
+                display: "Neighbor",
+                AppId: "org.example.delayed-gap-neighbor",
+                IsWindow: true,
+                IsLauncher: false,
+            })
+
+            const dock = makeDock(2)
+            const its = items(dock)
+            const media = its.find(item => item.isMediaPlayer)
+            const neighbor = its.find(item => !item.isMediaPlayer)
+            const panel = media.parent.parent
+            const spring = findChild(dock, "dockSpringZoomController")
+            const widget = media && media.mediaPlayerWidget
+            verify(media && neighbor && spring && widget)
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+
+            const mediaCenter = media.mapToItem(dock, media.width / 2, media.height / 2)
+            dock._handleDockPointerEntered(mediaCenter.x, mediaCenter.y)
+            tryCompare(dock, "hoveredIndex", media.index)
+            tryVerify(() => spring.targetAmount > 0.99 && media.currentScale > 1.05,
+                      1500, "Compact did not establish its normal spring anchor")
+
+            widget.popupOpenRequested = true
+            widget.popupState = widget.popupStateHoverOpen
+            widget.magnificationHeld = true
+            dock.holdMediaPopup(media.index)
+            const anchorX = panel.mouseX
+            const anchorY = panel.mouseY
+            compare(spring.targetAmount, 1.0)
+
+            // Model a slow pointer crossing of the physical gap along the
+            // popup-facing cross axis. The sample remains inside the expanded
+            // layer-shell area but outside the icon hit envelope.
+            const panelOrigin = panel.mapToItem(dock, 0, 0)
+            const primary = DockView.isVertical
+                ? mediaCenter.y - panelOrigin.y : mediaCenter.x - panelOrigin.x
+            const span = dock._secondarySpan(media, DockSettings.maxZoomFactor)
+            const gapSecondary = (DockView.edge === 0 || DockView.edge === 2)
+                ? span.far + 2 : span.near - 2
+            const restSpan = dock._secondarySpan(media, 1.0)
+            const rowNear = restSpan.near
+            const rowFar = restSpan.far
+            verify(gapSecondary < rowNear || gapSecondary > rowFar,
+                   "the delayed gap sample must be outside the dock row")
+            const gapPoint = DockView.isVertical
+                ? { x: panelOrigin.x + gapSecondary, y: panelOrigin.y + primary }
+                : { x: panelOrigin.x + primary, y: panelOrigin.y + gapSecondary }
+            dock._pointerRootX = gapPoint.x
+            dock._pointerRootY = gapPoint.y
+            dock.trackPointer(gapPoint.x, gapPoint.y)
+            // Exercise the same live hit-test branch even if a compositor does
+            // not deliver a dock-surface motion event for this gap coordinate.
+            dock.updateHoveredItem(false, primary, gapSecondary, true)
+            wait(120)
+            verify(dock._zoomActive,
+                   "a delayed no-hit gap sample deactivated Spring Magnification")
+            compare(dock._compactMediaMagnificationIndex, media.index,
+                    "the Compact spring anchor was discarded in the popup gap")
+            compare(spring.targetAmount, 1.0,
+                    "the delayed gap transition retargeted the spring to rest")
+            compare(panel.mouseX, anchorX,
+                    "the popup gap replaced the Window Preview style spring anchor")
+            compare(panel.mouseY, anchorY)
+            verify(media.currentScale > 1.05,
+                   "the media icon shrank while the pointer paused in the gap")
+
+            // Return slowly from the popup through the same gap to Compact.
+            widget.popupHovered = true
+            DockView.pointerFocusKnown = false
+            dock._pointerLeft()
+            dock.trackPointer(gapPoint.x, gapPoint.y)
+            wait(120)
+            compare(spring.targetAmount, 1.0,
+                    "popup-to-dock gap crossing dropped the spring target")
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            const mediaReturn = media.mapToItem(dock, media.width / 2, media.height / 2)
+            dock._pointerRootX = mediaReturn.x
+            dock._pointerRootY = mediaReturn.y
+            dock._handleDockPointerEntered(mediaReturn.x, mediaReturn.y)
+            compare(dock.hoveredIndex, media.index,
+                    "returning through the gap did not restore Compact hover")
+            compare(spring.targetAmount, 1.0,
+                    "returning through the gap failed to restore the spring target")
+
+            // Valid neighbor hits still take precedence over the held media
+            // anchor, matching Window Preview's real dock hit-testing.
+            const neighborCenter = neighbor.mapToItem(dock,
+                neighbor.width / 2, neighbor.height / 2)
+            dock._pointerRootX = neighborCenter.x
+            dock._pointerRootY = neighborCenter.y
+            dock.trackPointer(neighborCenter.x, neighborCenter.y)
+            compare(dock.hoveredIndex, neighbor.index,
+                    "popup gap retention blocked a valid neighboring dock hit")
+
+            widget.popupState = widget.popupStateClosed
+            widget.popupOpenRequested = false
+            widget.magnificationHeld = false
+            DockView.pointerInside = true
+            dock.releaseMediaPopup(media.index)
+            tryVerify(() => dock._mediaPopupHoldIndex === -1)
+            tryVerify(() => spring.targetAmount > 0.99 && dock.hoveredIndex === neighbor.index,
+                      1000, "popup release did not transfer magnification to the neighbor")
+        }
+
         function test_compactMagnificationHoldRequiresActiveHoverPopup() {
             DockSettings.magnificationMode = 1
             DockSettings.mediaPlayerDisplayMode = 0

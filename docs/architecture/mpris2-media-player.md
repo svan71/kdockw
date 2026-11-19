@@ -211,6 +211,19 @@ Offscreen QML regressions cover widget-to-neighbor, widget-to-far-item,
 widget-to-popup, popup-to-another-item and popup-to-desktop transitions. They do
 not replace live pointer verification in Plasma/Wayland; that remains pending.
 
+### Spring anchor through the detached-popup gap — 2026-11-19
+
+Window Preview retains the dock's last `mouseX`/`mouseY` spring anchor while its
+separate surface owns the pointer. Compact media uses the same anchor rule while
+its non-pinned hover popup owns the existing magnification hold. A no-hit sample
+in the popup-facing cross-axis gap clears the ordinary hovered item but keeps
+the Compact anchor and spring target; a valid hit on another dock item still
+takes precedence. Closing the popup releases the hold and re-hit-tests the
+current pointer. This does not add a transition zone, timeout, or pointer
+polling. Pinned popups and genuine dismissal continue through their existing
+paths. Four-edge QML coverage checks a delayed gap dwell and the return to the
+widget; real Plasma/Wayland acceptance remains pending.
+
 ### Manual selection during status refresh
 
 When the manually selected player's `PlaybackStatus` is invalidated, retain

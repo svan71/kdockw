@@ -926,13 +926,11 @@ Item {
         // Geometry/scale callbacks must not move the held hover.
         if (_hoverHeld || (_mediaPopupHoldIndex >= 0 && !pointerSampleDuringMediaPopup)) return
         if (sampleX < 0) {
-            if (_shouldRetainCompactMagnificationDuringMediaPopup()) {
+            if (_retainCompactMagnificationAcrossPopupGap()) {
                 // The popup is a separate Wayland surface. Its handoff can
                 // produce an outside-dock hit test before popup hover/focus
-                // arrives. Keep the existing spring anchor through that
-                // handoff; the popup's normal close path releases this hold.
-                hoveredIndex = -1
-                hoveredName = ""
+                // arrives. Keep the same dockPanel mouseX/mouseY spring anchor
+                // used by Window Preview until the popup releases this hold.
                 return
             }
             hoveredIndex = -1
@@ -967,6 +965,8 @@ Item {
             rowNear -= maxExt
         }
         if (sampleY < rowNear || sampleY > rowFar) {
+            if (_retainCompactMagnificationAcrossPopupGap())
+                return
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -1020,7 +1020,8 @@ Item {
                     }
                     return
                 }
-                _compactMediaMagnificationIndex = -1
+                if (!_shouldRetainCompactMagnificationDuringMediaPopup())
+                    _compactMediaMagnificationIndex = -1
                 // _zoomActive kept, same hysteresis as in-place mode below.
                 hoveredIndex = -1
                 hoveredName = ""
@@ -1085,7 +1086,8 @@ Item {
                     tooltipTimer.restart()
             }
         } else {
-            _compactMediaMagnificationIndex = -1
+            if (!_shouldRetainCompactMagnificationDuringMediaPopup())
+                _compactMediaMagnificationIndex = -1
             hoveredIndex = -1
             hoveredName = ""
             // _zoomActive intentionally NOT reset here for primary-axis gap hysteresis.
@@ -1125,6 +1127,18 @@ Item {
                 && widget.magnificationHeld && widget.popupOpenRequested
                 && !widget.popupPinned
                 && widget.popupState !== widget.popupStateClosed
+    }
+
+    function _retainCompactMagnificationAcrossPopupGap() {
+        if (!_shouldRetainCompactMagnificationDuringMediaPopup())
+            return false
+        // Window Preview keeps dockPanel.mouseX/mouseY as the spring anchor
+        // while its separate surface owns the pointer. Compact media follows
+        // that same anchor rule, but valid dock hits still win before this
+        // no-hit path is reached.
+        hoveredIndex = -1
+        hoveredName = ""
+        return true
     }
 
     function _shouldRetainCompactMediaMagnificationOnSurfaceLeave() {
@@ -1220,6 +1234,7 @@ Item {
             pointerPanel: dockPanel ? { x: dockPanel.mouseX, y: dockPanel.mouseY } : null,
             hoveredIndex: hoveredIndex,
             mediaPopupHoldIndex: _mediaPopupHoldIndex,
+            compactMagnificationIndex: _compactMediaMagnificationIndex,
             zoomActive: _zoomActive,
             springFactor: dockPanel ? dockPanel.zoomAmount : 0,
             springTargetAmount: dockPanel && dockPanel.magnificationMode === 1

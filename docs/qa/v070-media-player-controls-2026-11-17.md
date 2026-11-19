@@ -785,3 +785,67 @@ Verification results and the new source/stage Build ID will be appended after th
 - Diagnostic launcher stage preflight passed, then the isolated candidate started with profile `media-compact-scale-20261119` and `--media-hover-debug`. Source binary, staged binary, and running `/proc/<pid>/exe` match GNU Build ID `55fdc159671c1ce7cf0a0236da4ab2e58ca78bfb`; version is `0.7.0-dev`. Russian source/stage MO SHA-256 matches: `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`.
 - `msgfmt --check --check-format`, launcher shell syntax, and `git diff --check` passed. The original production configuration backup remains unchanged and verified at SHA-256 `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`, mode 0600.
 - New candidate PID `1068663` is active from the staged path. Specialized trace is `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-095014507570660.jsonl`. Stable `/usr/bin/kdockw` v0.6.0 is paused with the owner's prior authorization. The manual Compact popup→icon visual retest is pending; do not mark the defect accepted or the task done. No release, tag, or push.
+
+## Eleventh cycle — reuse Window Preview spring-anchor retention — 2026-11-19
+
+### Tenth owner acceptance and trace
+
+The owner scored the tenth review **3/5** on Build ID
+`55fdc159671c1ce7cf0a0236da4ab2e58ca78bfb`. The popup stayed stable and
+neighbor/desktop handoff remained accepted, but Compact shrank during slow
+Compact↔popup transitions through the physical gap. Fast transitions worked.
+
+The trace `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-095014507570660.jsonl` confirms the difference. On the fast handoff at monotonic 663336–663339, Wayland focus moved from `unknown` to `media-popup-surface` within about 1 ms while `mediaPopupHoldIndex=29`, `zoomActive=true`, and `springTargetAmount=1` remained. In the slow return at 664291–664301, focus passed through `unknown`, returned to the dock, and hit-testing reported `-1` at 664299 with the popup hold still 29. A pointer-region transition at 664301 then changed `zoomActive` to false and the spring target to 0. The return icon could not magnify again until a later valid dock hit.
+
+Source comparison identified the differing path. Ordinary Window Preview preserves `dockPanel.mouseX/mouseY` as the spring anchor while its separate surface owns the pointer; it does not feed a no-hit gap sample back through dock-row bounds. Media popup correctly continued live hit-testing so neighbors could take over, but its no-hit path treated a cross-axis gap sample as a genuine dock exit and discarded the Compact anchor. This is the confirmed cause; it does not depend on popup timers or a delayed popup surface enter.
+
+### Correction and regressions
+
+Compact now follows the Window Preview anchor-retention rule during an active,
+non-pinned media hover hold: a no-hit sample in the gap clears ordinary hover
+but preserves the existing anchor/target. Hit-tests for valid dock entries still
+run first, so a neighboring item is not blocked. Popup release and true leave
+continue through the existing cleanup/re-hit-test path. No popup lifecycle,
+hover gate, timer, global spring, Controls, Expanded, TaskManager, or MPRIS
+behavior changed.
+
+`test_compactMediaMagnificationSurvivesDelayedPopupGapRoundTrips` covers a
+120 ms no-hit dwell and slow return on all four dock sides, checks the retained
+anchor and intermediate spring target, and verifies neighbor handoff. Existing
+round-trip and neighbor-preview regressions also remain enabled. The first
+broad QML attempt exposed a test-fixture issue: the return path had to deliver
+the dock-enter event before hit-testing. The fixture was corrected and the
+focused four-edge test passed.
+
+### Verification and remaining acceptance
+
+- Focused delayed-gap QML regression: all four edge rows passed. Existing
+  popup-round-trip, spring-start, and neighbor-preview QML cases passed.
+- Full Production Release CTest: **230/230 passed** (371.88 s).
+- Full Diagnostic Release CTest: **234/234 passed** (383.18 s).
+- Both full runs used `TMPDIR=/tmp`; no test was disabled or altered to suppress
+  a failure. `qml_tst_dock_main` and `qml_tst_media_player_widget` passed in both.
+- The trace proves the prior failure mechanism and the QML tests exercise a
+  delayed gap sample, but visible magnification in real Plasma/Wayland remains
+  **NOT VERIFIED** until owner review. Keep the Media Player Controls card in
+  `review`. No release, tag, or push was created.
+
+### Stage candidate prepared for owner retest — 2026-11-19
+
+- Diagnostic launcher `--preflight-only --profile media-compact-scale-20261119`
+  passed, followed by a real isolated launch with `--media-hover-debug`.
+- Source, stage, and running `/proc/1134352/exe` resolve to GNU Build ID
+  `050a3870518eb0c9ce86d21ba75d30106e59a029`; running version is
+  `0.7.0-dev`. Staged RU MO matches the built catalog; `msgfmt --check
+  --check-format`, launcher shell syntax, and `git diff --check` passed.
+- Candidate PID 1134352 is active from
+  `build/v070-diagnostic-release/stage/bin/kdockw`. The dedicated diagnostic
+  trace file is `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-103853021994832.jsonl`;
+  it is ready to collect the owner's next pointer interaction.
+- Stable v0.6.0 was stopped with the owner's prior authorization; no second
+  dock is running. Production config and the profile-specific backup both hash
+  to `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`;
+  backup mode is 0600. The existing diagnostic profile was reused without
+  resetting it.
+- The candidate is ready for the short Compact → popup → Compact slow-gap
+  check. This does not establish visual acceptance; card remains `review`.
