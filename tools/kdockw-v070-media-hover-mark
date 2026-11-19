@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Add one owner marker to the active v0.7.0 diagnostic media-hover trace."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import socket
+import stat
+import sys
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CANDIDATE_SUFFIX = "/build/v070-diagnostic-release/stage/bin/kdockw"
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def process_info(pid: int) -> tuple[str, dict[str, str]] | None:
+    proc = Path("/proc") / str(pid)
+    try:
+        if (proc / "comm").read_text().strip() != "kdockw":
+            return None
+        executable = str((proc / "exe").resolve())
+        raw_env = (proc / "environ").read_bytes().split(b"\0")
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return None
+    environment: dict[str, str] = {}
+    for item in raw_env:
+        if b"=" in item:
+            key, value = item.split(b"=", 1)
+            environment[key.decode(errors="replace")] = value.decode(errors="replace")
+    return executable, environment
+
+
+def active_docks() -> list[tuple[int, str, dict[str, str]]]:
+    found = []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            info = process_info(int(entry.name))
+            if info is not None:
+                found.append((int(entry.name), info[0], info[1]))
+    return found
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Append a short label to the currently running KDockW media-hover diagnostic trace."
+    )
+    parser.add_argument("label", help="1-64 ASCII letters/digits, dot, underscore or hyphen")
+    args = parser.parse_args()
+    if not LABEL_RE.fullmatch(args.label):
+        parser.error("label must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+    docks = active_docks()
+    if len(docks) != 1:
+        print(f"refusing marker: expected exactly one KDockW process, found {len(docks)}", file=sys.stderr)
+        return 2
+    pid, executable, environment = docks[0]
+    if not executable.endswith(CANDIDATE_SUFFIX) or not executable.startswith(str(REPO_ROOT) + "/"):
+        print(f"refusing marker: active KDockW is not the staged v0.7.0 diagnostic candidate: {executable}", file=sys.stderr)
+        return 2
+    if environment.get("KDOCKW_MEDIA_HOVER_DEBUG") != "1":
+        print("refusing marker: media-hover diagnostics are not enabled", file=sys.stderr)
+        return 2
+    trace_path = Path(environment.get("KDOCKW_MEDIA_HOVER_TRACE_OUT", ""))
+    profile = environment.get("KDOCKW_MEDIA_HOVER_PROFILE", "")
+    build_id = environment.get("KDOCKW_MEDIA_HOVER_BUILD_ID", "")
+    runtime_dir = Path(environment.get("XDG_RUNTIME_DIR", ""))
+    if not trace_path.is_file() or not profile or not build_id or not runtime_dir.is_dir():
+        print("refusing marker: candidate diagnostic environment is incomplete", file=sys.stderr)
+        return 2
+    try:
+        runtime_stat = runtime_dir.stat()
+        if runtime_stat.st_uid != os.getuid() or stat.S_IMODE(runtime_stat.st_mode) & 0o077:
+            raise PermissionError("runtime directory is not private to the current user")
+        socket_path = runtime_dir / f"kdockw-media-hover-{pid}.sock"
+        socket_stat = socket_path.stat()
+        if not stat.S_ISSOCK(socket_stat.st_mode) or socket_stat.st_uid != os.getuid():
+            raise PermissionError("marker socket is not owned by the current user")
+        if stat.S_IMODE(socket_stat.st_mode) & 0o077:
+            raise PermissionError("marker socket permissions are broader than owner-only")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2.0)
+            client.connect(str(socket_path))
+            payload = json.dumps({"label": args.label}, separators=(",", ":")).encode() + b"\n"
+            client.sendall(payload)
+            client.shutdown(socket.SHUT_WR)
+            response = client.recv(128)
+    except (OSError, PermissionError) as error:
+        print(f"could not send diagnostic marker: {error}", file=sys.stderr)
+        return 1
+    if response != b"OK\n":
+        print(f"candidate rejected diagnostic marker: {response.decode(errors='replace').strip()}", file=sys.stderr)
+        return 1
+    print(f"marker recorded: {args.label}; pid={pid}; profile={profile}; build-id={build_id}; trace={trace_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

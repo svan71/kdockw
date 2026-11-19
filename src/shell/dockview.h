@@ -12,6 +12,7 @@
 #include <QQuickView>
 #include <QVariant>
 #include <QElapsedTimer>
+#include <QHash>
 
 #include <memory>
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
@@ -27,6 +28,8 @@ class VirtualDesktopInfo;
 
 class KDockWSettings;
 class QScreen;
+class QLocalServer;
+class QLocalSocket;
 
 namespace kdockw
 {
@@ -179,6 +182,7 @@ Q_SIGNALS:
     void pointerInsideChanged();
     void pointerFocusWindowChanged();
     void screenGeometryChanged();
+    void mediaHoverMarkerReceived(const QString &label);
 
 private:
     /// Extra height above the panel needed for zoomed icons.
@@ -188,6 +192,7 @@ private:
     void handleScreenGeometryChanged();
     [[nodiscard]] UnlockRecoveryState unlockRecoveryState() const;
     void traceLayerGeometry(const QString &phase);
+    void handleMediaHoverMarkerConnection();
 
 private Q_SLOTS:
     void handleScreenLockChanged(bool active);
@@ -212,6 +217,7 @@ private:
     bool m_mediaHoverDebugEnabled = false;
     QString m_mediaHoverBuildId;
     mutable QFile m_mediaHoverTraceFile;
+    std::unique_ptr<QLocalServer> m_mediaHoverMarkerServer;
     bool m_launcherTimingEnabled = false;
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
     bool m_performanceDiagnosticsEnabled = false;

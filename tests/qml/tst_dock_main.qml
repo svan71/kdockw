@@ -2622,6 +2622,94 @@ Item {
                 "Spring Magnification did not transfer to the neighbor")
         }
 
+        function test_comparativeHoverTraceCapturesNormalIconStateAndOwnerMarkers() {
+            DockSettings.previewEnabled = false
+            DockSettings.magnificationMode = 1
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockView.mediaHoverDebugEnabled = true
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:comparison-trace",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                isPinned: true,
+            })
+            addTasks(["Trace Target"])
+            const dock = makeDock(2)
+            const item = items(dock).find(candidate => candidate._isWindow)
+            verify(item && item._isWindow)
+
+            const center = item.mapToItem(dock, item.width / 2, item.height / 2)
+            dock._handleDockPointerEntered(center.x, center.y)
+            tryCompare(dock, "hoveredIndex", item.index)
+
+            const hit = DockView.mediaHoverEvents.find(entry =>
+                entry.event === "magnification-hit-test"
+                    && entry.details.source === "_handleDockPointerEntered"
+                    && entry.details.entryId === item.dockEntryId)
+            verify(hit, "the debug trace should record the common normal-icon hit-test")
+            const firstEntrySampleIndex = DockView.mediaHoverEvents.findIndex(entry =>
+                entry.event === "pointer-sample" && entry.details.source === "_handleDockPointerEntered")
+            const firstHitIndex = DockView.mediaHoverEvents.findIndex(entry =>
+                entry.event === "magnification-hit-test" && entry.details.source === "_handleDockPointerEntered")
+            verify(firstEntrySampleIndex >= 0 && firstEntrySampleIndex < firstHitIndex,
+                "the dock-entry pointer sample must precede its first hit-test")
+            compare(hit.details.delegateType, "application-window")
+            compare(hit.details.entryId, item.dockEntryId)
+            compare(hit.details.rawHitTestIndex, item.index)
+            compare(hit.details.resolvedHitTestIndex, item.index)
+            compare(hit.details.hoveredIndex, item.index)
+            verify(hit.details.hasOwnProperty("pointerMotionSerial"))
+            verify(hit.details.hasOwnProperty("waylandSurfaceFocus"))
+            verify(hit.details.hasOwnProperty("delegateGeometry"))
+            verify(hit.details.hasOwnProperty("mouseInside"))
+            verify(hit.details.hasOwnProperty("dragActive"))
+            verify(hit.details.hasOwnProperty("springTargetAmount"))
+            verify(hit.details.hasOwnProperty("currentScale"))
+            verify(hit.details.hasOwnProperty("popupHoldIndex"))
+            verify(hit.details.hasOwnProperty("previewVisible"))
+
+            const compactItem = items(dock).find(candidate => candidate.isMediaPlayer)
+            verify(compactItem, "the dock fixture should include a Compact delegate")
+            tryVerify(() => compactItem.mediaPlayerWidget, 2000,
+                "the Compact delegate should expose the shared media hover trace")
+            compactItem.mediaPlayerWidget.traceMediaHover("comparison-media-snapshot", {
+                rawHitTestIndex: -1,
+                resolvedHitTestIndex: compactItem.index
+            })
+            const mediaSnapshot = DockView.mediaHoverEvents.find(entry =>
+                entry.event === "comparison-media-snapshot")
+            verify(mediaSnapshot)
+            compare(mediaSnapshot.details.delegateType, "compact-media")
+            compare(mediaSnapshot.details.rawHitTestIndex, -1)
+            compare(mediaSnapshot.details.resolvedHitTestIndex, compactItem.index)
+            compare(mediaSnapshot.details.scenarioId, hit.details.scenarioId)
+            compare(mediaSnapshot.details.pointerMotionSerial, hit.details.pointerMotionSerial)
+            verify(mediaSnapshot.details.hasOwnProperty("springTargetAmount"))
+            verify(mediaSnapshot.details.hasOwnProperty("popupHoldIndex"))
+            verify(mediaSnapshot.details.hasOwnProperty("mediaHoverGate"))
+            verify(mediaSnapshot.details.hasOwnProperty("previewVisible"))
+
+            verify(!findChild(dock, "mediaHoverStartMarkerShortcut"),
+                "diagnostic start markers must not register a keyboard shortcut")
+            verify(!findChild(dock, "mediaHoverFailureMarkerShortcut"),
+                "diagnostic failure markers must not register a keyboard shortcut")
+            const scenarioIdBeforeMarker = hit.details.scenarioId
+            DockView.mediaHoverMarkerReceived("compact-hover-start")
+            const marker = DockView.mediaHoverEvents[DockView.mediaHoverEvents.length - 1]
+            compare(marker.event, "owner-marker")
+            compare(marker.details.marker, "compact-hover-start")
+            compare(marker.details.source, "local-ipc")
+            compare(marker.details.scenarioId, scenarioIdBeforeMarker)
+            verify(marker.details.hasOwnProperty("pointerMotionSerial"))
+            verify(marker.details.hasOwnProperty("springTargetAmount"))
+            verify(marker.details.hasOwnProperty("popupVisible"))
+        }
+
         function test_compactMediaMagnificationFollowsPointerAcrossPopup_data() {
             return dockEdges()
         }

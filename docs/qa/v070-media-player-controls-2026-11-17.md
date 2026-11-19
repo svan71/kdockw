@@ -870,5 +870,88 @@ focused four-edge test passed.
   to `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`;
   backup mode is 0600. The existing diagnostic profile was reused without
   resetting it.
-- The candidate is ready for the short Compact → popup → Compact slow-gap
-  check. This does not establish visual acceptance; card remains `review`.
+- The candidate was ready for the short Compact → popup → Compact slow-gap
+  check at the time of that entry; this does not establish visual acceptance.
+
+### Comparative hover candidate launch recovery — 2026-11-19
+
+- The first launch refused because the launcher did not find `kdockwrc` under
+  its resolved production config directory. The launcher resolves this from
+  the user-systemd manager's `XDG_CONFIG_HOME`, then the invocation environment,
+  then `$HOME/.config`. The failed invocation's exact environment was not
+  captured, so the specific wrong/empty value is **UNKNOWN**.
+- The production file exists at `/home/stout/.config/kdockwrc`. Its
+  permission-preserving profile backup
+  `diagnostics/v070-dev/backups/kdockwrc.production.media-comparison-20261119`
+  is byte-identical; both are mode 0600 and SHA-256
+  `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`.
+  No production config was recreated or restored. The prior restore command
+  correctly refused because the candidate had exited before recording restore
+  state or changing the stable Desktop Entry.
+- Retried with explicit `XDG_CONFIG_HOME=/home/stout/.config` and
+  `TMPDIR=/tmp`; the launcher completed KService preflight and started the
+  isolated profile `media-comparison-20261119`. Candidate PID `1339441` is
+  running as the only KDockW process from
+  `build/v070-diagnostic-release/stage/bin/kdockw`, version `0.7.0-dev`, GNU
+  Build ID `bba798cec09910088a4358e647f3fa4857d8913d`. The user-systemd unit
+  `kdockw-v070-diagnostic-release.service` is active; stable was stopped with
+  the owner's authorization.
+- `--media-hover-debug` is active. Comparative trace:
+  `diagnostics/v070-dev/logs/media-hover-media-comparison-20261119-20261119-142610448540974.jsonl`.
+  Its session-start record matches the running executable, Build ID and
+  profile. The owner has not yet performed the pointer comparison; runtime
+  comparison results remain **NOT VERIFIED**.
+- Restore state is recorded. After the owner's scenario, restore stable with
+  `tools/kdockw-v070-dev-stop-and-restore`. No release, tag or push was made.
+- The non-blocking upstream warning reflects that branch
+  `codex/v0.7.0-media-controls` has no configured upstream; no upstream was
+  configured and no push was attempted.
+
+### Post-reboot marker IPC candidate — 2026-11-19
+
+- After reboot, stable `/usr/bin/kdockw` v0.6.0 (PID 4014) was active through
+  `app-com.thicking.kdockw.autostart@autostart.service`. Production config
+  `/home/stout/.config/kdockwrc` was present, mode 0600, UID/GID 1000:1001,
+  SHA-256 `1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`.
+  Older backups were preserved; their distinct hashes show they predate the
+  currently installed config.
+- The previous seven-line restore state and its candidate Desktop Entry
+  matched the expected staged executable. The candidate unit/process had
+  stopped during reboot while stable had restarted. Running the existing
+  `tools/kdockw-v070-dev-stop-and-restore` verified that state, removed only
+  that exact diagnostic Desktop Entry, refreshed user Sycoca, cleared the stale
+  restore record, and left the already-running stable process untouched.
+- Removed the diagnostic `Ctrl+Alt+F8` / `Ctrl+Alt+F9` `Shortcut` objects.
+  Optional owner labels now use a PID-specific Unix local socket below the
+  current user's private `XDG_RUNTIME_DIR`; the server requests owner-only
+  permissions, validates short ASCII labels and records them through the same
+  QML trace path using the application's monotonic clock. The console command
+  `tools/kdockw-v070-media-hover-mark LABEL` refuses stable, ambiguous, or
+  non-diagnostic KDockW processes.
+- Automatic pointer, widget-region, hit-test, magnification and popup events
+  remain in the trace, so the requested pointer path can be analyzed without
+  manual markers. Markers are optional.
+- The first full `qml_tst_dock_main` run was **269/270**: the comparative test
+  selected an earlier Compact hit-test record instead of the explicit
+  application-window hit. The fixture query was narrowed to that window's
+  entry; the isolated corrected QML case passed **3/3**. No second full run was
+  made. Python AST parse, launcher shell syntax, shortcut search and
+  `git diff --check` passed. `clang-format` is unavailable.
+- New isolated profile `media-comparison-20261119-ipc` has verified production
+  backup `diagnostics/v070-dev/backups/kdockwrc.production.media-comparison-20261119-ipc`,
+  byte-identical to production with mode 0600 and the SHA-256 above. Build and
+  stage preflight plus private KService check passed without a full rebuild.
+  Candidate PID `85899` is active from
+  `build/v070-diagnostic-release/stage/bin/kdockw`, version `0.7.0-dev`, GNU
+  Build ID `03a13aaedbed988403e30d0f6d09b56cd3c0dff3`; stage and source Build
+  IDs and Russian MO match.
+- Comparative trace:
+  `diagnostics/v070-dev/logs/media-hover-media-comparison-20261119-ipc-20261119-145932974940326.jsonl`.
+  The console-to-socket-to-QML-to-trace route was verified on the live
+  candidate; records contain label, current pointer/hover/popup/spring state,
+  build ID and monotonic timestamp. Three markers (`session-ready`,
+  `compact-hover-enter`, `ipc-self-test-complete`) are IPC self-tests before
+  owner interaction; they do not describe pointer movement. Candidate remains
+  active for owner testing. Restore stable after testing with
+  `tools/kdockw-v070-dev-stop-and-restore`. Visual comparison remains
+  **NOT VERIFIED**; no release, tag or push was made.

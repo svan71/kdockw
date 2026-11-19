@@ -82,6 +82,161 @@ Item {
     // Retain that entry as the hit-test anchor if the animated bounds move
     // away from a stationary pointer; a real hit on a neighbour wins.
     property int _compactMediaMagnificationIndex: -1
+    property int _hoverTraceScenarioSerial: 0
+    property int _hoverTraceInteractionSerial: 0
+    property int _lastHoverTraceDelegateIndex: -1
+    property int _lastTracedCompactAnchor: -2
+    property string _hoverTraceScenarioId: "unmarked"
+    property string _hoverTraceInteractionId: "unmarked"
+    property string _hoverTraceInteractionKind: "none"
+    property string _lastHoverTraceHitSignature: ""
+    property string _lastCompactFallbackTraceSignature: ""
+    property real _lastHoverTracePointerMs: -1000
+
+    function hoverTraceContext() {
+        return {
+            scenarioId: _hoverTraceScenarioId,
+            interactionId: _hoverTraceInteractionId,
+            interactionKind: _hoverTraceInteractionKind
+        }
+    }
+
+    function beginHoverTraceInteraction(kind, index, source) {
+        if (!DockView.mediaHoverDebugEnabled) return
+        _hoverTraceInteractionSerial++
+        _hoverTraceInteractionKind = kind
+        _hoverTraceInteractionId = _hoverTraceScenarioId + "/" + kind + "-" + _hoverTraceInteractionSerial
+        traceMagnificationState("interaction-start", index, source, -1, index, {
+            transition: kind
+        })
+    }
+
+    function recordHoverTraceMarker(label) {
+        if (!DockView.mediaHoverDebugEnabled) return
+        traceMagnificationState("owner-marker", hoveredIndex, "local-ipc",
+            hoveredIndex, hoveredIndex, { marker: label })
+    }
+
+    function traceMagnificationState(event, index, source, rawHitTestIndex,
+                                     resolvedHitTestIndex, extra = ({})) {
+        if (!DockView.mediaHoverDebugEnabled) return
+        DockView.traceMediaHover(event,
+            hoverTraceSnapshot(index, source, rawHitTestIndex, resolvedHitTestIndex, extra))
+    }
+
+    function hoverTraceSnapshot(index, source, rawHitTestIndex,
+                                resolvedHitTestIndex, extra = ({})) {
+        const observedIndex = index >= 0 ? index
+            : hoveredIndex >= 0 ? hoveredIndex
+            : _lastHoverTraceDelegateIndex
+        const item = observedIndex >= 0 && observedIndex < dockRepeater.count
+            ? dockRepeater.itemAt(observedIndex) : null
+        if (index >= 0 && item)
+            _lastHoverTraceDelegateIndex = index
+        const itemPoint = item ? item.mapToItem(root, 0, 0) : null
+        const media = item ? item.mediaPlayerWidget : null
+        const focusKnown = DockView.pointerFocusKnown
+        const focusIsDock = focusKnown && DockView.pointerFocusWindow === root.Window.window
+        const geometry = item ? {
+            x: itemPoint.x, y: itemPoint.y, width: item.width, height: item.height,
+            currentScale: item.currentScale, targetScale: item.zoomScale
+        } : null
+        const details = {
+            scenarioId: _hoverTraceScenarioId,
+            interactionId: _hoverTraceInteractionId,
+            interactionKind: _hoverTraceInteractionKind,
+            delegateType: !item ? "none" : item.isMediaPlayer
+                ? (DockSettings.mediaPlayerDisplayMode === 0 ? "compact-media" : "media-player")
+                : item._isWindow ? "application-window" : (item.model.entryType || "dock-entry"),
+            entryId: item ? item.dockEntryId : "",
+            dockIndex: index,
+            observedDelegateIndex: observedIndex,
+            pointerMotionSerial: pointerMotionSerial,
+            source: source,
+            waylandSurfaceFocus: !focusKnown ? "unknown" : (focusIsDock ? "dock" : "other"),
+            pointerLocal: { x: _pointerRootX, y: _pointerRootY },
+            dockPanelPointer: { x: dockPanel.mouseX, y: dockPanel.mouseY },
+            delegateGeometry: geometry,
+            rawHitTestIndex: rawHitTestIndex,
+            resolvedHitTestIndex: resolvedHitTestIndex,
+            hoveredIndex: hoveredIndex,
+            magnificationAnchor: hoveredIndex,
+            compactMagnificationIndex: _compactMediaMagnificationIndex,
+            zoomActive: _zoomActive,
+            mouseInside: dockPanel.mouseInside,
+            dragActive: _dragActive,
+            springTargetAmount: dockPanel.magnificationMode === 1
+                ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0),
+            springAmount: dockPanel.magnificationMode === 1 ? springZoom.amount : 0,
+            springCursor: dockPanel.zoomCursor,
+            currentScale: item ? item.currentScale : 1,
+            popupVisible: media ? media.diagnosticPopupVisible : false,
+            popupHoldIndex: _mediaPopupHoldIndex,
+            mediaHoverGate: media ? media.pointerOverDockWidget : false,
+            previewVisible: PreviewController.visible
+        }
+        for (const key in extra) details[key] = extra[key]
+        return details
+    }
+
+    function traceHitTestResolution(source, rawIndex, resolvedIndex, fallbackReason = "") {
+        if (!DockView.mediaHoverDebugEnabled) return
+        const target = dockPanel.magnificationMode === 1
+            ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0)
+        const signature = [rawIndex, resolvedIndex, hoveredIndex,
+            _compactMediaMagnificationIndex, _zoomActive, dockPanel.mouseInside, target].join(":")
+        if (signature === _lastHoverTraceHitSignature) return
+        _lastHoverTraceHitSignature = signature
+        if (_lastTracedCompactAnchor !== _compactMediaMagnificationIndex) {
+            const previousAnchor = _lastTracedCompactAnchor
+            _lastTracedCompactAnchor = _compactMediaMagnificationIndex
+            traceMagnificationState("compact-anchor-changed",
+                _compactMediaMagnificationIndex >= 0 ? _compactMediaMagnificationIndex : previousAnchor,
+                source, rawIndex, resolvedIndex, {
+                    previousAnchor: previousAnchor,
+                    compactMagnificationIndex: _compactMediaMagnificationIndex,
+                    reason: fallbackReason || "standard-hit-test-resolution"
+                })
+        }
+        traceMagnificationState("magnification-hit-test", resolvedIndex >= 0 ? resolvedIndex : hoveredIndex,
+            source, rawIndex, resolvedIndex, {
+                fallbackApplied: rawIndex < 0 && resolvedIndex >= 0,
+                fallbackReason: fallbackReason
+            })
+    }
+
+    function tracePointerSample(source, entryEnvelope, force = false) {
+        if (!DockView.mediaHoverDebugEnabled) return
+        const now = DockView.monotonicNowMs()
+        if (!force && now - _lastHoverTracePointerMs < 40) return
+        _lastHoverTracePointerMs = now
+        traceMagnificationState("pointer-sample", hoveredIndex, source, null, hoveredIndex, {
+            entryEnvelope: entryEnvelope,
+            pointerRoot: { x: _pointerRootX, y: _pointerRootY }
+        })
+    }
+
+    function traceCompactFallback(source, appliedIndex, reason, rawIndex) {
+        if (!DockView.mediaHoverDebugEnabled) return
+        const signature = [source, appliedIndex, reason, rawIndex,
+            _compactMediaMagnificationIndex].join(":")
+        if (signature === _lastCompactFallbackTraceSignature) return
+        _lastCompactFallbackTraceSignature = signature
+        traceMagnificationState(appliedIndex >= 0 ? "compact-fallback-applied" : "compact-fallback-rejected",
+            appliedIndex >= 0 ? appliedIndex : _compactMediaMagnificationIndex,
+            source, rawIndex, appliedIndex, {
+                fallbackApplied: appliedIndex >= 0,
+                fallbackReturnedIndex: appliedIndex,
+                fallbackReason: reason
+            })
+    }
+
+    Connections {
+        target: DockView
+        function onMediaHoverMarkerReceived(label) {
+            root.recordHoverTraceMarker(label)
+        }
+    }
 
     // Keyboard navigation state
     property bool keyboardNavigating: false
@@ -848,7 +1003,7 @@ Item {
     // re-run the hit test. dockPanel.mouseX = primary axis (along the dock),
     // dockPanel.mouseY = secondary axis (depth), so all zoom/hover logic works
     // identically regardless of orientation; -1 = outside the dock zone.
-    function trackPointer(x, y, entryEnvelope = false) {
+    function trackPointer(x, y, entryEnvelope = false, source = "trackPointer") {
         // The context menu holds hover and magnification. Media popup lifecycle
         // is independent: magnification always follows the actual dock pointer.
         if (_hoverHeld) return
@@ -893,7 +1048,9 @@ Item {
             dockPanel.mouseX = -1
             dockPanel.mouseY = -1
         }
-        updateHoveredItem(entryEnvelope, dockPanel.mouseX, dockPanel.mouseY)
+        if (entryEnvelope)
+            tracePointerSample(source, true, true)
+        updateHoveredItem(entryEnvelope, dockPanel.mouseX, dockPanel.mouseY, source)
     }
 
     // Shared by MouseArea.onEntered and QML tests so the real event ordering
@@ -908,19 +1065,24 @@ Item {
         if (_hoverReconciling)
             _reconcileAt(x, y, true)
         else
-            trackPointer(x, y, true)
+            trackPointer(x, y, true, "_handleDockPointerEntered")
     }
 
     function updateHoveredItem(entryEnvelope = false,
                                sampleX = dockPanel.mouseX,
-                               sampleY = dockPanel.mouseY) {
+                               sampleY = dockPanel.mouseY,
+                               source = "updateHoveredItem") {
         // Geometry/scale callbacks must not move the held hover.
         if (_hoverHeld) return
         if (sampleX < 0) {
+            const previousAnchor = _compactMediaMagnificationIndex
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
             _compactMediaMagnificationIndex = -1
+            if (DockView.mediaHoverDebugEnabled)
+                traceHitTestResolution(source, -1, -1,
+                    previousAnchor >= 0 ? "pointer-outside-dock-zone" : "pointer-outside-dock-zone-no-anchor")
             return
         }
         // Hit-test only a pointer the dock has. After the pointer left for the
@@ -949,10 +1111,14 @@ Item {
             rowNear -= maxExt
         }
         if (sampleY < rowNear || sampleY > rowFar) {
+            const previousAnchor = _compactMediaMagnificationIndex
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
             _compactMediaMagnificationIndex = -1
+            if (DockView.mediaHoverDebugEnabled)
+                traceHitTestResolution(source, -1, -1,
+                    previousAnchor >= 0 ? "pointer-outside-row-depth" : "pointer-outside-row-depth-no-anchor")
             return
         }
 
@@ -980,6 +1146,14 @@ Item {
                 let span = _secondarySpan(slotItem, hitScale)
                 hit = sampleY >= span.near && sampleY <= span.far
             }
+            const rawHitTestIndex = hit ? slot : -1
+            let resolvedHitTestIndex = rawHitTestIndex
+            let fallbackReason = ""
+            if (!hit) {
+                resolvedHitTestIndex = compactMediaMagnificationHit(sampleX, sampleY, source)
+                if (resolvedHitTestIndex >= 0)
+                    fallbackReason = "inside-compact-maximum-zoom-envelope"
+            }
             if (hit) {
                 _zoomActive = true  // Activate zoom; stays until mouse leaves panel
                 const hitItem = dockRepeater.itemAt(slot)
@@ -992,7 +1166,7 @@ Item {
                         tooltipTimer.restart()
                 }
             } else {
-                const heldIndex = compactMediaMagnificationHit(sampleX, sampleY)
+                const heldIndex = resolvedHitTestIndex
                 if (heldIndex >= 0) {
                     _zoomActive = true
                     _compactMediaMagnificationIndex = heldIndex
@@ -1000,6 +1174,8 @@ Item {
                         hoveredIndex = heldIndex
                         hoveredName = dockRepeater.itemAt(heldIndex).displayName
                     }
+                    if (DockView.mediaHoverDebugEnabled)
+                        traceHitTestResolution(source, rawHitTestIndex, heldIndex, fallbackReason)
                     return
                 }
                 _compactMediaMagnificationIndex = -1
@@ -1007,6 +1183,8 @@ Item {
                 hoveredIndex = -1
                 hoveredName = ""
             }
+            if (DockView.mediaHoverDebugEnabled)
+                traceHitTestResolution(source, rawHitTestIndex, resolvedHitTestIndex, fallbackReason)
             return
         }
 
@@ -1048,12 +1226,17 @@ Item {
             if (effectiveDist < bestNormDist) { bestIndex = i; bestNormDist = effectiveDist }
         }
 
+        const rawHitTestIndex = bestIndex
+        let fallbackReason = ""
         // A compact media icon has a fixed rest slot but its visual bounds
         // animate. If those bounds move away from an unmoved pointer, keep the
         // spring target while the pointer remains inside the icon's maximum
         // zoom envelope. A hit on any other entry above takes precedence.
-        if (bestIndex < 0)
-            bestIndex = compactMediaMagnificationHit(sampleX, sampleY)
+        if (bestIndex < 0) {
+            bestIndex = compactMediaMagnificationHit(sampleX, sampleY, source)
+            if (bestIndex >= 0)
+                fallbackReason = "inside-compact-maximum-zoom-envelope"
+        }
 
         if (bestIndex >= 0) {
             _zoomActive = true  // Activate zoom; stays until mouse leaves panel
@@ -1075,36 +1258,73 @@ Item {
             // flickering. Zoom deactivates only when mouse leaves the depth zone
             // (rough check above) or the panel zone entirely (mouseX becomes -1).
         }
+        if (DockView.mediaHoverDebugEnabled)
+            traceHitTestResolution(source, rawHitTestIndex, bestIndex, fallbackReason)
     }
 
-    function compactMediaMagnificationHit(sampleX, sampleY) {
+    function compactMediaMagnificationHit(sampleX, sampleY, source = "hit-test") {
         const index = _compactMediaMagnificationIndex
-        if (index < 0 || index >= dockRepeater.count
-                || DockSettings.mediaPlayerDisplayMode !== 0)
+        if (index < 0 || index >= dockRepeater.count) {
+            if (DockView.mediaHoverDebugEnabled)
+                traceCompactFallback(source, -1, "no-saved-compact-anchor", -1)
             return -1
+        }
+        if (DockSettings.mediaPlayerDisplayMode !== 0) {
+            if (DockView.mediaHoverDebugEnabled)
+                traceCompactFallback(source, -1, "media-display-mode-is-not-compact", -1)
+            return -1
+        }
         const item = dockRepeater.itemAt(index)
-        if (!item || !item.isMediaPlayer)
+        if (!item || !item.isMediaPlayer) {
+            if (DockView.mediaHoverDebugEnabled)
+                traceCompactFallback(source, -1, "saved-anchor-is-not-media", -1)
             return -1
+        }
         const scale = DockSettings.maxZoomFactor
         const center = item.itemCenterX + item.currentOffset
         const halfPrimary = ((DockView.isVertical ? item.height : item.width) * scale) / 2
         const span = _secondarySpan(item, scale)
-        return Math.abs(sampleX - center) <= halfPrimary
-                && sampleY >= span.near && sampleY <= span.far ? index : -1
+        const insideEnvelope = Math.abs(sampleX - center) <= halfPrimary
+                && sampleY >= span.near && sampleY <= span.far
+        if (DockView.mediaHoverDebugEnabled)
+            traceCompactFallback(source, insideEnvelope ? index : -1,
+                insideEnvelope ? "inside-compact-maximum-zoom-envelope" : "outside-compact-maximum-zoom-envelope",
+                -1)
+        return insideEnvelope ? index : -1
     }
 
-    function _shouldRetainCompactMediaMagnificationOnSurfaceLeave() {
+    function _shouldRetainCompactMediaMagnificationOnSurfaceLeave(failures = null) {
+        if (!failures) {
+            const index = _compactMediaMagnificationIndex
+            if (DockSettings.magnificationMode !== 1
+                    || DockSettings.mediaPlayerDisplayMode !== 0
+                    || _dragActive || !_pointerOnDock || !_zoomActive
+                    || index < 0 || index >= dockRepeater.count
+                    || hoveredIndex !== index
+                    || !DockView.pointerInside || !DockView.pointerFocusKnown
+                    || DockView.pointerFocusWindow !== root.Window.window)
+                return false
+            const item = dockRepeater.itemAt(index)
+            return !!item && item.isMediaPlayer
+        }
+        const rejected = []
         const index = _compactMediaMagnificationIndex
-        if (DockSettings.magnificationMode !== 1
-                || DockSettings.mediaPlayerDisplayMode !== 0
-                || _dragActive || !_pointerOnDock || !_zoomActive
-                || index < 0 || index >= dockRepeater.count
-                || hoveredIndex !== index
-                || !DockView.pointerInside || !DockView.pointerFocusKnown
-                || DockView.pointerFocusWindow !== root.Window.window)
-            return false
-        const item = dockRepeater.itemAt(index)
-        return !!item && item.isMediaPlayer
+        if (DockSettings.magnificationMode !== 1) rejected.push("not-spring-mode")
+        if (DockSettings.mediaPlayerDisplayMode !== 0) rejected.push("not-compact-media-mode")
+        if (_dragActive) rejected.push("drag-active")
+        if (!_pointerOnDock) rejected.push("pointer-not-marked-on-dock")
+        if (!_zoomActive) rejected.push("zoom-inactive")
+        if (index < 0 || index >= dockRepeater.count) rejected.push("invalid-compact-anchor")
+        if (hoveredIndex !== index) rejected.push("hovered-index-does-not-match-anchor")
+        if (!DockView.pointerInside) rejected.push("compositor-pointer-outside-dock")
+        if (!DockView.pointerFocusKnown) rejected.push("pointer-focus-unknown")
+        if (DockView.pointerFocusWindow !== root.Window.window) rejected.push("focus-is-not-dock-surface")
+        if (rejected.length === 0) {
+            const item = dockRepeater.itemAt(index)
+            if (!item || !item.isMediaPlayer) rejected.push("anchor-is-not-media-widget")
+        }
+        failures.push(...rejected)
+        return rejected.length === 0
     }
 
     // Pointer left the dock: release zoom and hover unless the preview keeps
@@ -1115,7 +1335,16 @@ Item {
         // popup is being prepared. Preserve the Compact target through that
         // surface-local transition; real pointer movement or surface focus
         // leaving the dock will take the normal cleanup path below.
-        if (_shouldRetainCompactMediaMagnificationOnSurfaceLeave()) {
+        const leaveGuardFailures = DockView.mediaHoverDebugEnabled ? [] : null
+        const retainCompactTarget = _shouldRetainCompactMediaMagnificationOnSurfaceLeave(leaveGuardFailures)
+        if (DockView.mediaHoverDebugEnabled) {
+            traceMagnificationState("compact-surface-leave-guard", _compactMediaMagnificationIndex,
+                "_pointerLeft", hoveredIndex, hoveredIndex, {
+                    retained: retainCompactTarget,
+                    guardFailures: leaveGuardFailures
+                })
+        }
+        if (retainCompactTarget) {
             DockView.traceMediaHover("compact-media-surface-leave-retained", {
                 index: _compactMediaMagnificationIndex,
                 hoveredIndex: hoveredIndex,
@@ -1130,6 +1359,7 @@ Item {
         const mediaPopupKeepsDockVisible = _mediaPopupHoldIndex >= 0
         _pointerOnDock = false
         _hoverReconciling = false
+        const anchorBeforeLeave = _compactMediaMagnificationIndex
         _compactMediaMagnificationIndex = -1
         PreviewController.clearDismissedTask()
         if (mediaPopupKeepsDockVisible) {
@@ -1147,6 +1377,11 @@ Item {
         }
         hoveredIndex = -1
         hoveredName = ""
+        if (anchorBeforeLeave >= 0) {
+            _lastTracedCompactAnchor = -1
+            traceMagnificationState("compact-anchor-cleared", anchorBeforeLeave,
+                "_pointerLeft", anchorBeforeLeave, -1, { clearReason: "real-surface-leave" })
+        }
         // Hide preview with delay (allows mouse to move to preview surface)
         PreviewController.hidePreviewDelayed()
         // Drag-out: if an active drag leaves the dock, unpin the launcher
@@ -1353,7 +1588,7 @@ Item {
             if (root._hoverReconciling && !root._menuHeld)
                 root._reconcileAt(mouse.x, mouse.y)
             else if (!root.keyboardNavigating)
-                root.trackPointer(mouse.x, mouse.y)
+                root.trackPointer(mouse.x, mouse.y, false, "dockMouseArea.onPositionChanged")
             if (mouse.button === Qt.LeftButton && root.hoveredIndex >= 0) {
                 const item = dockRepeater.itemAt(root.hoveredIndex)
                 if (item) {
@@ -1546,6 +1781,7 @@ Item {
             // Notify composite widgets after the authoritative dock hit-test
             // has consumed this real motion sample.
             root.pointerMotionSerial++
+            root.tracePointerSample("dockMouseArea.onPositionChanged", false)
         }
     }
 
@@ -1726,7 +1962,7 @@ Item {
             reportPanelRect()
             Qt.callLater(function() { animationsReady = true })
             springZoom.synchronize(zoomCursor, classicZoomAmount)
-            updateSpringTarget()
+            updateSpringTarget("DockPanel.Component.onCompleted")
         }
 
         Behavior on width {
@@ -1812,39 +2048,54 @@ Item {
         readonly property real layoutCursor: magnificationMode === 1
             ? springZoom.cursor : zoomCursor
 
-        function updateSpringTarget() {
+        function updateSpringTarget(source = "updateSpringTarget") {
             if (magnificationMode !== 1) return
+            const previousTarget = springZoom.targetAmount
             if (root._dragActive) {
                 springZoom.synchronize(zoomCursor, 0)
+                if (DockView.mediaHoverDebugEnabled && previousTarget !== springZoom.targetAmount)
+                    root.traceMagnificationState("spring-target-change", root.hoveredIndex,
+                        source, root.hoveredIndex, root.hoveredIndex, {
+                            previousTargetAmount: previousTarget,
+                            springTargetAmount: springZoom.targetAmount,
+                            cause: "drag-synchronize"
+                        })
                 return
             }
             springZoom.setTarget(zoomCursor, mouseInside ? 1.0 : 0.0,
                 DockSettings.springStiffness, DockSettings.springDamping,
                 DockSettings.springSpeed, 0,
                 DockView.isVertical ? root.height : root.width)
+            if (DockView.mediaHoverDebugEnabled && previousTarget !== springZoom.targetAmount)
+                root.traceMagnificationState("spring-target-change", root.hoveredIndex,
+                    source, root.hoveredIndex, root.hoveredIndex, {
+                        previousTargetAmount: previousTarget,
+                        springTargetAmount: springZoom.targetAmount,
+                        cause: source
+                    })
         }
-        onZoomCursorChanged: updateSpringTarget()
-        onMouseInsideChanged: updateSpringTarget()
+        onZoomCursorChanged: updateSpringTarget("zoom-cursor-changed")
+        onMouseInsideChanged: updateSpringTarget("mouse-inside-changed")
         onMagnificationModeChanged: {
             if (magnificationMode === 1) {
                 // Start from the visible Classic amount when changing modes,
                 // so the live dock does not snap to rest before the spring
                 // takes over.
                 springZoom.synchronize(zoomCursor, classicZoomAmount)
-                updateSpringTarget()
+                updateSpringTarget("magnification-mode-changed")
             } else {
                 springZoom.synchronize(zoomCursor, 0)
             }
         }
         Connections {
             target: DockSettings
-            function onSpringStiffnessChanged() { dockPanel.updateSpringTarget() }
-            function onSpringDampingChanged() { dockPanel.updateSpringTarget() }
-            function onSpringSpeedChanged() { dockPanel.updateSpringTarget() }
+            function onSpringStiffnessChanged() { dockPanel.updateSpringTarget("spring-stiffness-changed") }
+            function onSpringDampingChanged() { dockPanel.updateSpringTarget("spring-damping-changed") }
+            function onSpringSpeedChanged() { dockPanel.updateSpringTarget("spring-speed-changed") }
         }
         Connections {
             target: root
-            function on_DragActiveChanged() { dockPanel.updateSpringTarget() }
+            function on_DragActiveChanged() { dockPanel.updateSpringTarget("drag-active-changed") }
         }
         // A drag snaps icons back to rest at once (drop targeting and the drop
         // indicator use rest coordinates), whatever the animation is doing.
@@ -1968,12 +2219,12 @@ Item {
             root.scheduleDelegateGeometryRefresh()
         }
         onWidthChanged: {
-            updateSpringTarget()
+            updateSpringTarget("DockPanel.onWidthChanged")
             reportPanelRect()
             root.scheduleDelegateGeometryRefresh()
         }
         onHeightChanged: {
-            updateSpringTarget()
+            updateSpringTarget("DockPanel.onHeightChanged")
             reportPanelRect()
             root.scheduleDelegateGeometryRefresh()
         }
@@ -2435,7 +2686,13 @@ Item {
     Connections {
         target: PreviewController
         function onVisibleChanged() {
+            if (PreviewController.visible && root.hoveredIndex >= 0)
+                root.beginHoverTraceInteraction("window-preview", root.hoveredIndex,
+                    "PreviewController.onVisibleChanged")
             DockView.traceMediaHover("window-preview-visibility-changed", {
+                scenarioId: root._hoverTraceScenarioId,
+                interactionId: root._hoverTraceInteractionId,
+                interactionKind: root._hoverTraceInteractionKind,
                 previousVisible: !PreviewController.visible,
                 visible: PreviewController.visible,
                 hoveredIndex: root.hoveredIndex,
@@ -2451,6 +2708,12 @@ Item {
                 springAmount: dockPanel.magnificationMode === 1 ? springZoom.amount : 0,
                 springCursor: dockPanel.zoomCursor
             })
+            if (DockView.mediaHoverDebugEnabled)
+                root.traceMagnificationState("window-preview-magnification-state",
+                    root.hoveredIndex, "PreviewController.onVisibleChanged",
+                    root.hoveredIndex, root.hoveredIndex, {
+                        previewVisible: PreviewController.visible
+                    })
             // The menu hold hides the preview; hover is reconciled on close.
             if (root._hoverHeld) return
             if (externalDropArea.externalFileDragActive) return

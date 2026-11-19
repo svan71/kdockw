@@ -42,6 +42,7 @@ Item {
         && ((visible && displayMode !== 0) || popup.visible)
     readonly property int displayMode: DockSettings.mediaPlayerDisplayMode
     readonly property bool popupPinned: popupState === popupStatePinnedOpen
+    readonly property bool diagnosticPopupVisible: popup.visible
     property bool popupHovered: false
     readonly property var popupWindow: popup.contentItem ? popup.contentItem.Window.window : null
     readonly property bool pointerOverPopup: DockView.pointerFocusKnown
@@ -216,6 +217,18 @@ Item {
             focusWindowIsDock: focusWindow === dockWindow,
             focusWindowIsPopup: focusWindow === popupWindow
         }
+        const traceContext = dockRoot && dockRoot.hoverTraceContext
+            ? dockRoot.hoverTraceContext() : ({})
+        const commonState = dockRoot && dockRoot.hoverTraceSnapshot
+            ? dockRoot.hoverTraceSnapshot(dockDelegate ? dockDelegate.index : -1,
+                "MediaPlayerWidget." + event,
+                details.rawHitTestIndex !== undefined ? details.rawHitTestIndex : null,
+                details.resolvedHitTestIndex !== undefined ? details.resolvedHitTestIndex : hitIndex)
+            : ({})
+        for (const key in commonState)
+            detailsCopy[key] = commonState[key]
+        for (const key in traceContext)
+            detailsCopy[key] = traceContext[key]
         for (const key in details)
             detailsCopy[key] = details[key]
         DockView.traceMediaHover(event, detailsCopy)
@@ -433,6 +446,10 @@ Item {
             if (popup.visible || popupOpenRequested) {
                 setPopupState(popup.visible ? popupStateHoverOpen : popupStateOpeningPending, reason)
             } else if (DockSettings.mediaPlayerHoverPopup && !openTimer.running) {
+                const dockRoot = dockDelegate && dockDelegate.dockRoot
+                if (dockRoot && dockRoot.beginHoverTraceInteraction)
+                    dockRoot.beginHoverTraceInteraction("media-popup", dockDelegate.index,
+                        "MediaPlayerWidget.reconcilePopupInteraction")
                 setPopupState(popupStateOpeningPending, reason)
                 startOpenTimer(reason)
             }
@@ -1406,6 +1423,11 @@ Item {
             root.traceMediaHover("popup-visibility", { visible: false, reason: "closed-signal" })
         }
         onOpened: {
+            const dockRoot = root.dockDelegate && root.dockDelegate.dockRoot
+            if (dockRoot && dockRoot.beginHoverTraceInteraction
+                    && dockRoot._hoverTraceInteractionKind !== "media-popup")
+                dockRoot.beginHoverTraceInteraction("media-popup", root.dockDelegate.index,
+                    "MediaPlayerWidget.popup.onOpened")
             root.traceMediaHover("popup-visibility", { visible: true, reason: "opened-signal" })
             root.holdDockForPopup()
             if (root.popupPinned) {

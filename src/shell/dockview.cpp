@@ -13,12 +13,16 @@
 #include "utils/zoomlayoutvariant.h"
 
 #include <QDBusConnection>
+#include <QDir>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QPalette>
 #include <QPainterPath>
+#include <QRegularExpression>
 #include <QQuickStyle>
 #include <LayerShellQt/Window>
 
@@ -133,7 +137,35 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
         } else {
             traceMediaHover(QStringLiteral("session-start"), {
                 {QStringLiteral("profile"), qEnvironmentVariable("KDOCKW_MEDIA_HOVER_PROFILE")},
+                {QStringLiteral("pid"), QCoreApplication::applicationPid()},
             });
+
+            const QString runtimeDirectory = qEnvironmentVariable("XDG_RUNTIME_DIR");
+            if (runtimeDirectory.isEmpty()) {
+                traceMediaHover(QStringLiteral("marker-ipc-unavailable"), {
+                    {QStringLiteral("reason"), QStringLiteral("XDG_RUNTIME_DIR is empty")},
+                });
+            } else {
+                const QString socketPath = QDir(runtimeDirectory).filePath(
+                    QStringLiteral("kdockw-media-hover-%1.sock").arg(QCoreApplication::applicationPid()));
+                m_mediaHoverMarkerServer = std::make_unique<QLocalServer>();
+                m_mediaHoverMarkerServer->setSocketOptions(QLocalServer::UserAccessOption);
+                if (m_mediaHoverMarkerServer->listen(socketPath)) {
+                    connect(m_mediaHoverMarkerServer.get(), &QLocalServer::newConnection,
+                            this, &DockView::handleMediaHoverMarkerConnection);
+                    traceMediaHover(QStringLiteral("marker-ipc-ready"), {
+                        {QStringLiteral("socket"), socketPath},
+                    });
+                } else {
+                    traceMediaHover(QStringLiteral("marker-ipc-unavailable"), {
+                        {QStringLiteral("reason"), m_mediaHoverMarkerServer->errorString()},
+                    });
+                    qCWarning(lcDockView).noquote()
+                        << "Media hover marker IPC could not listen:" << socketPath
+                        << m_mediaHoverMarkerServer->errorString();
+                    m_mediaHoverMarkerServer.reset();
+                }
+            }
         }
     }
     m_launcherTimingEnabled = qEnvironmentVariable("KDOCKW_LAUNCHER_TIMING") == QLatin1String("1");
@@ -380,6 +412,57 @@ void DockView::traceMediaHover(const QString &event, const QVariantMap &details)
     const QByteArray line = QJsonDocument(record).toJson(QJsonDocument::Compact) + '\n';
     if (m_mediaHoverTraceFile.write(line) != line.size() || !m_mediaHoverTraceFile.flush()) {
         qCWarning(lcDockView) << "Media hover diagnostic log write failed:" << m_mediaHoverTraceFile.fileName();
+    }
+}
+
+void DockView::handleMediaHoverMarkerConnection()
+{
+    if (!m_mediaHoverMarkerServer) {
+        return;
+    }
+
+    while (m_mediaHoverMarkerServer->hasPendingConnections()) {
+        QLocalSocket *socket = m_mediaHoverMarkerServer->nextPendingConnection();
+        if (!socket) {
+            continue;
+        }
+        connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+        connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
+            QByteArray request = socket->property("markerRequest").toByteArray();
+            request.append(socket->readAll());
+            if (request.size() > 256) {
+                socket->write("ERR request too large\n");
+                socket->disconnectFromServer();
+                return;
+            }
+
+            const qsizetype newline = request.indexOf('\n');
+            if (newline < 0) {
+                socket->setProperty("markerRequest", request);
+                return;
+            }
+            if (newline != request.size() - 1) {
+                socket->write("ERR malformed request\n");
+                socket->disconnectFromServer();
+                return;
+            }
+
+            QJsonParseError parseError;
+            const QJsonDocument document = QJsonDocument::fromJson(request.first(newline), &parseError);
+            const QString label = document.isObject()
+                ? document.object().value(QStringLiteral("label")).toString()
+                : QString();
+            static const QRegularExpression validLabel(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
+            if (parseError.error != QJsonParseError::NoError || !validLabel.match(label).hasMatch()) {
+                socket->write("ERR invalid marker label\n");
+                socket->disconnectFromServer();
+                return;
+            }
+
+            Q_EMIT mediaHoverMarkerReceived(label);
+            socket->write("OK\n");
+            socket->disconnectFromServer();
+        });
     }
 }
 
