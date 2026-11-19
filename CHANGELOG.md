@@ -20,8 +20,7 @@ carried forward from the Krema-based development period.
 ### Fixed
 
 - Kept Compact media magnification targeted through the synthetic dock-surface leave while the pointer remains on the dock, so opening the hover popup no longer retargets the spring to rest.
-- Preserved Compact Spring Magnification through the hover popup surface handoff and return, while allowing normal dismissal, pinned-popup behavior, and neighbor hit-testing.
-- Kept the Compact spring anchor during a delayed no-hit pass through the physical popup gap, reusing the Window Preview anchor-retention behavior while valid neighboring dock hits still take priority.
+- Separated Compact magnification from the media popup lifecycle: the icon now follows pointer departure and return while the popup remains open.
 - Kept media-widget hover activation available while Spring Magnification briefly reports no hit-tested dock item, including over composite control buttons.
 - Kept the media hover popup open across QtWayland's synthetic dock leave while the pointer remains on the media widget, and tracked hover across composite media controls.
 - Preserved media-widget hover ownership through the synthetic Qt Quick leave caused by opening its popup, resolving that ownership only after real dock pointer motion.
@@ -36,7 +35,6 @@ carried forward from the Krema-based development period.
 - Kept the media popup anchored to the transformed dock item during hover handoff, aligned it to the dock edge with screen clamping, and preserved the same popup when changing from hover to pinned mode.
 - Kept full-popup geometry independent of track metadata, fixed it at 400 × 360 logical pixels when screen space permits, and kept its 124 px artwork square stable across tracks.
 - Reserved a visible 3 px progress track in Expanded mode, scaled its cover from the dock icon size, and kept title and artist on one ellipsized line while preserving 32 px transport hit areas.
-- Held dock magnification before opening the detached media popup so the popup's initial focus transition cannot release the hovered delegate early.
 - Added opt-in Application Launcher opening phase timings for request, catalog/page readiness, and first frame without logging application names.
 - Derived grouped TaskManager indicator counts from live child rows and forwarded the explicit child-count role when group rows change, preventing stale running-window dots.
 - Fixed a preview-prefetch retry callback that dereferenced a QML-local timer through the root object.

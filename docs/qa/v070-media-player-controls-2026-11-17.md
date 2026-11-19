@@ -217,6 +217,29 @@ The Media Player Controls feature and v0.7.0 parent remain `review`. Owner visua
 acceptance of the new width, expanded layout, hover transition, and all three
 mode popups is pending. No release, tag, or push was created.
 
+## Twelfth cycle — separate popup lifecycle from Compact magnification — 2026-11-19
+
+The owner clarified the required behavior after the earlier Compact acceptance criteria had required retaining magnification throughout the popup lifetime. That older behavior is superseded: popup lifecycle and magnification are independent. Compact should target `1 → 0 → 1` for widget → popup → widget, while the same popup instance remains open; a valid neighbor still takes over and leaving for the desktop still closes the popup.
+
+### Cause and change
+
+Source inspection confirmed two coupling points in `src/qml/main.qml`: `trackPointer()` froze `dockPanel.mouseX/mouseY` while `_mediaPopupHoldIndex` existed and passed the frozen sample to hit-testing; `_pointerLeft()` returned early for every active media hold before normal spring cleanup. The popup hold therefore kept an obsolete Compact zoom anchor and prevented target release/re-acquisition. The hold now only preserves dock visibility and popup lifecycle. Pointer coordinates and hover hit-testing follow dock events; a real leave releases Compact magnification, and re-entry restores the normal target without closing/reopening the popup. Removed the redundant popup-only magnification anchor/gap helpers. The narrow `_shouldRetainCompactMediaMagnificationOnSurfaceLeave()` remains for synthetic leave only while KWin reports the pointer still at the dock. Existing popup gate, timers, pinned handling, neighbor dismissal, gap behavior, and ordinary Window Preview logic remain intact; Window Preview only gained a diagnostic visibility snapshot.
+
+### Regression coverage and verification
+
+- QML transition tests exercise synthetic leave, real widget→popup leave, popup→widget return, repeated round trips, neighbor handoff, outside desktop, and dock visibility across all four edges. Assertions inspect popup request/hold, hover hit, mouse coordinates, `_zoomActive`, spring target and current amount rather than only final scale.
+- Neighbor Window Preview remains available during media popup hold and receives magnification; a diagnostic test records its visibility transition and checks its existing anchor behavior.
+- Focused Production QML checks: **13/13 phases passed**.
+- Full Production Release CTest: **230/230 passed** (207.05 s).
+- Full Diagnostic Release CTest: **234/234 passed** (205.46 s).
+- The first QML full-file attempt had six fixture/assertion failures; fixtures and coordinate assumptions were corrected, then the focused suite and both full suites passed. This history is retained rather than omitted.
+- Diagnostic source and stage ELF Build ID: `86d59c0b712935b4b64c5034f3003ab491371f8b`. Production ELF Build ID: `3334b0fa9345dada64d7812ca1dd64633591de8a`.
+- Source/stage Russian MO SHA-256: `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`. `msgfmt --check --check-format`, Bash syntax checks, and `git diff --check` passed. Launcher stage preflight passed.
+
+### Candidate and acceptance status
+
+Owner visual acceptance is **NOT VERIFIED**; the feature and card remain `review`. The production configuration backup and live config both have mode `0600` and SHA-256 `2caae85007161655d5433019bac59b501478df6faf2e2ed26a8c5d93545941e0`. The existing isolated profile `media-compact-scale-20261119` was reused without reset. Candidate PID `1187777` is running from `build/v070-diagnostic-release/stage/bin/kdockw`; process, source binary and staged binary are version `0.7.0-dev` with matching GNU Build ID `86d59c0b712935b4b64c5034f3003ab491371f8b`. Specialized hover diagnostics are enabled; trace: `diagnostics/v070-dev/logs/media-hover-media-compact-scale-20261119-20261119-113339361455638.jsonl`. Stable v0.6.0 is paused under the owner's prior authorization. After owner review, restore it with `tools/kdockw-v070-dev-stop-and-restore`. No release, tag, or push is created.
+
 ## Third owner-review correction cycle — 2026-11-17
 
 The second owner review scored **27/35** (5 errors, 3 not checked). The owner accepted automatic visibility, compact magnification, expanded widget containment, popup appearance/composition, metadata/artwork, transport, seeking, volume, and switching between two real MPRIS sources (5/5). The MPRIS backend and visibility/source-selection policy were left unchanged.

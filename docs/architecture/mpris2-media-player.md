@@ -75,11 +75,16 @@ current dock-item hit target, the popup surface, and active media-control
 interaction. `PointerFocusTracker` exposes the current Wayland surface as its
 own `QWindow`; this lets the controller distinguish a dock-to-popup handoff
 from moving to another dock item or outside the client. The 200 ms close timer
-is unchanged. Magnification hold is separately acquired/released once per
-popup lifetime, so preserving the anchor does not freeze dock hit-testing or
-prevent a neighboring Window Preview. When the popup closes, the dock
-re-evaluates the current pointer position. Click-pinned behavior is separate
-from hover timers.
+is unchanged. The popup lifecycle marker keeps the dock visible and supports
+re-hit-testing after dismissal; it does not freeze dock pointer coordinates or
+the Compact spring target. Compact magnification follows the pointer: opening
+the popup under a stationary dock pointer preserves the current target, leaving
+the icon for the popup or gap targets rest, and returning to the icon targets
+magnification again while the same popup remains open. A narrow guard ignores a
+synthetic local leave only while KWin still reports the pointer focused on the
+dock. Valid neighboring dock hits continue through normal hit-testing and can
+start a Window Preview. When the popup closes, the dock re-evaluates the current
+pointer position. Click-pinned behavior is separate from hover timers.
 The detached `Popup.Window` is positioned and clamped against the selected
 screen and dock edge. The popup reference is explicitly named `dockDelegate`;
 this avoids shadowing the enclosing `DockItem.qml` id, which previously created

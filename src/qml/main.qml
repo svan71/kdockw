@@ -561,16 +561,15 @@ Item {
     // Null-safe: the context property goes away first when a dock shell is torn down.
     readonly property bool _menuHeld: DockContextMenu?.open ?? false
     // Also held until the post-menu reconciliation runs (_hoverReconciling).
-    // A media popup holds the magnification cursor separately while pointer
-    // hit-testing continues to follow dock items.
+    // A media popup has an independent lifecycle marker; pointer coordinates
+    // and magnification continue to follow dock items normally.
     readonly property bool _hoverHeld: _menuHeld || _hoverReconciling
     // Pointer on the dock as the dock tracks it. Replaces
     // dockMouseArea.containsMouse, which stays false after the fake leave.
     property bool _pointerOnDock: false
     // A detached media Popup.Window temporarily takes pointer ownership away
-    // from the layer-shell dock. Keep its originating delegate as the zoom
-    // anchor during that handoff, then reconcile against KWin pointer state
-    // after the popup closes.
+    // from the layer-shell dock. This marker keeps the dock visible and allows
+    // hover re-hit-testing after dismissal; it is not a zoom anchor.
     property int _mediaPopupHoldIndex: -1
     // Explicit activation hides the preview and prevents hover-triggered
     // reopening until the pointer leaves that task's icon.
@@ -850,9 +849,8 @@ Item {
     // dockPanel.mouseY = secondary axis (depth), so all zoom/hover logic works
     // identically regardless of orientation; -1 = outside the dock zone.
     function trackPointer(x, y, entryEnvelope = false) {
-        // The context menu holds both hover and magnification. A media popup
-        // holds magnification only: pointer hit-testing must keep following the
-        // dock so adjacent tasks can preview and dismiss the media popup.
+        // The context menu holds hover and magnification. Media popup lifecycle
+        // is independent: magnification always follows the actual dock pointer.
         if (_hoverHeld) return
         let zoomExtension = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
         let primarySample = -1
@@ -888,20 +886,14 @@ Item {
             springZoom.synchronizeCursor(primarySample, 0,
                 DockView.isVertical ? root.height : root.width)
         }
-        const mediaPopupHoldsMagnification = _mediaPopupHoldIndex >= 0
-        if (!mediaPopupHoldsMagnification) {
-            if (primarySample >= 0) {
-                dockPanel.mouseX = primarySample
-                dockPanel.mouseY = secondarySample
-            } else {
-                dockPanel.mouseX = -1
-                dockPanel.mouseY = -1
-            }
+        if (primarySample >= 0) {
+            dockPanel.mouseX = primarySample
+            dockPanel.mouseY = secondarySample
+        } else {
+            dockPanel.mouseX = -1
+            dockPanel.mouseY = -1
         }
-        updateHoveredItem(entryEnvelope,
-            mediaPopupHoldsMagnification ? primarySample : dockPanel.mouseX,
-            mediaPopupHoldsMagnification ? secondarySample : dockPanel.mouseY,
-            mediaPopupHoldsMagnification)
+        updateHoveredItem(entryEnvelope, dockPanel.mouseX, dockPanel.mouseY)
     }
 
     // Shared by MouseArea.onEntered and QML tests so the real event ordering
@@ -921,18 +913,10 @@ Item {
 
     function updateHoveredItem(entryEnvelope = false,
                                sampleX = dockPanel.mouseX,
-                               sampleY = dockPanel.mouseY,
-                               pointerSampleDuringMediaPopup = false) {
+                               sampleY = dockPanel.mouseY) {
         // Geometry/scale callbacks must not move the held hover.
-        if (_hoverHeld || (_mediaPopupHoldIndex >= 0 && !pointerSampleDuringMediaPopup)) return
+        if (_hoverHeld) return
         if (sampleX < 0) {
-            if (_retainCompactMagnificationAcrossPopupGap()) {
-                // The popup is a separate Wayland surface. Its handoff can
-                // produce an outside-dock hit test before popup hover/focus
-                // arrives. Keep the same dockPanel mouseX/mouseY spring anchor
-                // used by Window Preview until the popup releases this hold.
-                return
-            }
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -965,8 +949,6 @@ Item {
             rowNear -= maxExt
         }
         if (sampleY < rowNear || sampleY > rowFar) {
-            if (_retainCompactMagnificationAcrossPopupGap())
-                return
             hoveredIndex = -1
             hoveredName = ""
             _zoomActive = false
@@ -1020,8 +1002,7 @@ Item {
                     }
                     return
                 }
-                if (!_shouldRetainCompactMagnificationDuringMediaPopup())
-                    _compactMediaMagnificationIndex = -1
+                _compactMediaMagnificationIndex = -1
                 // _zoomActive kept, same hysteresis as in-place mode below.
                 hoveredIndex = -1
                 hoveredName = ""
@@ -1053,7 +1034,7 @@ Item {
             let normDist = dist / scaledHalfWidth
 
             // Hysteresis: currently-hovered icon uses wider exit threshold
-            let keepCurrentItemSticky = _mediaPopupHoldIndex < 0 && i === hoveredIndex
+            let keepCurrentItemSticky = i === hoveredIndex
             let maxNorm = keepCurrentItemSticky ? (1.0 + hysteresisFactor) : 1.0
             if (normDist >= maxNorm) continue
 
@@ -1086,8 +1067,7 @@ Item {
                     tooltipTimer.restart()
             }
         } else {
-            if (!_shouldRetainCompactMagnificationDuringMediaPopup())
-                _compactMediaMagnificationIndex = -1
+            _compactMediaMagnificationIndex = -1
             hoveredIndex = -1
             hoveredName = ""
             // _zoomActive intentionally NOT reset here for primary-axis gap hysteresis.
@@ -1113,34 +1093,6 @@ Item {
                 && sampleY >= span.near && sampleY <= span.far ? index : -1
     }
 
-    function _shouldRetainCompactMagnificationDuringMediaPopup() {
-        const index = _mediaPopupHoldIndex
-        if (DockSettings.magnificationMode !== 1
-                || DockSettings.mediaPlayerDisplayMode !== 0
-                || _dragActive || !_zoomActive
-                || index < 0 || index >= dockRepeater.count
-                || _compactMediaMagnificationIndex !== index)
-            return false
-        const item = dockRepeater.itemAt(index)
-        const widget = item ? item.mediaPlayerWidget : null
-        return !!item && item.isMediaPlayer && !!widget
-                && widget.magnificationHeld && widget.popupOpenRequested
-                && !widget.popupPinned
-                && widget.popupState !== widget.popupStateClosed
-    }
-
-    function _retainCompactMagnificationAcrossPopupGap() {
-        if (!_shouldRetainCompactMagnificationDuringMediaPopup())
-            return false
-        // Window Preview keeps dockPanel.mouseX/mouseY as the spring anchor
-        // while its separate surface owns the pointer. Compact media follows
-        // that same anchor rule, but valid dock hits still win before this
-        // no-hit path is reached.
-        hoveredIndex = -1
-        hoveredName = ""
-        return true
-    }
-
     function _shouldRetainCompactMediaMagnificationOnSurfaceLeave() {
         const index = _compactMediaMagnificationIndex
         if (DockSettings.magnificationMode !== 1
@@ -1158,13 +1110,6 @@ Item {
     // Pointer left the dock: release zoom and hover unless the preview keeps
     // them (dock→preview transition), and end a drag as a drag-out.
     function _pointerLeft() {
-        if (_mediaPopupHoldIndex >= 0) {
-            _pointerOnDock = false
-            _hoverReconciling = false
-            PreviewController.cancelHide()
-            DockVisibility.setHovered(true)
-            return
-        }
         // Qt Quick can send a local MouseArea leave while the compositor still
         // reports the stationary pointer on the dock surface as the media
         // popup is being prepared. Preserve the Compact target through that
@@ -1182,12 +1127,20 @@ Item {
             })
             return
         }
+        const mediaPopupKeepsDockVisible = _mediaPopupHoldIndex >= 0
         _pointerOnDock = false
         _hoverReconciling = false
         _compactMediaMagnificationIndex = -1
         PreviewController.clearDismissedTask()
-        // Keep zoom state when preview is visible (dock→preview mouse transition)
-        if (!PreviewController.visible) {
+        if (mediaPopupKeepsDockVisible) {
+            // Keep the dock visible for the independent media popup lifecycle,
+            // while allowing the spring to follow the pointer off the dock.
+            PreviewController.cancelHide()
+            DockVisibility.setHovered(true)
+        }
+        // Ordinary Window Preview retains its established dock→preview anchor.
+        // A media popup does not retain the Compact spring target.
+        if (!PreviewController.visible || mediaPopupKeepsDockVisible) {
             dockPanel.mouseX = -1
             dockPanel.mouseY = -1
             _zoomActive = false
@@ -1208,7 +1161,7 @@ Item {
             clearDragState()
         }
         // preview visible이면 dock hover 상태 유지 (입력 영역 축소 방지)
-        if (!PreviewController.visible) {
+        if (!PreviewController.visible && !mediaPopupKeepsDockVisible) {
             DockVisibility.setHovered(false)
         }
     }
@@ -2482,6 +2435,22 @@ Item {
     Connections {
         target: PreviewController
         function onVisibleChanged() {
+            DockView.traceMediaHover("window-preview-visibility-changed", {
+                previousVisible: !PreviewController.visible,
+                visible: PreviewController.visible,
+                hoveredIndex: root.hoveredIndex,
+                pointerOnDock: root._pointerOnDock,
+                pointerInside: DockView.pointerInside,
+                pointerFocusIsDock: DockView.pointerFocusWindow === root.Window.window,
+                mouseX: dockPanel.mouseX,
+                mouseY: dockPanel.mouseY,
+                mouseInside: dockPanel.mouseInside,
+                zoomActive: root._zoomActive,
+                springTargetAmount: dockPanel.magnificationMode === 1
+                    ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0),
+                springAmount: dockPanel.magnificationMode === 1 ? springZoom.amount : 0,
+                springCursor: dockPanel.zoomCursor
+            })
             // The menu hold hides the preview; hover is reconciled on close.
             if (root._hoverHeld) return
             if (externalDropArea.externalFileDragActive) return
