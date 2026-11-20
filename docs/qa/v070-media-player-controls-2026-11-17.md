@@ -1606,3 +1606,143 @@ The candidate is currently the sole KDockW process; stable v0.6.0 was restored
 between the full test runs and is now paused again. Owner visual acceptance
 remains **NOT VERIFIED**; keep the task in `review`.
 No release, tag, or push was created.
+
+## 2026-11-20 — v0.7.0 release stabilization status
+
+### Owner acceptance
+
+The owner accepted the unified Wayland pointer source and magnification at
+14/14 PASS on Build ID
+`a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`. Popup Handoff was accepted at
+12/12 PASS on Build ID `feb27dcba12ce2d86af4a3826fc62cc039a0fdb1`. The owner
+confirmed that Compact magnification returns from Media Popup, Preview and
+Media Popup handoffs work, and no flicker, jumps, or stuck previews remain.
+
+### Automated and live checks
+
+- Final local Production Release CTest: **231/231 PASS**; log
+  `diagnostics/v070-dev/logs/release-production-ctest-0.7.0-20261120.log`.
+- Final local Diagnostic Release CTest: **236/236 PASS**; log
+  `diagnostics/v070-dev/logs/release-diagnostic-ctest-0.7.0-20261120.log`.
+- Release tooling unit tests exited 0. AppStream validation, Desktop Entry
+  validation, Russian `msgfmt` checks, and both production/stage checks for
+  all 12 required Russian settings translations passed.
+- The earlier Desktop Actions `entryPath()` failures were caused by the test
+  fixture setting XDG paths after `QApplication` had initialized KService.
+  The fixture now sets those paths before application construction and
+  compares canonical file identity; the required assertion remains enabled.
+- The earlier bottom-edge hit-test timeout came from a media widget left in
+  the shared test model, so the expected launcher layout never stabilized.
+  The fixture now resets the complete dock entry order. Both full suites pass
+  with the regression enabled.
+- The historical concurrent MPRIS source-model SIGSEGV was not reproduced in
+  the final full suites, a 50-repeat targeted Production CTest run, or a 10/10
+  isolated live VLC MPRIS check. Its historical root cause remains UNKNOWN.
+- Candidate live TaskManager functional preflight passed **6/6**, including
+  window appearance/removal, title and icon changes, and grouping. Stable's
+  diagnostic snapshot helper is unavailable in the production binary, so it
+  was not counted as a valid stable preflight.
+
+### Release gates still open
+
+The required stable-v0.6.0 versus production-v0.7.0 performance A/B is
+**NOT VERIFIED**. No complete comparable dataset exists for idle and moving
+pointer CPU, RSS/PSS, MPRIS active/absent, magnification, Launcher cold/warm
+and idle behavior, long-term memory, and pointer-sample processing. A single
+idle reading is not treated as acceptance. Required Debian 13, Ubuntu 26.04,
+and Fedora 45 Distro E2E is also **NOT RUN**; policy requires it on the exact
+pushed release commit. No release tag or GitHub Release has been created.
+
+Release binary identities prepared locally: stable `/usr/bin/kdockw` 0.6.0,
+GNU Build ID `929161b576ca3fc8a683eb896668d9ead5ff0419`; production candidate
+`build/v070-production-release/bin/kdockw` 0.7.0, GNU Build ID
+`4a86ccb8bd0bd25e4460b5c8de1b71ea5497ef02`; diagnostic staged 0.7.0-dev,
+GNU Build ID `feb27dcba12ce2d86af4a3826fc62cc039a0fdb1`. The current
+production config and permission-preserving backup match SHA-256
+`851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`, owner
+`stout:stout`, mode `0600`. At this audit snapshot only stable PID 1669387 was
+running; no candidate was active.
+
+### Window-only Portal probe
+
+The owner authorized selecting only the KDockW window for a bounded pointer
+input probe. The desktop portal returned a stream with `source_type=1` and
+geometry `1920x1080`, which identifies a monitor source rather than the
+requested KDockW window. The session was closed before any pointer input was
+sent; no video frames were read or saved. No performance measurements were
+collected from this probe. The stable-v0.6.0 versus production-v0.7.0
+performance A/B therefore remains **NOT VERIFIED**; a window-confined input
+route is still needed to safely measure moving-pointer and magnification
+scenarios.
+
+### Console-only simplified measurements — 2026-11-20
+
+Per owner direction, no further automated pointer input was attempted. The
+previous pointer-only helper completed its `RemoteDesktop.Session.Close` path;
+its output reports `framesOpened=false`. Checks found no remaining helper,
+fixture, or candidate process. Stable `/usr/bin/kdockw` was restored as PID
+`2009894`; the production config still matches its mode-0600 backup at SHA-256
+`851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
+
+An ambient 60-second stable sample used 13 `/proc` samples at five-second
+intervals: process/main-thread CPU registered no scheduler ticks at that
+sampling resolution; RSS stayed at 338600 KiB, PSS at about 178508 KiB, and
+anonymous PSS at 143852 KiB. Raw samples are in
+`diagnostics/v070-dev/logs/perf-ab-20261120-2045/stable-idle-sample.jsonl`.
+
+The production 0.7.0 sample used the same interval and initially identical
+config bytes (SHA-256
+`851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`). It
+recorded process CPU averaging 16.11%, RSS from 873284 to 1024856 KiB, and PSS
+from 714996 to 866568 KiB, then memory values plateaued during the remainder
+of the 60-second capture. This is **not a valid idle comparison**: the cursor
+was still at `(350, 1051)` within the dock surface after the prior authorized
+input probe, and no pointer movement was made to neutralize that state. Do
+not attribute the CPU/memory readings to idle behavior, infer a regression,
+or classify the short PSS change as a leak. Raw samples are in
+`diagnostics/v070-dev/logs/perf-ab-20261120-2045/candidate-idle-sample.jsonl`.
+The candidate wrote new defaults only to its isolated profile; production
+configuration and its backup remained unchanged.
+
+Active/absent MPRIS, normal manual dock use, and leak behavior under a valid
+neutral-pointer run remain **NOT VERIFIED**. No further Portal permission or
+automated pointer control will be requested or used. Owner participation is
+needed for a short console-only sample with the cursor moved to the desktop
+before candidate startup.
+
+### Final versioned build checks — 2026-11-20
+
+After changing the canonical CMake version to `0.7.0`, the release and
+diagnostic Release build trees were rebuilt. Production Release CTest passed
+**231/231** and Diagnostic Release CTest passed **236/236**. The first
+production attempt was interrupted after D-Bus tests reported `Socket name too
+long`; rerunning the same full suite with a short `TMPDIR` passed. No test was
+skipped or weakened for that rerun.
+
+Release tooling tests completed with **153 passed / 1 optional skip**. The
+generated production and staged Desktop Entries, AppStream metadata, Russian
+`msgfmt`, launcher shell syntax, release CLI parsing, and `git diff --check`
+passed. Diagnostic `--preflight-only` passed and confirmed stage ELF Build ID
+`feb27dcba12ce2d86af4a3826fc62cc039a0fdb1` and the staged Russian catalog.
+Production ELF Build ID is
+`4a86ccb8bd0bd25e4460b5c8de1b71ea5497ef02`; its CLI reports `0.7.0`.
+
+The current release branch has no configured upstream; the launcher prints
+that Git metadata warning, then completes preflight successfully. No upstream
+was configured; the planned release integration targets `origin/main`.
+
+The prior Portal helper exited through `RemoteDesktop.Session.Close` and
+reported `framesOpened=false`. Process inspection found no helper, fixture,
+pointer-control, or candidate process. Portal's remaining object tree contains
+app-owned Chromium global-shortcuts and Telegram sessions; these unrelated
+sessions were left untouched. Stable v0.6.0 remains the sole running dock
+(PID `2009894`), and the production configuration still matches its
+permission-preserving backup at SHA-256
+`851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
+
+The valid stable ambient 60-second sample and invalid candidate sample above do
+not form a comparable idle A/B. Active MPRIS resource use, ordinary manual
+candidate use, and longer-term leak behavior remain **NOT VERIFIED** pending a
+short owner-run console sample. No numerical performance improvement or
+regression is claimed. Required Debian 13, Ubuntu 26.04, and Fedora 45 Distro
+E2E remains pending the exact pushed release SHA.

@@ -73,6 +73,12 @@
     <color type="primary" scheme_preference="dark">#8CE7F5</color>
   </branding>
   <releases>
+    <release version="0.7.0" date="2026-11-20">
+      <description>
+        <p>Adds a built-in MPRIS2 media player widget with Compact, Controls, and Expanded dock modes, automatic visibility, session selection, and an interactive playback popup. Improves Wayland pointer handling and magnification handoff between dock previews and media popups.</p>
+        <p xml:lang="ru">Добавляет встроенный медиавиджет MPRIS2 с режимами Compact, Controls и Expanded, автоматической видимостью, выбором сессии и интерактивным окном управления воспроизведением. Улучшает обработку указателя Wayland и передачу увеличения между предпросмотрами дока и медиаплеера.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-11-17">
       <description>
         <p>Adds configurable built-in dock widgets and three application launcher styles: Launchpad, Windows Start, and KDE Hierarchical. Improves favorites, search, folders, popup behavior, task icon updates, and separator alignment.</p>

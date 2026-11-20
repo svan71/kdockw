@@ -1,3 +1,11 @@
+kdockw (0.7.0-1) unstable; urgency=medium
+
+  * Add a persistent MPRIS2 media player widget with three dock modes and an interactive popup.
+  * Improve media-session selection, metadata, artwork, transport controls, and automatic visibility.
+  * Improve Wayland pointer and magnification handoff between dock previews and media popups.
+
+ -- thicking <thicking@gmail.com>  Fri, 20 Nov 2026 00:00:00 +0500
+
 kdockw (0.6.0-1) unstable; urgency=medium
 
   * Add persistent built-in dock widgets and three KDE application launcher styles.

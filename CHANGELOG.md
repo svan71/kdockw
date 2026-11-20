@@ -8,6 +8,8 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Added
 
 - Added one persistent MPRIS2 media player dock widget with Compact, Controls, and Expanded display modes, automatic session visibility, multi-player selection, metadata and bounded artwork loading, plus a shared interactive playback popup.

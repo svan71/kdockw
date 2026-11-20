@@ -484,7 +484,7 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
 
 ## v0.7.0 — Media Player Controls (MPRIS2, in progress)
 
-- [ ] **Media Player Controls Widget** (`187d5445ee4d474d`, review): one persisted
+- [x] **Media Player Controls Widget** (`187d5445ee4d474d`, done): one persisted
   built-in widget and backend serves all MPRIS2 sessions; default placement is at
   the end of the dock. It supports compact, controls, and expanded dock modes,
   plus a shared interactive popup, automatic visibility, manual source selection,
@@ -577,6 +577,25 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   was corrected and has unit/rendered-QML coverage; candidate functional
   preflight passed 6/6. Stable-v0.6.0 versus dev visible-indicator A/B and
   pinned/unpinned Plasma acceptance remain NOT VERIFIED.
+
+### Final owner acceptance and release gate audit (2026-11-20)
+
+The owner accepted unified Wayland pointer/magnification (14/14) and Popup
+Handoff (12/12) on the reviewed candidate builds. The Media Player Controls
+feature card is done; the v0.7.0 parent and TaskManager indicator card remain in
+review. Final local Production Release CTest passed 231/231 and Diagnostic
+Release CTest passed 236/236. Release tooling, AppStream/Desktop Entry,
+`msgfmt`, and Russian production/stage catalog checks passed. Live candidate
+TaskManager preflight passed 6/6, isolated VLC MPRIS passed 10/10, and the
+current concurrent-source Production test passed 50 repeats. The historical
+MPRIS teardown SIGSEGV was not reproduced; its original cause remains UNKNOWN.
+
+The required stable-v0.6.0 versus production-v0.7.0 performance A/B remains
+NOT VERIFIED. A window-scoped Portal probe returned a monitor stream
+(`source_type=1`, 1920×1080) and was closed before pointer motion. Required
+Debian 13, Ubuntu 26.04, and Fedora 45 Distro E2E has not run on an exact pushed
+release SHA. No release commit, push, tag, or GitHub Release has been created;
+v0.7.0 remains in progress.
 
 ## Technical debt — Classic Zoom Performance Profile
 
