@@ -1520,3 +1520,80 @@ are both owned by `stout`, mode `0600`, and match SHA-256
 `1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`. After
 review, restore stable with
 `/home/stout/Documents/vibecoding/kdockw/tools/kdockw-v070-dev-stop-and-restore`.
+
+## 2026-11-20 — Window Preview and Media Popup hover handoff
+
+### Implementation
+
+The confirmed Preview hide-timer defect was that every authoritative pointer
+sample cancelled the pending close before the current dock-item hit was
+reconciled. The main QML path now cancels only after the resolved item matches
+the stable `PreviewController.parentEntryId`. Samples over another item,
+including an item that cannot own a Preview, leave the existing timer intact;
+repeated samples with unchanged hover do not restart it. Hovering the Preview
+surface continues to use `PreviewController`'s existing retention behavior.
+
+Unpinned hover popups now hand off through their existing lifecycle signals.
+Window Preview exposes effective card visibility while its current fade is
+running. Media Popup waits for that surface to become visually hidden before
+opening. When the pointer reaches another previewable item while an unpinned
+Media Popup is open, the dock closes that popup and resumes Preview after the
+real close event, validating the current target by stable entry ID. Pinned
+Media Popup behavior is unchanged. No pointer, hit-test, magnification, or
+spring code was changed.
+
+### Verification
+
+- Targeted Dock Main regression tests: **6/6 passed** for pointer return,
+  repeated authoritative samples over an unpreviewable spacer, unpinned
+  Media Popup → Window Preview, and pinned Media Popup preservation.
+- PreviewController, PreviewPopup, and Media Player Widget CTest subset:
+  **5/5 passed**.
+- Full `qml_tst_dock_main`: **1/1 passed** (135.43 s). After strengthening
+  the cross-popup case to publish actual production Wayland pointer samples,
+  that targeted test passed **3/3**, including fixture setup and cleanup.
+- Full Production Release CTest rerun after the final production-sample test
+  change: **230/231**. `kdockw_hittest_tests` passed; the only failure was
+  `Desktop actions resolve installed and user-local applications`, at
+  `tests/unit/test_desktop_actions.cpp:216` (`KService::entryPath()` expected
+  path). Its isolated Production rerun also failed at the same assertion.
+- Full Diagnostic Release CTest: **234/236**. The same Desktop Actions test
+  failed. `kdockw_hittest_tests` also timed out while waiting for 500 ms of
+  stable launcher geometry on the bottom edge (`test_dock_hit_test.cpp:322`);
+  its immediate isolated rerun passed **1/1** in 10.40 s. The Desktop Actions
+  test failed again in an isolated Diagnostic rerun at the same `entryPath()`
+  assertion. This leaves the full-suite hittest timeout as an observed
+  instability, not a confirmed popup-handoff regression.
+- Full Dock Main QML passed **1/1** (136.53 s Production; 136.73 s
+  Diagnostic). The strengthened production pointer-sample handoff scenario
+  passed its targeted run **3/3**. The isolated hittest log is preserved at
+  `diagnostics/v070-dev/logs/ctest-hittest-diagnostic-20261120.log`.
+- Diagnostic stage preflight passed while stable remained running. Source and
+  staged diagnostic ELF Build ID: `feb27dcba12ce2d86af4a3826fc62cc039a0fdb1`.
+  Launcher resolved its KService authorization entry and Russian catalog
+  source/stage contents matched.
+
+Owner visual acceptance of the new popup coordination is **NOT VERIFIED**.
+After the final full CTest runs, the isolated `popup-handoff-v070` candidate
+was relaunched for Plasma/Wayland review. Its staged executable is
+`build/v070-diagnostic-release/stage/bin/kdockw`, version `0.7.0-dev`, GNU
+Build ID `feb27dcba12ce2d86af4a3826fc62cc039a0fdb1`; systemd unit
+`kdockw-v070-diagnostic-release.service`, PID `1259908`. The focused hover
+trace is
+`diagnostics/v070-dev/logs/media-hover-popup-handoff-v070-20261120-180438936134795.jsonl`.
+The earlier launch reached the exposed dock surface and initialized the
+PreviewController; this is startup evidence only, not visual acceptance.
+
+The candidate profile config is
+`diagnostics/v070-dev/profiles/popup-handoff-v070/kdockwrc`. The production
+config backup is
+`diagnostics/v070-dev/backups/kdockwrc.production.popup-handoff-v070`, mode
+`0600`, owner `1000:1001`, SHA-256
+`851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`, matching
+`/home/stout/.config/kdockwrc`. Exactly one KDockW is running; stable
+`/usr/bin/kdockw` v0.6.0 is paused. After review, restore stable with
+`/home/stout/Documents/vibecoding/kdockw/tools/kdockw-v070-dev-stop-and-restore`.
+The candidate is currently the sole KDockW process; stable v0.6.0 was restored
+between the full test runs and is now paused again. Owner visual acceptance
+remains **NOT VERIFIED**; keep the task in `review`.
+No release, tag, or push was created.

@@ -185,6 +185,31 @@ do not reproduce compositor event delivery, fractional-scale transforms, or a
 real popup surface handoff; owner verification in Plasma/Wayland remains
 required before claiming visual acceptance.
 
+### Hover popup ownership and handoff — 2026-11-20
+
+Window Preview hide cancellation is tied to the preview owner's stable
+`dockEntryId`. After an authoritative pointer sample has passed through the
+existing hit-test, only a hit on that owner cancels a pending hide; a sample on
+another dock item does not cancel or restart the old preview's timer. Hovering
+the Preview surface continues to use `PreviewController`'s existing retention
+behavior. No pointer source, coordinate mapping, hit-test, spring, or magnification
+logic is changed by this policy.
+
+Unpinned hover popups are handed off through their existing controllers. A
+Window Preview reports the effective visibility of its rendered card, including
+the existing opacity fade. A Media Popup request waits for that visibility to
+become false before opening its separate surface. In the reverse direction,
+the dock closes the unpinned Media Popup and resumes the Window Preview after
+the popup's close signal, resolving the target again by stable entry ID and
+current hover. Explicitly pinned Media Popups remain independent. No additional
+timer, polling loop, transition funnel, or global popup manager is introduced.
+
+Automated tests cover repeated pointer samples on an unpreviewable neighboring
+item, both unpinned popup handoff directions, and preservation of pinned-media
+behavior. The offscreen environment can disable QML fade animation; real
+surface ordering and the visual handoff remain subject to owner verification in
+Plasma/Wayland.
+
 ## Settings and migration
 
 KConfigXT persists widget enablement, display mode, Expanded widget width,

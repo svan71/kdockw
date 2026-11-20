@@ -42,6 +42,7 @@ carried forward from the Krema-based development period.
 - Added opt-in Application Launcher opening phase timings for request, catalog/page readiness, and first frame without logging application names.
 - Derived grouped TaskManager indicator counts from live child rows and forwarded the explicit child-count role when group rows change, preventing stale running-window dots.
 - Fixed a preview-prefetch retry callback that dereferenced a QML-local timer through the root object.
+- Kept Window Preview hide timing tied to its stable dock-item owner and coordinated unpinned Window Preview/Media Popup handoffs through their existing close and fade lifecycles.
 
 ## [0.6.0] - 2026-11-17
 
