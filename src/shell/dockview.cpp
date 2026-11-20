@@ -96,10 +96,14 @@ qint64 monotonicReferenceNowNs()
 
 } // namespace
 
-DockView::DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *settings, QWindow *parent)
+DockView::DockView(std::unique_ptr<DockPlatform> platform,
+                   KDockWSettings *settings,
+                   QWindow *parent,
+                   PointerFocusTrackerFactory pointerTrackerFactory)
     : QQuickView(parent)
     , m_platform(std::move(platform))
     , m_settings(settings)
+    , m_pointerTrackerFactory(std::move(pointerTrackerFactory))
 {
     setColor(Qt::transparent);
     setResizeMode(QQuickView::SizeRootObjectToView);
@@ -174,10 +178,18 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
 
     // Created once, before show(), so it already holds the compositor's
     // focus when a context menu's popup grab fakes a leave.
-    m_pointerFocusTracker = std::make_unique<PointerFocusTracker>(this);
+    m_pointerFocusTracker = m_pointerTrackerFactory
+        ? m_pointerTrackerFactory(this)
+        : std::make_unique<PointerFocusTracker>(this);
+    if (!m_pointerFocusTracker) {
+        m_pointerFocusTracker = std::make_unique<PointerFocusTracker>(this);
+    }
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerInsideChanged, this, &DockView::pointerInsideChanged);
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerFocusChanged,
             this, &DockView::pointerFocusWindowChanged);
+    connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerSampleChanged,
+            this, &DockView::handlePointerSample);
+    Q_EMIT pointerSourceModeChanged();
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::diagnosticEvent, this,
             [this](const QString &event, const QVariantMap &details) {
                 m_lastWaylandPointerEventId = details.value(QStringLiteral("waylandPointerEventId"),
@@ -468,6 +480,80 @@ bool DockView::pointerFocusKnown() const
 QWindow *DockView::pointerFocusWindow() const
 {
     return m_pointerFocusTracker ? m_pointerFocusTracker->pointerFocusWindow() : nullptr;
+}
+
+int DockView::pointerSourceMode() const
+{
+    // 1 = active compositor samples; 0 = Qt Quick fallback. Pointer focus
+    // and pointer capability do not change the source selection.
+    return m_pointerFocusTracker && m_pointerFocusTracker->isAvailable() ? 1 : 0;
+}
+
+bool DockView::pointerSampleValid() const
+{
+    return m_pointerSampleOnDock;
+}
+
+QPointF DockView::pointerSamplePosition() const
+{
+    return m_pointerSample.valid ? m_pointerSample.surfaceLocalPosition : QPointF{};
+}
+
+quint64 DockView::pointerSampleSequence() const
+{
+    return m_pointerSample.sequence;
+}
+
+quint64 DockView::pointerSampleSurfaceId() const
+{
+    return m_pointerSample.surfaceId;
+}
+
+quint64 DockView::pointerSampleSurfaceGeneration() const
+{
+    return m_pointerSample.surfaceGeneration;
+}
+
+QWindow *DockView::pointerSampleFocusWindow() const
+{
+    return m_pointerSample.focusKnown ? m_pointerSample.focusedWindow.data() : nullptr;
+}
+
+void DockView::handlePointerSample(const PointerSample &sample)
+{
+    if (sample.sequence <= m_pointerSample.sequence) {
+        return;
+    }
+    m_pointerSample = sample;
+    const bool currentDockSurface = m_pointerFocusTracker
+        && sample.valid
+        && sample.focusKnown
+        && sample.focusedWindow == this
+        && sample.surfaceId != 0
+        && sample.surfaceId == m_pointerFocusTracker->dockSurfaceId()
+        && sample.surfaceGeneration != 0
+        && sample.surfaceGeneration == m_pointerFocusTracker->dockSurfaceGeneration();
+    m_pointerSampleOnDock = currentDockSurface;
+    Q_EMIT pointerSampleChanged();
+
+    if (m_mediaHoverDebugEnabled) {
+        traceMediaHover(QStringLiteral("authoritative-pointer-sample"), {
+            {QStringLiteral("source"), QStringLiteral("wayland-pointer-focus-tracker")},
+            {QStringLiteral("sequence"), sample.sequence},
+            {QStringLiteral("valid"), sample.valid},
+            {QStringLiteral("acceptedForDock"), currentDockSurface},
+            {QStringLiteral("focusKnown"), sample.focusKnown},
+            {QStringLiteral("focusedWindowIsDock"), sample.focusedWindow == this},
+            {QStringLiteral("surfaceId"), sample.surfaceId},
+            {QStringLiteral("currentDockSurfaceId"), m_pointerFocusTracker->dockSurfaceId()},
+            {QStringLiteral("surfaceGeneration"), sample.surfaceGeneration},
+            {QStringLiteral("currentDockSurfaceGeneration"), m_pointerFocusTracker->dockSurfaceGeneration()},
+            {QStringLiteral("surfaceLocalLogical"), QVariantMap{
+                {QStringLiteral("x"), sample.surfaceLocalPosition.x()},
+                {QStringLiteral("y"), sample.surfaceLocalPosition.y()},
+            }},
+        });
+    }
 }
 
 bool DockView::mediaPopupTraceEnabled() const

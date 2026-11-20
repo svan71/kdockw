@@ -34,11 +34,16 @@ Q_LOGGING_CATEGORY(lcMultiDock, "kdockw.shell.multidock")
 namespace kdockw
 {
 
-MultiDockManager::MultiDockManager(KDockWSettings *settings, DockModel *model, NotificationTracker *tracker, QObject *parent)
+MultiDockManager::MultiDockManager(KDockWSettings *settings,
+                                   DockModel *model,
+                                   NotificationTracker *tracker,
+                                   QObject *parent,
+                                   PointerFocusTrackerFactory pointerTrackerFactory)
     : QObject(parent)
     , m_settings(settings)
     , m_model(model)
     , m_tracker(tracker)
+    , m_pointerTrackerFactory(std::move(pointerTrackerFactory))
     , m_settingsWindow(std::make_unique<SettingsWindow>(settings))
 {
     // Debounce screen topology changes (hot-plug, mirror→extended transitions)
@@ -263,7 +268,14 @@ DockShell *MultiDockManager::createShellForScreen(QScreen *screen)
     auto *screenSettings = new ScreenSettings(screen->name(), m_settings, this);
 
     auto platform = DockPlatformFactory::create();
-    auto shell = std::make_unique<DockShell>(m_settings, screenSettings, m_model, m_tracker, m_settingsWindow.get(), std::move(platform), this);
+    auto shell = std::make_unique<DockShell>(m_settings,
+                                             screenSettings,
+                                             m_model,
+                                             m_tracker,
+                                             m_settingsWindow.get(),
+                                             std::move(platform),
+                                             this,
+                                             m_pointerTrackerFactory);
     // Destroy the overlay after its own dock view, not at manager teardown:
     // repeated selection toggles must not retain old settings connections.
     screenSettings->setParent(shell.get());

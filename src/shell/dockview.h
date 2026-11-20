@@ -4,6 +4,7 @@
 #pragma once
 
 #include "platform/dockplatform.h"
+#include "platform/pointerfocustracker.h"
 #include "unlockrecoverypolicy.h"
 #include "style/backgroundstyle.h"
 
@@ -37,7 +38,6 @@ namespace kdockw
 
 class DockVisibilityController;
 class IconDiagnostics;
-class PointerFocusTracker;
 class ScreenSettings;
 class TaskIconProvider;
 
@@ -66,6 +66,15 @@ class DockView : public QQuickView
     Q_PROPERTY(bool pointerInside READ isPointerInside NOTIFY pointerInsideChanged)
     Q_PROPERTY(bool pointerFocusKnown READ pointerFocusKnown NOTIFY pointerFocusWindowChanged)
     Q_PROPERTY(QWindow *pointerFocusWindow READ pointerFocusWindow NOTIFY pointerFocusWindowChanged)
+    /// 0 selects Qt Quick fallback; 1 selects the active Wayland tracker even
+    /// while focus is temporarily outside the dock.
+    Q_PROPERTY(int pointerSourceMode READ pointerSourceMode NOTIFY pointerSourceModeChanged)
+    Q_PROPERTY(bool pointerSampleValid READ pointerSampleValid NOTIFY pointerSampleChanged)
+    Q_PROPERTY(QPointF pointerSamplePosition READ pointerSamplePosition NOTIFY pointerSampleChanged)
+    Q_PROPERTY(quint64 pointerSampleSequence READ pointerSampleSequence NOTIFY pointerSampleChanged)
+    Q_PROPERTY(quint64 pointerSampleSurfaceId READ pointerSampleSurfaceId NOTIFY pointerSampleChanged)
+    Q_PROPERTY(quint64 pointerSampleSurfaceGeneration READ pointerSampleSurfaceGeneration NOTIFY pointerSampleChanged)
+    Q_PROPERTY(QWindow *pointerSampleFocusWindow READ pointerSampleFocusWindow NOTIFY pointerSampleChanged)
     Q_PROPERTY(bool performanceDiagnosticsEnabled READ performanceDiagnosticsEnabled CONSTANT)
     Q_PROPERTY(bool mediaPopupTraceEnabled READ mediaPopupTraceEnabled CONSTANT)
     Q_PROPERTY(bool mediaHoverDebugEnabled READ mediaHoverDebugEnabled CONSTANT)
@@ -73,7 +82,10 @@ class DockView : public QQuickView
     Q_PROPERTY(QString launcherDiagnosticPage READ launcherDiagnosticPage CONSTANT)
 
 public:
-    explicit DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *settings, QWindow *parent = nullptr);
+    explicit DockView(std::unique_ptr<DockPlatform> platform,
+                      KDockWSettings *settings,
+                      QWindow *parent = nullptr,
+                      PointerFocusTrackerFactory pointerTrackerFactory = {});
     ~DockView() override;
 
     /// Initialize the dock view. @p tasksModel is used for visibility control.
@@ -160,6 +172,13 @@ public:
     [[nodiscard]] bool isPointerInside() const;
     [[nodiscard]] bool pointerFocusKnown() const;
     [[nodiscard]] QWindow *pointerFocusWindow() const;
+    [[nodiscard]] int pointerSourceMode() const;
+    [[nodiscard]] bool pointerSampleValid() const;
+    [[nodiscard]] QPointF pointerSamplePosition() const;
+    [[nodiscard]] quint64 pointerSampleSequence() const;
+    [[nodiscard]] quint64 pointerSampleSurfaceId() const;
+    [[nodiscard]] quint64 pointerSampleSurfaceGeneration() const;
+    [[nodiscard]] QWindow *pointerSampleFocusWindow() const;
     [[nodiscard]] bool performanceDiagnosticsEnabled() const;
     [[nodiscard]] bool mediaPopupTraceEnabled() const;
     [[nodiscard]] bool mediaHoverDebugEnabled() const;
@@ -188,6 +207,8 @@ Q_SIGNALS:
     void tooltipReserveChanged();
     void pointerInsideChanged();
     void pointerFocusWindowChanged();
+    void pointerSourceModeChanged();
+    void pointerSampleChanged();
     void screenGeometryChanged();
     void mediaHoverMarkerReceived(const QString &label);
 
@@ -200,6 +221,7 @@ private:
     [[nodiscard]] UnlockRecoveryState unlockRecoveryState() const;
     void traceLayerGeometry(const QString &phase);
     void handleMediaHoverMarkerConnection();
+    void handlePointerSample(const PointerSample &sample);
 
 private Q_SLOTS:
     void handleScreenLockChanged(bool active);
@@ -212,6 +234,9 @@ private:
     ScreenSettings *m_screenSettings = nullptr;
     DockVisibilityController *m_visibilityController = nullptr;
     std::unique_ptr<PointerFocusTracker> m_pointerFocusTracker;
+    PointerFocusTrackerFactory m_pointerTrackerFactory;
+    PointerSample m_pointerSample;
+    bool m_pointerSampleOnDock = false;
     QElapsedTimer m_monotonicClock;
     TaskIconProvider *m_iconProvider = nullptr;
     IconDiagnostics *m_iconDiagnostics = nullptr;

@@ -115,9 +115,18 @@ QVariantMap pointDetails(const QPointF &point)
 } // namespace
 
 PointerFocusTracker::PointerFocusTracker(QWindow *window, QObject *parent)
+    : PointerFocusTracker(window, true, parent)
+{
+}
+
+PointerFocusTracker::PointerFocusTracker(QWindow *window, bool initializeWayland, QObject *parent)
     : QObject(parent)
     , m_window(window)
 {
+    watchSurfaceWindow(window);
+    if (!initializeWayland) {
+        return;
+    }
     auto *waylandApp = qGuiApp ? qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>() : nullptr;
     if (!waylandApp || !waylandApp->display()) {
         return;
@@ -141,6 +150,7 @@ PointerFocusTracker::~PointerFocusTracker()
     // DockView's trace sink is a later-declared member and is destroyed before
     // this tracker. Keep teardown from emitting diagnostics through that sink.
     m_diagnosticEnabled = false;
+    m_destroying = true;
     releaseSeat();
     m_focusedSurface = nullptr;
     if (m_registry) {
@@ -171,6 +181,7 @@ void PointerFocusTracker::bindSeat(uint32_t name, uint32_t version)
 
 void PointerFocusTracker::releaseSeat()
 {
+    invalidatePointerSample(m_focusedSurface);
     releasePointer(QStringLiteral("seat-released"));
     if (!m_seat) {
         return;
@@ -200,6 +211,7 @@ void PointerFocusTracker::setCapabilities(uint32_t capabilities)
         // needs a new one.
         releasePointer(QStringLiteral("pointer-capability-lost"));
         setFocusedSurface(nullptr);
+        invalidatePointerSample();
         recordDiagnostic(QStringLiteral("wayland-pointer-focus-cleared"), {
             {QStringLiteral("reason"), QStringLiteral("pointer-capability-lost")},
             {QStringLiteral("focusedSurfaceAfter"), focusedSurfaceDetails()},
@@ -257,6 +269,10 @@ void PointerFocusTracker::releasePointer(const QString &reason)
         {QStringLiteral("reason"), reason},
         {QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails()},
     });
+    if (m_focusedSurface) {
+        setFocusedSurface(nullptr);
+    }
+    invalidatePointerSample(m_focusedSurface);
     if (wl_proxy_get_version(reinterpret_cast<wl_proxy *>(m_pointer)) >= WL_POINTER_RELEASE_SINCE_VERSION) {
         wl_pointer_release(m_pointer);
     } else {
@@ -278,6 +294,25 @@ bool PointerFocusTracker::isPointerInside() const
     // is hidden and shown again.
     auto *surface = static_cast<wl_surface *>(nativeInterface->nativeResourceForWindow(QByteArrayLiteral("surface"), m_window.data()));
     return surface && surface == m_focusedSurface;
+}
+
+bool PointerFocusTracker::isAvailable() const
+{
+    // Source availability describes the backend, not whether the pointer is
+    // currently over a surface or whether the compositor currently advertises
+    // a pointer capability. Do not fall back to stale Qt coordinates for
+    // those temporary states.
+    return m_registry != nullptr;
+}
+
+quint64 PointerFocusTracker::dockSurfaceId() const
+{
+    return m_dockSurfaceId;
+}
+
+quint64 PointerFocusTracker::dockSurfaceGeneration() const
+{
+    return m_dockSurfaceGeneration;
 }
 
 bool PointerFocusTracker::hasPointerFocus() const
@@ -426,11 +461,147 @@ quint64 PointerFocusTracker::idForSurface(wl_surface *surface)
     }
     const auto existing = m_surfaceIds.constFind(surface);
     if (existing != m_surfaceIds.cend()) {
+        if (!m_surfaceGenerations.contains(surface)) {
+            m_surfaceGenerations.insert(surface, ++m_nextSurfaceGeneration);
+        }
         return existing.value();
     }
     const quint64 id = ++m_nextSurfaceId;
     m_surfaceIds.insert(surface, id);
+    m_surfaceGenerations.insert(surface, ++m_nextSurfaceGeneration);
+    if (surface == surfaceForWindow(m_window)) {
+        m_dockSurfaceId = id;
+        m_dockSurfaceGeneration = m_surfaceGenerations.value(surface);
+    }
     return id;
+}
+
+quint64 PointerFocusTracker::surfaceGenerationFor(wl_surface *surface)
+{
+    if (!surface) {
+        return 0;
+    }
+    (void)idForSurface(surface);
+    return m_surfaceGenerations.value(surface);
+}
+
+void PointerFocusTracker::watchSurfaceWindow(QWindow *window)
+{
+    if (!window) {
+        return;
+    }
+    if (!m_surfaceLifecycleWindows.contains(window)) {
+        m_surfaceLifecycleWindows.insert(window);
+        window->installEventFilter(this);
+
+        connect(window, &QObject::destroyed, this, [this, window] {
+            wl_surface *surface = m_windowSurfaceHandles.value(window, nullptr);
+            if (surface && m_focusedSurface == surface) {
+                setFocusedSurface(nullptr);
+                invalidatePointerSample(surface);
+            }
+            if (surface) {
+                m_surfaceIds.remove(surface);
+                m_surfaceGenerations.remove(surface);
+                m_surfaceWindows.remove(surface);
+            }
+            m_windowSurfaceHandles.remove(window);
+            m_windowSurfaceGenerations.remove(window);
+            m_surfaceLifecycleWindows.remove(window);
+            if (window == m_window) {
+                m_dockSurfaceId = 0;
+                m_dockSurfaceGeneration = 0;
+            }
+        });
+    }
+
+    // Surface resources may not exist when the tracker is constructed. Keep
+    // this method useful on later enter/diagnostic calls as well as from the
+    // PlatformSurface event filter.
+    wl_surface *surface = surfaceForWindow(window);
+    if (!surface || m_windowSurfaceHandles.value(window) == surface) {
+        return;
+    }
+    wl_surface *previous = m_windowSurfaceHandles.value(window, nullptr);
+    if (previous) {
+        m_surfaceIds.remove(previous);
+        m_surfaceGenerations.remove(previous);
+        m_surfaceWindows.remove(previous);
+    }
+    m_windowSurfaceHandles.insert(window, surface);
+    const quint64 generation = m_windowSurfaceGenerations.value(window, 0) + 1;
+    m_windowSurfaceGenerations.insert(window, generation);
+    const quint64 surfaceId = idForSurface(surface);
+    m_surfaceGenerations.insert(surface, generation);
+    m_surfaceWindows.insert(surface, window);
+    if (window == m_window) {
+        m_dockSurfaceId = surfaceId;
+        m_dockSurfaceGeneration = generation;
+    }
+}
+
+void PointerFocusTracker::handleSurfaceLifecycleEvent(QWindow *window, QPlatformSurfaceEvent *event)
+{
+    if (!window || !event) {
+        return;
+    }
+
+    if (event->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+        wl_surface *surface = m_windowSurfaceHandles.value(window, surfaceForWindow(window));
+        const bool hadPointerFocus = surface && m_focusedSurface == surface;
+        if (hadPointerFocus) {
+            setFocusedSurface(nullptr);
+        }
+        if (surface && (hadPointerFocus || window == m_window)) {
+            invalidatePointerSample(surface);
+        }
+        if (surface) {
+            m_surfaceIds.remove(surface);
+            m_surfaceGenerations.remove(surface);
+            m_surfaceWindows.remove(surface);
+        }
+        m_windowSurfaceHandles.remove(window);
+        m_windowSurfaceIds.remove(window);
+        if (window == m_window) {
+            m_dockSurfaceId = 0;
+            m_dockSurfaceGeneration = 0;
+        }
+        return;
+    }
+
+    if (event->surfaceEventType() != QPlatformSurfaceEvent::SurfaceCreated) {
+        return;
+    }
+    watchSurfaceWindow(window);
+}
+
+void PointerFocusTracker::publishSurfaceSample(wl_surface *surface, const QPointF &position, bool valid)
+{
+    if (m_destroying) {
+        return;
+    }
+    PointerSample sample;
+    sample.surfaceLocalPosition = valid ? position : QPointF{};
+    sample.sequence = ++m_pointerSampleSequence;
+    sample.surfaceId = surface ? idForSurface(surface) : 0;
+    sample.surfaceGeneration = surface ? surfaceGenerationFor(surface) : 0;
+    sample.pointerGeneration = m_pointerGeneration;
+    sample.valid = valid && surface != nullptr;
+    sample.focusKnown = m_pointer && m_focusedSurface != nullptr;
+    sample.focusedWindow = sample.focusKnown ? m_surfaceWindows.value(surface) : nullptr;
+    publishPointerSample(sample);
+}
+
+void PointerFocusTracker::invalidatePointerSample(wl_surface *surface)
+{
+    publishSurfaceSample(surface, {}, false);
+}
+
+void PointerFocusTracker::publishPointerSample(const PointerSample &sample)
+{
+    if (!m_destroying) {
+        Q_EMIT pointerSampleChanged(sample);
+    }
 }
 
 wl_surface *PointerFocusTracker::surfaceForWindow(QWindow *window) const
@@ -450,6 +621,9 @@ QWindow *PointerFocusTracker::windowForSurface(wl_surface *surface) const
 {
     if (!surface) {
         return nullptr;
+    }
+    if (const auto it = m_surfaceWindows.constFind(surface); it != m_surfaceWindows.cend()) {
+        return it.value().data();
     }
     for (QWindow *window : QGuiApplication::allWindows()) {
         if (surfaceForWindow(window) == surface) {
@@ -578,7 +752,7 @@ void PointerFocusTracker::watchWindow(QWindow *window, const QString &role)
         return;
     }
     m_watchedWindows.insert(window);
-    window->installEventFilter(this);
+    watchSurfaceWindow(window);
     if (wl_surface *surface = surfaceForWindow(window)) {
         m_windowSurfaceIds.insert(window, idForSurface(surface));
     }
@@ -645,6 +819,10 @@ void PointerFocusTracker::watchWindow(QWindow *window, const QString &role)
 bool PointerFocusTracker::eventFilter(QObject *watched, QEvent *event)
 {
     auto *window = qobject_cast<QWindow *>(watched);
+    if (window && event->type() == QEvent::PlatformSurface
+        && (window == m_window || m_surfaceLifecycleWindows.contains(window))) {
+        handleSurfaceLifecycleEvent(window, static_cast<QPlatformSurfaceEvent *>(event));
+    }
     if (m_diagnosticEnabled && window) {
         const QString eventName = qtPointerEventName(event->type());
         if (!eventName.isEmpty()) {
@@ -789,6 +967,10 @@ void PointerFocusTracker::handleCapabilities(void *data, wl_seat *, uint32_t cap
 void PointerFocusTracker::handleEnter(void *data, wl_pointer *, uint32_t serial, wl_surface *surface, int32_t x, int32_t y)
 {
     auto *self = static_cast<PointerFocusTracker *>(data);
+    if (QWindow *window = self->windowForSurface(surface)) {
+        self->watchSurfaceWindow(window);
+        self->m_surfaceWindows.insert(surface, window);
+    }
     const quint64 enterSurfaceId = self->idForSurface(surface);
     const bool addressMatchesFocus = surface == self->m_focusedSurface;
     const bool stableIdMatchesFocus = enterSurfaceId == self->m_focusedSurfaceId;
@@ -819,6 +1001,9 @@ void PointerFocusTracker::handleEnter(void *data, wl_pointer *, uint32_t serial,
         }},
     }, true);
     self->setFocusedSurface(surface);
+    self->publishSurfaceSample(surface,
+                               QPointF(wl_fixed_to_double(x), wl_fixed_to_double(y)),
+                               true);
     self->recordDiagnostic(QStringLiteral("wayland-pointer-enter-applied"), {
         {QStringLiteral("waylandPointerEventId"), self->m_pointerEventSequence},
         {QStringLiteral("waylandSerial"), serial},
@@ -845,8 +1030,12 @@ void PointerFocusTracker::handleLeave(void *data, wl_pointer *, uint32_t serial,
         {QStringLiteral("leaveSurfaceId"), leaveSurfaceId},
         {QStringLiteral("focusedSurfaceIdBefore"), focusedSurfaceIdBefore},
     }, true);
-    // Pointer focus is a single surface, so any leave ends it.
-    self->setFocusedSurface(nullptr);
+    // A delayed leave from an older surface must not invalidate a newer
+    // enter/sample. Normal Wayland leave→enter order still clears first.
+    if (leaveSurfaceId == focusedSurfaceIdBefore && surface == self->m_focusedSurface) {
+        self->setFocusedSurface(nullptr);
+        self->invalidatePointerSample(surface);
+    }
     self->recordDiagnostic(QStringLiteral("wayland-pointer-leave-applied"), {
         {QStringLiteral("waylandPointerEventId"), self->m_pointerEventSequence},
         {QStringLiteral("waylandSerial"), serial},
@@ -860,6 +1049,11 @@ void PointerFocusTracker::handleLeave(void *data, wl_pointer *, uint32_t serial,
 void PointerFocusTracker::handleMotion(void *data, wl_pointer *, uint32_t serial, int32_t x, int32_t y)
 {
     auto *self = static_cast<PointerFocusTracker *>(data);
+    if (self->m_focusedSurface) {
+        self->publishSurfaceSample(self->m_focusedSurface,
+                                   QPointF(wl_fixed_to_double(x), wl_fixed_to_double(y)),
+                                   true);
+    }
     if (!self->m_diagnosticEnabled) {
         return;
     }

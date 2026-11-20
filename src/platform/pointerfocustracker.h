@@ -5,21 +5,39 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QPointF>
 #include <QHash>
+#include <QMetaType>
 #include <QSet>
 #include <QString>
 #include <QVariantMap>
 #include <QWindow>
 
 #include <cstdint>
+#include <functional>
+#include <memory>
 
 struct wl_pointer;
 struct wl_registry;
 struct wl_seat;
 struct wl_surface;
+class QPlatformSurfaceEvent;
 
 namespace kdockw
 {
+
+/** A compositor pointer sample tied to one live Wayland surface. */
+struct PointerSample
+{
+    QPointF surfaceLocalPosition;
+    quint64 sequence = 0;
+    quint64 surfaceId = 0;
+    quint64 surfaceGeneration = 0;
+    quint32 pointerGeneration = 0;
+    QPointer<QWindow> focusedWindow;
+    bool valid = false;
+    bool focusKnown = false;
+};
 
 /**
  * Authoritative Wayland pointer focus for one window.
@@ -53,13 +71,19 @@ public:
     PointerFocusTracker &operator=(const PointerFocusTracker &) = delete;
 
     /// True when the compositor's pointer focus is the window's current surface.
-    [[nodiscard]] bool isPointerInside() const;
+    [[nodiscard]] virtual bool isPointerInside() const;
     /// True when a Wayland pointer focus surface is currently known.
-    [[nodiscard]] bool hasPointerFocus() const;
+    [[nodiscard]] virtual bool hasPointerFocus() const;
     /// Window currently holding compositor pointer focus, if it belongs to
     /// this client. This lets QML distinguish the dock from its own popup
     /// surfaces instead of treating every surface leave as leaving the UI.
-    [[nodiscard]] QWindow *pointerFocusWindow() const;
+    [[nodiscard]] virtual QWindow *pointerFocusWindow() const;
+    /// Whether this tracker has a supported Wayland display source. This is
+    /// independent of current pointer focus or seat pointer capability.
+    [[nodiscard]] virtual bool isAvailable() const;
+    /// Current identity of the dock's live surface, or zero before mapping.
+    [[nodiscard]] virtual quint64 dockSurfaceId() const;
+    [[nodiscard]] virtual quint64 dockSurfaceGeneration() const;
 
     /// Enable event-driven surface diagnostics without changing pointer handling.
     void setDiagnosticEnabled(bool enabled);
@@ -73,8 +97,19 @@ Q_SIGNALS:
     void pointerInsideChanged();
     /// Emitted whenever the compositor changes pointer-focused surface.
     void pointerFocusChanged();
+    /// Published for every dock enter/motion and focus invalidation, even when
+    /// detailed diagnostics are disabled.
+    void pointerSampleChanged(const kdockw::PointerSample &sample);
     /// Emitted synchronously on the Wayland event thread when diagnostics are enabled.
     void diagnosticEvent(const QString &event, const QVariantMap &details);
+
+protected:
+    /// Construct a tracker adapter without binding a compositor registry.
+    /// Production instances always use the public Wayland-backed constructor.
+    explicit PointerFocusTracker(QWindow *window, bool initializeWayland, QObject *parent = nullptr);
+    /// Adapter seam for deterministic DockView/QML integration tests. The
+    /// production tracker calls the same signal from wl_pointer callbacks.
+    void publishPointerSample(const PointerSample &sample);
 
 private:
     void bindSeat(uint32_t name, uint32_t version);
@@ -86,6 +121,11 @@ private:
     /// Store the new focus and emit pointerInsideChanged() if the result of
     /// isPointerInside() changed.
     void setFocusedSurface(wl_surface *surface);
+    void watchSurfaceWindow(QWindow *window);
+    void handleSurfaceLifecycleEvent(QWindow *window, QPlatformSurfaceEvent *event);
+    void publishSurfaceSample(wl_surface *surface, const QPointF &position, bool valid);
+    void invalidatePointerSample(wl_surface *surface = nullptr);
+    [[nodiscard]] quint64 surfaceGenerationFor(wl_surface *surface);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void watchWindow(QWindow *window, const QString &role);
     void recordDiagnostic(const QString &event, QVariantMap details, bool pointerEvent = false);
@@ -114,6 +154,7 @@ private:
     quint64 m_focusedSurfaceId = 0;
     bool m_lastInside = false;
     bool m_diagnosticEnabled = false;
+    bool m_destroying = false;
     quint32 m_pointerGeneration = 0;
     quint64 m_pointerEventSequence = 0;
     quint64 m_diagnosticSequence = 0;
@@ -122,6 +163,15 @@ private:
     QVariantMap m_lastPointerMotion;
     quint64 m_nextWindowId = 0;
     quint64 m_nextSurfaceId = 0;
+    quint64 m_nextSurfaceGeneration = 0;
+    quint64 m_pointerSampleSequence = 0;
+    quint64 m_dockSurfaceId = 0;
+    quint64 m_dockSurfaceGeneration = 0;
+    QHash<wl_surface *, quint64> m_surfaceGenerations;
+    QHash<QWindow *, wl_surface *> m_windowSurfaceHandles;
+    QHash<QWindow *, quint64> m_windowSurfaceGenerations;
+    QHash<wl_surface *, QPointer<QWindow>> m_surfaceWindows;
+    QSet<QWindow *> m_surfaceLifecycleWindows;
     QHash<QWindow *, quint64> m_windowIds;
     QHash<QWindow *, qint64> m_lastWindowMotionDiagnosticNs;
     quint32 m_qtWindowInputEventCount = 0;
@@ -132,4 +182,8 @@ private:
     QHash<wl_surface *, quint64> m_surfaceIds;
 };
 
+using PointerFocusTrackerFactory = std::function<std::unique_ptr<PointerFocusTracker>(QWindow *)>;
+
 } // namespace kdockw
+
+Q_DECLARE_METATYPE(kdockw::PointerSample)

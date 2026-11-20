@@ -4,6 +4,7 @@
 #pragma once
 
 #include "platform/dockplatform.h"
+#include "platform/pointerfocustracker.h"
 
 #include <QObject>
 
@@ -42,7 +43,8 @@ public:
                        NotificationTracker *tracker,
                        SettingsWindow *settingsWindow,
                        std::unique_ptr<DockPlatform> platform,
-                       QObject *parent = nullptr);
+                       QObject *parent = nullptr,
+                       PointerFocusTrackerFactory pointerTrackerFactory = {});
     ~DockShell() override;
 
     /// Initialize the dock: register QML singletons, load QML, connect signals.

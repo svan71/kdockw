@@ -162,6 +162,11 @@ Item {
             waylandSurfaceFocus: !focusKnown ? "unknown" : (focusIsDock ? "dock" : "other"),
             pointerFocusWindowObjectName: focusWindow ? focusWindow.objectName : "",
             pointerFocusWindowType: focusWindow ? focusWindow.type : -1,
+            pointerSourceMode: DockView.pointerSourceMode,
+            pointerSampleSequence: DockView.pointerSampleSequence,
+            pointerSampleSurfaceId: DockView.pointerSampleSurfaceId,
+            pointerSampleSurfaceGeneration: DockView.pointerSampleSurfaceGeneration,
+            pointerSamplePosition: DockView.pointerSamplePosition,
             pointerLocal: { x: _pointerRootX, y: _pointerRootY },
             dockPanelPointer: { x: dockPanel.mouseX, y: dockPanel.mouseY },
             delegateGeometry: geometry,
@@ -359,6 +364,11 @@ Item {
         traceMagnificationState("pointer-sample", hoveredIndex, source, null, hoveredIndex, {
             entryEnvelope: entryEnvelope,
             pointerRoot: { x: _pointerRootX, y: _pointerRootY },
+            pointerSourceMode: DockView.pointerSourceMode,
+            pointerSampleSequence: DockView.pointerSampleSequence,
+            pointerSampleSurfaceId: DockView.pointerSampleSurfaceId,
+            pointerSampleSurfaceGeneration: DockView.pointerSampleSurfaceGeneration,
+            pointerSamplePosition: DockView.pointerSamplePosition,
             hitTestResolution: _lastHitTestResolution
         })
     }
@@ -409,6 +419,10 @@ Item {
     // space trackPointer() takes. Not updated while context-menu hover is held.
     property real _pointerRootX: -1
     property real _pointerRootY: -1
+    // Wayland samples are strictly ordered independently from wl_pointer's
+    // enter/leave serials. Qt Quick remains responsible for interaction and
+    // drag handling, but cannot supersede this sequence for hover/zoom.
+    property double _lastWaylandPointerSampleSequence: 0
     // Changes only on real pointer input, not layout or hit-test updates.
     property int pointerMotionSerial: 0
     property int _perfPointerEnters: 0
@@ -425,6 +439,10 @@ Item {
         _hoverRehitPending = false
         // Release the hold in the same block as the hit test it lets run.
         _hoverReconciling = false
+        // If compositor input arrived while the popup grab held hover, consume
+        // that newer sample before falling back to the last accepted position.
+        if (DockView.pointerSourceMode === 1 && processAuthoritativePointerSample())
+            return
         if (!_pointerOnDock || keyboardNavigating || (hoveredIndex < 0 && !resuming))
             return
         let before = hoveredIndex
@@ -455,6 +473,50 @@ Item {
         } else {
             _runHoverRehit()
         }
+    }
+
+    // The tracker reports surface-local logical coordinates. Map them through
+    // the Qt Quick scene into this root item's coordinates so panel offsets,
+    // orientation and content insets are applied exactly once.
+    function processAuthoritativePointerSample() {
+        if (DockView.pointerSourceMode !== 1 || _hoverHeld
+                || _dragPending || _dragActive)
+            return false
+        const sequence = DockView.pointerSampleSequence
+        if (sequence <= _lastWaylandPointerSampleSequence)
+            return false
+        _lastWaylandPointerSampleSequence = sequence
+
+        if (!DockView.pointerSampleValid) {
+            if (_pointerOnDock)
+                _pointerLeft("authoritative-pointer-sample-invalid")
+            return true
+        }
+
+        const sample = DockView.pointerSamplePosition
+        const mapped = root.mapFromItem(null, sample.x, sample.y)
+        if (!Number.isFinite(mapped.x) || !Number.isFinite(mapped.y))
+            return true
+
+        _pointerRootX = mapped.x
+        _pointerRootY = mapped.y
+        if (keyboardNavigating) {
+            keyboardNavigating = false
+            DockVisibility.setKeyboardActive(false)
+        }
+        if (!_pointerOnDock) {
+            _handleDockPointerEntered(mapped.x, mapped.y)
+        } else {
+            PreviewController.cancelHide()
+            DockVisibility.setHovered(true)
+            if (_hoverReconciling)
+                _reconcileAt(mapped.x, mapped.y)
+            else
+                trackPointer(mapped.x, mapped.y, false, "wayland-pointer-sample")
+        }
+        pointerMotionSerial++
+        tracePointerSample("wayland-pointer-sample", false)
+        return true
     }
 
     Timer {
@@ -1498,7 +1560,8 @@ Item {
                     || index < 0 || index >= dockRepeater.count
                     || hoveredIndex !== index
                     || !DockView.pointerInside || !DockView.pointerFocusKnown
-                    || DockView.pointerFocusWindow !== root.Window.window)
+                    || DockView.pointerFocusWindow !== root.Window.window
+                    || (DockView.pointerSourceMode === 1 && !DockView.pointerSampleValid))
                 return false
             const item = dockRepeater.itemAt(index)
             return !!item && item.isMediaPlayer
@@ -1506,6 +1569,8 @@ Item {
         const rejected = []
         const index = _currentCompactMagnificationAnchor()
         if (DockSettings.magnificationMode !== 1) rejected.push("not-spring-mode")
+        if (DockView.pointerSourceMode === 1 && !DockView.pointerSampleValid)
+            rejected.push("authoritative-pointer-sample-not-current-dock-surface")
         if (DockSettings.mediaPlayerDisplayMode !== 0) rejected.push("not-compact-media-mode")
         if (_dragActive) rejected.push("drag-active")
         if (!_pointerOnDock) rejected.push("pointer-not-marked-on-dock")
@@ -1709,12 +1774,16 @@ Item {
                 root._pointerLeft("releaseMediaPopup.pointerOutside")
                 return
             }
-            root._pointerOnDock = true
             PreviewController.cancelHide()
             DockVisibility.setHovered(true)
-            if (!root._menuHeld && !root.keyboardNavigating
-                    && root._pointerRootX >= 0 && root._pointerRootY >= 0)
-                root.trackPointer(root._pointerRootX, root._pointerRootY)
+            if (DockView.pointerSourceMode === 1) {
+                root.processAuthoritativePointerSample()
+            } else {
+                root._pointerOnDock = true
+                if (!root._menuHeld && !root.keyboardNavigating
+                        && root._pointerRootX >= 0 && root._pointerRootY >= 0)
+                    root.trackPointer(root._pointerRootX, root._pointerRootY)
+            }
         })
     }
 
@@ -1728,12 +1797,15 @@ Item {
                 root._pointerLeft("folderStackPopupClosed.pointerOutside")
                 return
             }
-            root._pointerOnDock = true
             PreviewController.cancelHide()
             DockVisibility.setHovered(true)
-            if (!root._menuHeld && !root.keyboardNavigating
-                    && root._pointerRootX >= 0 && root._pointerRootY >= 0) {
-                root.trackPointer(root._pointerRootX, root._pointerRootY)
+            if (DockView.pointerSourceMode === 1) {
+                root.processAuthoritativePointerSample()
+            } else {
+                root._pointerOnDock = true
+                if (!root._menuHeld && !root.keyboardNavigating
+                        && root._pointerRootX >= 0 && root._pointerRootY >= 0)
+                    root.trackPointer(root._pointerRootX, root._pointerRootY)
             }
             if (DockModel.taskDiagnosticsEnabled) {
                 console.info("[KDOCKW_HOVER_RESTORE] " + JSON.stringify({
@@ -1796,10 +1868,27 @@ Item {
         target: DockView
         function onBackgroundStyleTypeChanged() { dockPanel.reportPanelRect() }
         function onBackgroundColorChanged() { dockPanel.reportPanelRect() }
+        function onPointerSourceModeChanged() {
+            if (DockView.pointerSourceMode === 1) {
+                root._pointerOnDock = false
+                root._pointerRootX = -1
+                root._pointerRootY = -1
+                root._lastWaylandPointerSampleSequence = 0
+                if (root._zoomActive || root.hoveredIndex >= 0)
+                    root._pointerLeft("pointer-source-changed-to-wayland")
+                root.processAuthoritativePointerSample()
+            } else {
+                root._lastWaylandPointerSampleSequence = DockView.pointerSampleSequence
+                if (root._pointerOnDock)
+                    root._pointerLeft("pointer-source-changed-to-qt-quick")
+            }
+        }
+        function onPointerSampleChanged() { root.processAuthoritativePointerSample() }
         function onPointerInsideChanged() {
             if (DockView.pointerInside)
                 PreviewController.cancelHide()
-            if (!DockView.pointerInside && !root._menuHeld && root._pointerOnDock
+            if (DockView.pointerSourceMode === 0
+                    && !DockView.pointerInside && !root._menuHeld && root._pointerOnDock
                     && !dockMouseArea.containsMouse)
                 root._pointerLeft("DockView.onPointerInsideChanged")
         }
@@ -1826,10 +1915,11 @@ Item {
         onEntered: {
             if (DockView.performanceDiagnosticsEnabled)
                 root._perfPointerEnters++
-            root._handleDockPointerEntered(mouseX, mouseY)
+            if (DockView.pointerSourceMode === 0)
+                root._handleDockPointerEntered(mouseX, mouseY)
         }
         onExited: {
-            if (root._menuHeld) return
+            if (root._menuHeld || DockView.pointerSourceMode === 1) return
             if (DockView.performanceDiagnosticsEnabled)
                 root._perfPointerLeaves++
             root._pointerLeft("dockMouseArea.onExited")
@@ -1846,14 +1936,16 @@ Item {
             if (mouse.buttons === mouse.button)
                 root._dragWasActive = false
             // MouseArea fills root: mouse.x/y are root coordinates.
-            if (!root._menuHeld) {
+            if (!root._menuHeld && DockView.pointerSourceMode === 0) {
                 root._pointerRootX = mouse.x
                 root._pointerRootY = mouse.y
             }
-            if (root._hoverReconciling && !root._menuHeld)
-                root._reconcileAt(mouse.x, mouse.y)
-            else if (!root.keyboardNavigating)
-                root.trackPointer(mouse.x, mouse.y, false, "dockMouseArea.onPositionChanged")
+            if (DockView.pointerSourceMode === 0) {
+                if (root._hoverReconciling && !root._menuHeld)
+                    root._reconcileAt(mouse.x, mouse.y)
+                else if (!root.keyboardNavigating)
+                    root.trackPointer(mouse.x, mouse.y, false, "dockMouseArea.onPositionChanged")
+            }
             if (mouse.button === Qt.LeftButton && root.hoveredIndex >= 0) {
                 const item = dockRepeater.itemAt(root.hoveredIndex)
                 if (item) {
@@ -1889,11 +1981,13 @@ Item {
                 }
             }
             root.clearDragState()
+            root.processAuthoritativePointerSample()
         }
 
         onCanceled: {
             root.logDockOrderTrace("pointer-cancel", root._dragSourceEntryId, root._dragTargetEntryId)
             root.clearDragState()
+            root.processAuthoritativePointerSample()
         }
 
         // Click handling: uses hoveredIndex from scaled hit testing
@@ -1991,9 +2085,11 @@ Item {
             if (root._menuHeld) return
             if (DockView.performanceDiagnosticsEnabled)
                 root._perfPointerMoves++
-            root._pointerOnDock = true
-            root._pointerRootX = mouse.x
-            root._pointerRootY = mouse.y
+            if (DockView.pointerSourceMode === 0) {
+                root._pointerOnDock = true
+                root._pointerRootX = mouse.x
+                root._pointerRootY = mouse.y
+            }
 
             // Mouse movement cancels keyboard navigation mode
             if (root.keyboardNavigating) {
@@ -2038,6 +2134,12 @@ Item {
                 }
                 return  // Skip normal zoom handling during drag
             }
+
+            // Qt Quick continues to own pointer grabs and the complete click
+            // and drag path, but stale/synthetic motion must not race the
+            // compositor samples for hover or magnification.
+            if (DockView.pointerSourceMode === 1)
+                return
 
             if (root._hoverReconciling)
                 root._reconcileAt(mouse.x, mouse.y)

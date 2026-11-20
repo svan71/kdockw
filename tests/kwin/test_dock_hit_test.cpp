@@ -21,6 +21,7 @@
 #include "models/dockmodel.h"
 #include "models/launcherentrytracker.h"
 #include "models/notificationtracker.h"
+#include "platform/pointerfocustracker.h"
 #include "shell/dockshell.h"
 #include "shell/dockview.h"
 #include "shell/multidockmanager.h"
@@ -59,6 +60,90 @@ using Edge = kdockw::DockPlatform::Edge;
 
 constexpr int kTimeoutMs = 15000;
 constexpr int kLauncherCount = 5;
+
+class TestPointerFocusTracker final : public kdockw::PointerFocusTracker
+{
+public:
+    explicit TestPointerFocusTracker(QWindow *dockWindow, bool available = true)
+        : PointerFocusTracker(dockWindow, false)
+        , m_dockWindow(dockWindow)
+        , m_available(available)
+    {
+    }
+
+    [[nodiscard]] bool isPointerInside() const override { return m_inside; }
+    [[nodiscard]] bool hasPointerFocus() const override { return !m_focusWindow.isNull(); }
+    [[nodiscard]] QWindow *pointerFocusWindow() const override { return m_focusWindow.data(); }
+    [[nodiscard]] bool isAvailable() const override { return m_available; }
+    [[nodiscard]] quint64 dockSurfaceId() const override { return m_dockSurfaceId; }
+    [[nodiscard]] quint64 dockSurfaceGeneration() const override { return m_dockSurfaceGeneration; }
+
+    void sendSample(QWindow *focusWindow, const QPointF &position, bool valid = true)
+    {
+        const bool wasInside = m_inside;
+        m_focusWindow = focusWindow;
+        m_inside = valid && focusWindow == m_dockWindow;
+        if (wasInside != m_inside)
+            Q_EMIT pointerInsideChanged();
+        Q_EMIT pointerFocusChanged();
+
+        kdockw::PointerSample sample;
+        sample.surfaceLocalPosition = position;
+        sample.sequence = ++m_sequence;
+        sample.surfaceId = focusWindow == m_dockWindow ? dockSurfaceId() : (focusWindow ? 202 : 0);
+        sample.surfaceGeneration = focusWindow == m_dockWindow ? dockSurfaceGeneration() : (focusWindow ? 3 : 0);
+        sample.pointerGeneration = 1;
+        sample.focusedWindow = focusWindow;
+        sample.valid = valid;
+        sample.focusKnown = focusWindow != nullptr;
+        publishPointerSample(sample);
+    }
+
+    void sendStaleSample(const QPointF &position, quint64 sequence)
+    {
+        kdockw::PointerSample sample;
+        sample.surfaceLocalPosition = position;
+        sample.sequence = sequence;
+        sample.surfaceId = dockSurfaceId();
+        sample.surfaceGeneration = dockSurfaceGeneration();
+        sample.pointerGeneration = 1;
+        sample.focusedWindow = m_dockWindow;
+        sample.valid = true;
+        sample.focusKnown = true;
+        publishPointerSample(sample);
+    }
+
+    void sendMismatchedSurfaceSample(const QPointF &position)
+    {
+        kdockw::PointerSample sample;
+        sample.surfaceLocalPosition = position;
+        sample.sequence = ++m_sequence;
+        sample.surfaceId = dockSurfaceId();
+        sample.surfaceGeneration = dockSurfaceGeneration() + 1;
+        sample.pointerGeneration = 1;
+        sample.focusedWindow = m_dockWindow;
+        sample.valid = true;
+        sample.focusKnown = true;
+        publishPointerSample(sample);
+    }
+
+    void recreateDockSurface()
+    {
+        ++m_dockSurfaceId;
+        ++m_dockSurfaceGeneration;
+    }
+
+    [[nodiscard]] quint64 latestSequence() const { return m_sequence; }
+
+private:
+    QPointer<QWindow> m_dockWindow;
+    QPointer<QWindow> m_focusWindow;
+    bool m_available = true;
+    bool m_inside = false;
+    quint64 m_sequence = 0;
+    quint64 m_dockSurfaceId = 101;
+    quint64 m_dockSurfaceGeneration = 7;
+};
 
 struct App {
     std::unique_ptr<KDockWSettings> settings;
@@ -214,7 +299,14 @@ void runEdge(Edge edge)
             return kdockw::OutputOrderMonitor::instance()->orderReady();
         },
         kTimeoutMs));
-    auto manager = std::make_unique<kdockw::MultiDockManager>(app().settings.get(), app().model.get(), app().tracker.get());
+    // QTest injects Qt mouse events directly and does not generate compositor
+    // wl_pointer samples. Keep this test on the Qt fallback path; the
+    // authoritative-source path is exercised by runAuthoritativePointerReturn.
+    kdockw::PointerFocusTrackerFactory factory = [](QWindow *window) {
+        return std::make_unique<TestPointerFocusTracker>(window, false);
+    };
+    auto manager = std::make_unique<kdockw::MultiDockManager>(app().settings.get(), app().model.get(), app().tracker.get(), nullptr,
+                                                              std::move(factory));
     manager->initialize();
     auto *shell = manager->primaryShell();
     REQUIRE(shell);
@@ -330,6 +422,114 @@ void runEdge(Edge edge)
     }
 }
 
+void runAuthoritativePointerReturn(Edge edge)
+{
+    INFO("authoritative pointer return on " << edgeName(edge));
+    pinLaunchers();
+    auto &a = app();
+    a.settings->setEdge(static_cast<int>(edge));
+    const auto restore = qScopeGuard([&a] { a.settings->setEdge(static_cast<int>(Edge::Bottom)); });
+    a.settings->setMagnificationMode(1); // Spring
+    a.settings->setMediaPlayerEnabled(true);
+    a.settings->setMediaPlayerDisplayMode(0); // Compact
+    a.settings->setMediaPlayerHoverPopup(true);
+    a.settings->setMediaPlayerHoverDelay(80);
+    a.model->setMediaPlayerEnabled(true);
+    if (!a.model->dockEntriesModel()->hasMediaPlayer())
+        REQUIRE(!a.model->dockEntriesModel()->appendMediaPlayer().isEmpty());
+    a.model->dockPresentationModel()->setMediaPlayerAvailable(true);
+
+    REQUIRE(QTest::qWaitFor(
+        [] { return kdockw::OutputOrderMonitor::instance()->orderReady(); },
+        kTimeoutMs));
+    TestPointerFocusTracker *pointerTracker = nullptr;
+    kdockw::PointerFocusTrackerFactory factory = [&pointerTracker](QWindow *window) {
+        auto tracker = std::make_unique<TestPointerFocusTracker>(window);
+        pointerTracker = tracker.get();
+        return tracker;
+    };
+    auto manager = std::make_unique<kdockw::MultiDockManager>(a.settings.get(), a.model.get(), a.tracker.get(), nullptr,
+                                                              std::move(factory));
+    manager->initialize();
+    auto *shell = manager->primaryShell();
+    REQUIRE(shell);
+    auto *view = shell->view();
+    REQUIRE(QTest::qWaitForWindowExposed(view, kTimeoutMs));
+    REQUIRE(pointerTracker);
+    CHECK(view->pointerSourceMode() == 1);
+
+    QObject *root = view->rootObject();
+    REQUIRE(root);
+    QQuickItem *media = nullptr;
+    REQUIRE(QTest::qWaitFor(
+        [&] {
+            media = nullptr;
+            for (QQuickItem *item : delegates(view)) {
+                if (item->property("isMediaPlayer").toBool()) {
+                    media = item;
+                    break;
+                }
+            }
+            return media != nullptr
+                && qvariant_cast<QQuickItem *>(media->property("mediaPlayerWidget")) != nullptr;
+        },
+        kTimeoutMs));
+
+    auto *spring = root->findChild<QObject *>(QStringLiteral("dockSpringZoomController"));
+    REQUIRE(spring);
+    const int mediaIndex = media->property("index").toInt();
+    const QRectF mediaBounds = baseRect(media);
+    const QPointF mediaCenter = mediaBounds.center();
+    pointerTracker->sendSample(view, mediaCenter);
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == mediaIndex; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() > 0.999; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return media->property("currentScale").toReal() > 1.05; }, 3000));
+
+    auto *mediaWidget = qvariant_cast<QQuickItem *>(media->property("mediaPlayerWidget"));
+    REQUIRE(mediaWidget);
+    QTest::mouseMove(view, mediaCenter.toPoint(), 30);
+    REQUIRE(QTest::qWaitFor([&] { return mediaWidget->property("diagnosticPopupVisible").toBool(); }, 5000));
+    auto *popupWindow = qvariant_cast<QWindow *>(mediaWidget->property("popupWindow"));
+    REQUIRE(popupWindow);
+
+    pointerTracker->sendSample(popupWindow, QPointF(12, 12));
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == -1; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() < 0.001; }, 3000));
+    const bool vertical = edge == Edge::Left || edge == Edge::Right;
+    const QPointF staleQtPoint = mediaBounds.center() + (vertical ? QPointF(0, 40) : QPointF(40, 0));
+    QTest::mouseMove(view, staleQtPoint.toPoint(), 30);
+    QCoreApplication::processEvents();
+    CHECK(root->property("hoveredIndex").toInt() == -1);
+    CHECK(spring->property("targetAmount").toReal() < 0.001);
+
+    // Deliberately leave QML at the stale Qt point. Only a fresh Wayland
+    // sample may restore the Compact hit and SpringZoomController target.
+    pointerTracker->sendSample(view, mediaCenter);
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == mediaIndex; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() > 0.999; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return media->property("currentScale").toReal() > 1.05; }, 3000));
+    const quint64 acceptedSequence = pointerTracker->latestSequence();
+    pointerTracker->sendStaleSample(staleQtPoint, acceptedSequence - 1);
+    QTest::mouseMove(view, staleQtPoint.toPoint(), 30);
+    QCoreApplication::processEvents();
+    CHECK(root->property("hoveredIndex").toInt() == mediaIndex);
+    CHECK(spring->property("targetAmount").toReal() > 0.999);
+
+    pointerTracker->sendMismatchedSurfaceSample(mediaCenter);
+    REQUIRE(QTest::qWaitFor([&] { return !view->pointerSampleValid(); }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == -1; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() < 0.001; }, 3000));
+    pointerTracker->recreateDockSurface();
+    pointerTracker->sendSample(view, mediaCenter);
+    REQUIRE(QTest::qWaitFor([&] { return view->pointerSampleValid(); }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == mediaIndex; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() > 0.999; }, 3000));
+
+    pointerTracker->sendSample(nullptr, {}, false);
+    REQUIRE(QTest::qWaitFor([&] { return root->property("hoveredIndex").toInt() == -1; }, 3000));
+    REQUIRE(QTest::qWaitFor([&] { return spring->property("targetAmount").toReal() < 0.001; }, 3000));
+}
+
 } // namespace
 
 TEST_CASE("Hovering and clicking selects the icon under the pointer on every edge", "[hit-test]")
@@ -350,6 +550,14 @@ TEST_CASE("Hovering and clicking selects the icon under the pointer on every edg
     {
         runEdge(Edge::Right);
     }
+}
+
+TEST_CASE("Authoritative Wayland samples restore Compact magnification after media popup", "[hit-test][pointer-source][media]")
+{
+    SECTION("bottom") { runAuthoritativePointerReturn(Edge::Bottom); }
+    SECTION("top") { runAuthoritativePointerReturn(Edge::Top); }
+    SECTION("left") { runAuthoritativePointerReturn(Edge::Left); }
+    SECTION("right") { runAuthoritativePointerReturn(Edge::Right); }
 }
 
 int main(int argc, char *argv[])

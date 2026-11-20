@@ -4,6 +4,7 @@
 #pragma once
 
 #include "platform/dockplatform.h"
+#include "platform/pointerfocustracker.h"
 
 #include <QObject>
 #include <QTimer>
@@ -46,7 +47,11 @@ public:
         SelectedScreens = 3,
     };
 
-    explicit MultiDockManager(KDockWSettings *settings, DockModel *model, NotificationTracker *tracker, QObject *parent = nullptr);
+    explicit MultiDockManager(KDockWSettings *settings,
+                              DockModel *model,
+                              NotificationTracker *tracker,
+                              QObject *parent = nullptr,
+                              PointerFocusTrackerFactory pointerTrackerFactory = {});
     ~MultiDockManager() override;
 
     /// Initialize all dock shells based on the current monitor mode.
@@ -113,6 +118,7 @@ private:
     KDockWSettings *m_settings;
     DockModel *m_model;
     NotificationTracker *m_tracker;
+    PointerFocusTrackerFactory m_pointerTrackerFactory;
 
     MonitorMode m_mode = PrimaryOnly;
     // One settings dialog for all docks. Declared before m_shells so it outlives

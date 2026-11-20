@@ -26,13 +26,14 @@ DockShell::DockShell(KDockWSettings *globalSettings,
                      NotificationTracker *tracker,
                      SettingsWindow *settingsWindow,
                      std::unique_ptr<DockPlatform> platform,
-                     QObject *parent)
+                     QObject *parent,
+                     PointerFocusTrackerFactory pointerTrackerFactory)
     : QObject(parent)
     , m_settings(globalSettings)
     , m_screenSettings(screenSettings)
     , m_model(model)
     , m_settingsWindow(settingsWindow)
-    , m_view(std::make_unique<DockView>(std::move(platform), globalSettings))
+    , m_view(std::make_unique<DockView>(std::move(platform), globalSettings, nullptr, std::move(pointerTrackerFactory)))
     , m_actions(std::make_unique<DockActions>(model, this))
     , m_contextMenu(std::make_unique<DockContextMenu>(model, m_actions.get(), tracker, this))
     , m_previewController(std::make_unique<PreviewController>(model, m_view.get(), globalSettings))
