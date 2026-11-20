@@ -1505,8 +1505,12 @@ isolated profile config at
 `diagnostics/v070-dev/profiles/wayland-pointer-source-v070/kdockwrc` and its
 separate `XDG_CONFIG_HOME`. The dedicated hover/pointer trace is
 `diagnostics/v070-dev/logs/media-hover-wayland-pointer-source-v070-20261120-152144095510552.jsonl`.
-It records pointer-source setup and will record pointer/magnification events as
-the owner moves the cursor; no owner interaction has yet been captured.
+At the last status check the trace contained 1,798 records, including 680
+authoritative Wayland samples, 61 magnification hit tests, 28 spring target
+changes, and 4 Window Preview visibility transitions. All records still had
+`scenarioId=unmarked`; no distinct owner acceptance sequence for
+Compact → Media Popup → Compact can be identified from this unmarked activity.
+These telemetry events are not visual acceptance.
 
 Stable `/usr/bin/kdockw` v0.6.0 is paused, not running beside the candidate;
 launcher restore state is present. The exact production config and new
