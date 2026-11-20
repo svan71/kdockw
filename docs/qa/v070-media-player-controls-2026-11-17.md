@@ -1810,3 +1810,23 @@ CPU sample; leave the dock and player in their normal states during the
 tracks once or twice. Repeat with MPRIS stopped to compare the candidate to
 itself. Stable v0.6.0 has no built-in media widget, so its MPRIS-active result
 is not an equivalent workload. Keep the two dock processes mutually exclusive.
+
+## 2026-11-21 — Release publication and final performance disposition
+
+KDockW v0.7.0 is public at the [GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.0). The annotated tag `kdockw-v0.7.0` has object `792104f3534d77f63bff6553291f73bb5b423b88`, points to release commit `2819cb61b0ec441fe56fc643273d95d763855a55`, and verifies with pinned key `90798370719E91DDE1D5028AAA660B7C5AB258E7`. The release CLI returned `published`, then `already_published`; all five asset hashes returned `match`.
+
+Exact-SHA Distro E2E workflow [44794230126](https://github.com/thicking/kdockw/actions/runs/44794230126) completed successfully for Debian 13, Ubuntu 26.04, and Fedora 45. The release contains:
+
+| Asset | SHA-256 |
+| --- | --- |
+| `kdockw-0.7.0.tar.gz` | `7e4757130c54c171c25dd6ba88cbe08223eaac2f1d0b2962b23f20b9ac2b96b7` |
+| `kdockw-0.7.0-debian-13.deb` | `52fe11d0b15ba88a09dc2ca525c6f7a1cd18b4c7377c04335082db54ff352ce3` |
+| `kdockw-0.7.0-ubuntu-26.04.deb` | `8952f6ecf0341710ff873c56e720cec694fd76ff0f117e7186b10bfd10eb9b34` |
+| `kdockw-0.7.0-fedora-45.rpm` | `72dcb1a6c7f3cc93b38a41b339049390be49749e0919a4e3e2c10368d7e7a9cf` |
+| `SHA256SUMS` | `438b8f181198a2bd518b9a5341caf3bc3d8c0eb3784885539bf246c75e60dc4b` |
+
+The pointer A/B harness is stopped. No Portal input permission was requested again. The portal object tree contains only unrelated Chromium global-shortcuts and Telegram sessions; no KDockW-owned session remained, and unrelated application sessions were left open. No candidate, pointer helper, or task-owned temporary process remains. Stable v0.6.0 is the sole running dock (`/usr/bin/kdockw`, PID `2009894`, GNU Build ID `929161b576ca3fc8a683eb896668d9ead5ff0419`). Production config and its mode-0600 backup match SHA-256 `851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
+
+The simple performance check did not produce a comparable stable/candidate idle A/B: stable's ambient sample was 0.00% CPU in five-second `pidstat` intervals, with RSS about 379592 KiB and PSS 187655–187656 KiB; pointer position was uncontrolled. The candidate capture averaged 16.11% CPU, RSS 873284→1024856 KiB, and PSS 714996→866568 KiB, but the cursor remained over the dock, so those values are not a valid idle sample. Active MPRIS, ordinary manual use, and longer-term leak behavior remain **NOT VERIFIED**. No numerical performance gain or regression is claimed. The two owner-run commands and scenario above collect those data without Portal input automation.
+
+Build-resource preflight before release operations reported 93,646,098,432 bytes free and 16,970,649,600 bytes MemAvailable; the final wrapper snapshot reported 93,643,636,736 bytes free, 16,960,155,648 bytes MemAvailable, 17,179,578,368 bytes SwapFree, and zero memory/IO PSI. Wrapper-created run directories were removed after each attempt; no VM or container was created. No temporary build resource remains; the published release assets are available on GitHub.

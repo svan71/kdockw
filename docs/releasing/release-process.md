@@ -23,6 +23,13 @@ Arch Linux is not a supported package target. Its packaging recipe and related
 build/test support were removed; historical signed tags and release assets are
 unchanged.
 
+KDockW v0.7.0 was published on 2026-11-21 from commit
+`2819cb61b0ec441fe56fc643273d95d763855a55` with signed tag
+`kdockw-v0.7.0`. The exact-SHA Distro E2E workflow [44794230126](https://github.com/thicking/kdockw/actions/runs/44794230126)
+passed on Debian 13, Ubuntu 26.04, and Fedora 45. The public GitHub Release
+contains the source archive, all three required packages, and `SHA256SUMS`;
+release tooling verified every asset against the prepared context.
+
 AUR, OBS, COPR, and Launchpad/PPA are inactive. Optional adapter scripts may
 remain in the repository, but the release CLI's `all` selection means GitHub
 only. No release preflight or gate may require credentials, accounts, projects,

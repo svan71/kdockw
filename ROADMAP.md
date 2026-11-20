@@ -482,7 +482,7 @@ Ninth owner review (2026-11-16) scored **16/17**. The widget manager, all three 
 
 The owner accepted all **5/5** remaining visual and functional checks on the candidate with Build ID `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`. A controlled live TaskManager A/B then confirmed the earlier `DecorationRole` INVALID result was a diagnostic false negative: `DockPresentationModel` forwarded the icon role, but its diagnostic trace gate omitted DecorationRole-only notifications. The accepted candidate's existing runtime path also advanced icon revisions and refreshed TaskIconProvider URLs. A trace-only gate now records the event without widening the forwarded role list; the preflight parser also correctly treats Qt's empty `dataChanged` role list as “all roles changed”. Stable v0.5.1 and the candidate each observed the fixture's changed icon pixels and live role transition. The repaired diagnostic candidate has GNU Build ID `2fa8516ffcb730d00f29e5fe263f14b2acad98da` and live functional preflight passed 6/6. Diagnostic Release CTest passed 230/230. Production Release CTest ended **222/223** due to the parabolic settings-preview hover case; its isolated retry passed 67 assertions, but the full-run failure remains recorded. The milestone is therefore still in progress and the parent and feature cards remain `review`; release readiness is not claimed. Full details: `docs/qa/v060-dev-performance-icon-theme-2026-11-14.md`.
 
-## v0.7.0 — Media Player Controls (MPRIS2, in progress)
+## v0.7.0 — Media Player Controls (MPRIS2, published; review follow-up open)
 
 - [x] **Media Player Controls Widget** (`187d5445ee4d474d`, done): one persisted
   built-in widget and backend serves all MPRIS2 sessions; default placement is at
@@ -592,10 +592,19 @@ MPRIS teardown SIGSEGV was not reproduced; its original cause remains UNKNOWN.
 
 The required stable-v0.6.0 versus production-v0.7.0 performance A/B remains
 NOT VERIFIED. A window-scoped Portal probe returned a monitor stream
-(`source_type=1`, 1920×1080) and was closed before pointer motion. Required
-Debian 13, Ubuntu 26.04, and Fedora 45 Distro E2E has not run on an exact pushed
-release SHA. No release commit, push, tag, or GitHub Release has been created;
-v0.7.0 remains in progress.
+(`source_type=1`, 1920×1080) and was closed before pointer motion. At this
+2026-11-20 pre-publication snapshot, required Debian 13, Ubuntu 26.04, and
+Fedora 45 Distro E2E had not run on an exact pushed release SHA; no release
+commit, push, tag, or GitHub Release had been created yet. Publication was
+verified below on 2026-11-21.
+
+### Publication verified (2026-11-21)
+
+KDockW v0.7.0 was published at the [GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.0). Signed tag `kdockw-v0.7.0` points to `2819cb61b0ec441fe56fc643273d95d763855a55`; the pinned signing key verified locally and on the remote tag. Exact-SHA Distro E2E run [44794230126](https://github.com/thicking/kdockw/actions/runs/44794230126) passed all required targets: Debian 13, Ubuntu 26.04, and Fedora 45. The release publisher verified the source archive, three target packages, and `SHA256SUMS`; all five public asset digests matched.
+
+The media feature card (`187d5445ee4d474d`) is done. The parent and TaskManager grouped-indicator card (`0e49c255c0f6ce27`) remain `review` for the separate rendered stable/dev indicator A/B and pinned/unpinned Plasma acceptance; this is follow-up acceptance, not an open publication gate. The installed stable remains v0.6.0 and was restored as `/usr/bin/kdockw` PID `2009894`; production config and its permission-preserving backup still match SHA-256 `851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
+
+Performance comparison remains limited: stable ambient CPU/RSS/PSS was sampled, but the production candidate sample had the cursor over the dock and is not a valid idle comparison. Active MPRIS, ordinary manual-use, and longer-term memory/leak behavior are **NOT VERIFIED**. No numerical performance improvement or regression is claimed; the QA note contains two owner-run console commands for a comparable capture.
 
 ## Technical debt — Classic Zoom Performance Profile
 
