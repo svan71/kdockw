@@ -1746,3 +1746,67 @@ candidate use, and longer-term leak behavior remain **NOT VERIFIED** pending a
 short owner-run console sample. No numerical performance improvement or
 regression is claimed. Required Debian 13, Ubuntu 26.04, and Fedora 45 Distro
 E2E remains pending the exact pushed release SHA.
+
+## 2026-11-20 — Distro E2E blocker fixes and simplified performance status
+
+The first required matrix, workflow
+[44779869108](https://github.com/thicking/kdockw/actions/runs/44779869108),
+ran against `ff17591e073ce24604994caec1f7aa7c1abfbcaa` and failed on Debian 13,
+Ubuntu 26.04, and Fedora 45. The same three cases failed on each distro:
+
+- `test_02_mouse::test_mouse001_click_without_motion_on_an_item_that_appeared_under_the_pointer` — a real Wayland click could arrive at a newly appeared row while continuous pointer samples still correctly reported no movement. The click handler only refreshed the hover target in legacy pointer mode, leaving `hoveredIndex` stale.
+- `test_05_drag::test_dnd_004_drag_released_outside_dock_keeps_order` — the press grab continued after the pointer left the dock on its cross-axis; drop resolution still chose the nearest primary-axis row and reordered entries.
+- `test_06_settings::test_set001_settings_opens_once...` — the expected settings page list omitted the already shipped Media Player page.
+
+The click path now refreshes the hit from the actual left-button coordinates in
+Wayland mode without synthesizing pointer motion. Internal drag targets are
+rejected outside the dock's existing cross-axis/magnification band. The Appium
+settings expectation includes Media Player. QML regressions cover stationary
+Wayland click re-hit and the drop-zone boundary on all four edges.
+
+Verification on this source revision: focused Dock Main QML passed **295/295**;
+Production Release CTest passed **231/231**; Diagnostic Release CTest passed
+**236/236**; release-tooling unittest discovery passed **154 tests, 1 optional
+skip**. Russian `msgfmt`, staged Desktop Entry validation, AppStream validation,
+launcher shell syntax, Appium Python parsing, and `git diff --check` passed.
+Diagnostic launcher preflight passed with stable left running. Production build
+ELF GNU Build ID: `949593efc8ebe478c8236bb61b369ac53b6fa19a`. Diagnostic staged
+ELF GNU Build ID: `0a8b910d90b7f02c3fc66d9d42c0d12bc1ab475c`; source and stage
+IDs match, the Russian catalog is present, and KService resolved the staged
+candidate metadata. The corrected exact-SHA Distro E2E matrix is **PENDING**.
+
+The pointer A/B harness is stopped and no more automated pointer control or
+Portal authorization was used. Stable `/usr/bin/kdockw` v0.6.0 remains the sole
+dock, PID `2009894`, under
+`kdockw-v051-restored-after-simple-ab.service`. Its observed executable path is
+`/usr/bin/kdockw`. During a 60-second ambient sample, `pidstat` reported 0.00%
+CPU in each 5-second interval and RSS about 379592 KiB; 13 `smaps_rollup`
+samples varied only by 1 KiB (RSS 350160 KiB, PSS 187655–187656 KiB, anonymous
+PSS 150768 KiB). Pointer position and TaskManager activity were not controlled,
+so this is an ambient stable sample, not a certified idle baseline.
+
+The prior production-v0.7.0 sample reported 16.11% average CPU, RSS
+873284→1024856 KiB, and PSS 714996→866568 KiB, but its cursor remained over the
+dock after the Portal probe. It is not a valid idle comparison. Stable and
+candidate numbers therefore do not establish an improvement or regression.
+Active MPRIS, ordinary manual use, and longer-term leak behavior remain
+**NOT VERIFIED**; no numerical performance claim is made.
+
+For a later owner-run sample, run these commands separately for each version,
+with only one dock active at a time:
+
+```sh
+pid="$(pgrep -xo kdockw)"; exe="$(readlink -f "/proc/$pid/exe")"; printf 'PID=%s EXE=%s\n' "$pid" "$exe"; "$exe" --version; readelf -n "$exe" | awk '/Build ID/{print}'; pidstat -h -u -r -p "$pid" 1 60
+```
+
+```sh
+pid="$(pgrep -xo kdockw)"; for n in $(seq 1 121); do printf '%s ' "$(date --iso-8601=seconds)"; awk '/^(Rss|Pss|Anonymous|Private_Clean|Private_Dirty):/{printf "%s=%sKB ",$1,$2} END{print ""}' "/proc/$pid/smaps_rollup"; sleep 5; done
+```
+
+Move the cursor onto the desktop before each idle sample. For candidate active
+use, start a playing MPRIS source and use the dock normally during one 60-second
+CPU sample; leave the dock and player in their normal states during the
+10-minute memory series, opening and closing the media popup and switching
+tracks once or twice. Repeat with MPRIS stopped to compare the candidate to
+itself. Stable v0.6.0 has no built-in media widget, so its MPRIS-active result
+is not an equivalent workload. Keep the two dock processes mutually exclusive.

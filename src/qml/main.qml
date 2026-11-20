@@ -1074,6 +1074,50 @@ Item {
         }
     }
 
+    // A drag may reorder only while the pointer remains inside the same
+    // secondary-axis zone used by dock hit testing. Qt Quick keeps the press
+    // grab after the pointer leaves the dock, so the event handler must reject
+    // outside releases explicitly instead of choosing the nearest primary
+    // axis item anyway.
+    function pointerWithinDockDragDropArea(rootX, rootY) {
+        const zoomExtension = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
+        if (DockView.isVertical) {
+            const panelNear = dockPanel.x
+            const panelFar = dockPanel.x + dockPanel.width
+            return DockView.edge === 2
+                ? rootX >= panelNear && rootX <= panelFar + zoomExtension
+                : rootX >= panelNear - zoomExtension && rootX <= panelFar
+        }
+
+        const panelNear = dockPanel.y
+        const panelFar = dockPanel.y + dockPanel.height
+        return DockView.edge === 0
+            ? rootY >= panelNear && rootY <= panelFar + zoomExtension
+            : rootY >= panelNear - zoomExtension && rootY <= panelFar
+    }
+
+    function computeDragTargetIndex(rootX, rootY) {
+        if (!pointerWithinDockDragDropArea(rootX, rootY)) return -1
+        return computeDropIndex(DockView.isVertical ? rootY : rootX)
+    }
+
+    // A real button press delivered to the dock is a fresh positional sample.
+    // On Wayland it can be the first input after the row changed under a
+    // stationary pointer, while compositor motion samples correctly remain the
+    // authority for continuous hover updates.
+    function refreshHoverFromPointerPress(rootX, rootY) {
+        if (_menuHeld || keyboardNavigating) return false
+        _pointerRootX = rootX
+        _pointerRootY = rootY
+        if (_hoverReconciling)
+            _reconcileAt(rootX, rootY)
+        else if (!_pointerOnDock)
+            _handleDockPointerEntered(rootX, rootY)
+        else
+            trackPointer(rootX, rootY, false, "dockMouseArea.onPressed")
+        return true
+    }
+
     // Compute which icon is under an external drop cursor (unscaled hit test).
     function computeExternalDropIndex(primaryPosition) {
         for (let i = 0; i < dockRepeater.count; i++) {
@@ -2004,6 +2048,8 @@ Item {
                     root._reconcileAt(mouse.x, mouse.y)
                 else if (!root.keyboardNavigating)
                     root.trackPointer(mouse.x, mouse.y, false, "dockMouseArea.onPositionChanged")
+            } else if (mouse.button === Qt.LeftButton) {
+                root.refreshHoverFromPointerPress(mouse.x, mouse.y)
             }
             if (mouse.button === Qt.LeftButton && root.hoveredIndex >= 0) {
                 const item = dockRepeater.itemAt(root.hoveredIndex)
@@ -2184,7 +2230,7 @@ Item {
             if (root._dragActive) {
                 root._dragCurrentX = mouse.x
                 root._dragCurrentY = mouse.y
-                root._dragTargetIndex = computeDropIndex(DockView.isVertical ? mouse.y : mouse.x)
+                root._dragTargetIndex = root.computeDragTargetIndex(mouse.x, mouse.y)
                 const targetId = root._dragTargetIndex >= 0
                     ? root.dockEntryIdAt(root._dragTargetIndex) : ""
                 if (targetId !== root._dragTargetEntryId) {

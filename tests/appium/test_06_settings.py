@@ -82,6 +82,7 @@ PAGES = [
     "Monitors & Desktops",
     "Window Preview",
     "Application Launcher",
+    "Media Player",
     "About KDockW",
     "About KDE",
 ]

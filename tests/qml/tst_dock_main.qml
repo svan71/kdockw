@@ -2092,6 +2092,43 @@ Item {
                    "returning to the preview owner must cancel the pending hide")
         }
 
+        function test_waylandPressRehitsItemAddedUnderStationaryPointer() {
+            DockView.edge = 1
+            DockView.pointerSourceMode = 1
+            DockSettings.iconSize = 40
+            addTasks(["Probe"])
+            const dock = makeDock(1)
+            const probe = items(dock)[0]
+            const point = centerOf(probe)
+            DockModel.tasksModel.removeTask(0)
+            tryVerify(() => items(dock).length === 0)
+            const panel = T.findFirst(dock, o => o.objectName === "dockPanel")
+            verify(panel)
+
+            DockView.publishPointerSample({
+                sequence: 1,
+                x: point.x,
+                y: point.y,
+                valid: true,
+            })
+            tryCompare(dock, "_pointerOnDock", true)
+            compare(dock.hoveredIndex, -1)
+
+            addTasks(["Appeared under stationary pointer"])
+            tryVerify(() => items(dock).length === 1 && items(dock)[0]._delegateGeometryReady)
+            const appeared = items(dock)[0]
+            const appearedCenter = centerOf(appeared)
+            verify(Math.abs(appearedCenter.x - point.x) < 0.5
+                   && Math.abs(appearedCenter.y - point.y) < 0.5,
+                   "the reappearing row must keep its original screen position")
+
+            // No new Wayland motion sample is published. The real press
+            // coordinates must refresh the row hit before click dispatch.
+            verify(dock.refreshHoverFromPointerPress(point.x, point.y))
+            compare(dock.hoveredIndex, 0)
+            compare(dock._lastHitTestResolution.source, "dockMouseArea.onPressed")
+        }
+
         function test_repeatedWaylandSamplesOverUnpreviewableItemDoNotCancelForeignPreviewHide() {
             DockSettings.previewEnabled = true
             DockView.pointerSourceMode = 1
@@ -4527,6 +4564,58 @@ Item {
             }
             compare(dock.computeDropIndex(-1000), 0)
             compare(dock.computeDropIndex(100000), 3)
+        }
+
+        function test_dragDropZoneFollowsDockEdge_data() {
+            return [
+                { tag: "top", edge: 0 },
+                { tag: "bottom", edge: 1 },
+                { tag: "left", edge: 2 },
+                { tag: "right", edge: 3 },
+            ]
+        }
+
+        function test_dragDropZoneFollowsDockEdge(data) {
+            DockView.edge = data.edge
+            DockSettings.iconSize = 40
+            DockSettings.maxZoomFactor = 1.7
+            addTasks(["A", "B"])
+            const dock = makeDock(2)
+            const panel = T.findFirst(dock, o => o.objectName === "dockPanel")
+            const first = items(dock)[0]
+            verify(panel && first)
+
+            const itemCenter = first.mapToItem(dock, first.width / 2, first.height / 2)
+            verify(dock.pointerWithinDockDragDropArea(itemCenter.x, itemCenter.y),
+                   "an item center must be a valid drop location")
+            compare(dock.computeDragTargetIndex(itemCenter.x, itemCenter.y), first.index)
+
+            const zoomExtension = DockSettings.iconSize * (DockSettings.maxZoomFactor - 1.0)
+            let insideZoomBand
+            let outsideDock
+            switch (data.edge) {
+            case 0: // Top: zoom grows toward the screen interior.
+                insideZoomBand = { x: itemCenter.x, y: panel.y + panel.height + zoomExtension / 2 }
+                outsideDock = { x: itemCenter.x, y: panel.y - 1 }
+                break
+            case 1: // Bottom.
+                insideZoomBand = { x: itemCenter.x, y: panel.y - zoomExtension / 2 }
+                outsideDock = { x: itemCenter.x, y: panel.y + panel.height + 1 }
+                break
+            case 2: // Left.
+                insideZoomBand = { x: panel.x + panel.width + zoomExtension / 2, y: itemCenter.y }
+                outsideDock = { x: panel.x - 1, y: itemCenter.y }
+                break
+            default: // Right.
+                insideZoomBand = { x: panel.x - zoomExtension / 2, y: itemCenter.y }
+                outsideDock = { x: panel.x + panel.width + 1, y: itemCenter.y }
+                break
+            }
+            verify(dock.pointerWithinDockDragDropArea(insideZoomBand.x, insideZoomBand.y),
+                   "the existing magnification band must remain a valid drop area")
+            verify(!dock.pointerWithinDockDragDropArea(outsideDock.x, outsideDock.y),
+                   "leaving the dock on the secondary axis must invalidate the drop")
+            compare(dock.computeDragTargetIndex(outsideDock.x, outsideDock.y), -1)
         }
 
         function test_launcherUrlFromPlasmaTaskMime() {
