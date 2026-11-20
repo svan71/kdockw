@@ -1134,3 +1134,295 @@ detached-surface handoff: owner visual behavior remains **NOT VERIFIED**. Keep
 card `187d5445ee4d474d` in `review`; no release, tag or push was made. Restore
 the stable dock after the owner scenario with
 `tools/kdockw-v070-dev-stop-and-restore`.
+
+## 2026-11-20 — Wayland pointer surface handoff diagnostics
+
+The diagnostic-only additions observe `wl_seat` capability/bind/release and
+`wl_pointer` create/destroy, enter, and leave callbacks in
+`PointerFocusTracker`. Each raw enter/leave receives a session-local event ID
+and records the Wayland serial, pointer generation, seat global name, stable
+surface/window IDs, surface classification, enter coordinates, and focus
+before/after handling. The existing `handleLeave()` still unconditionally
+clears focused surface; diagnostics record whether the leave surface ID and
+raw address match the previously focused surface. No leave, focus, popup,
+hit-test, or magnification behavior was changed.
+
+DockView adds a monotonic nanosecond timestamp and trace sequence to the same
+JSONL stream and includes the latest Wayland pointer event ID in QML snapshots.
+QML media-popup and Window Preview interactions receive unique interaction IDs
+automatically; the scenario remains `unmarked` unless an optional owner IPC
+marker is sent. Dock, popup, and preview QWindows report visibility, logical
+geometry, DPR, screen, surface lifecycle, and Qt mask. The trace also records
+the explicitly applied dock/preview input regions. QWindow geometry is not
+claimed to be compositor placement, and Qt masks/applied regions do not reveal
+the compositor's effective input region.
+
+The candidate is active as user unit `kdockw-v070-diagnostic-release.service`,
+PID `3824736`, executable
+`build/v070-diagnostic-release/stage/bin/kdockw`, version `0.7.0-dev`, GNU
+Build ID `053dce600c8c150992d62b188ae35d5e8808f5c3`, profile
+`media-pointer-handoff-20261120`, with `--media-hover-debug`. Trace:
+`diagnostics/v070-dev/logs/media-hover-media-pointer-handoff-20261120-20261120-091334119976862.jsonl`.
+It contains startup registrations and one unmarked dock enter/leave. For that
+ordinary leave, event ID 2 reports surface ID 1 (`dock`) matching both current
+focus ID and raw address; the following QML leave is outside-dock and the
+Compact guard is not retained. No Media Popup surface or Compact↔popup owner
+cycle is present yet. This single sample does not establish the source of the
+reported handoff loss or whether a mismatched/stale leave occurs during that
+scenario.
+
+Focused checks: `kdockw_preview_tests` passed 1/1 after rerunning with
+`TMPDIR=/tmp` (the initial long-TMPDIR attempt failed to start D-Bus because
+the socket path was too long); `qml_tst_preview_popup` and
+`qml_tst_media_player_widget` passed; three affected `qml_tst_dock_main`
+functions passed 12 phases / 0 failures after adapting the diagnostic setter
+to the existing QML mock and preserving marker interaction context. The first
+full `qml_tst_dock_main` invocation failed 10 cases for those test-fixture
+compatibility issues; it was not rerun in full. Production and full Diagnostic
+CTest were not run for this diagnostic-only instrumentation. `git diff
+--check` passed; `clang-format` is unavailable in the environment.
+
+The source/stage/running Build ID matched. The launcher verified the Russian
+catalog and KService metadata during candidate start. Stable `/usr/bin/kdockw`
+v0.6.0 is paused; exactly one dock process is running. Production config and
+profile backup are both mode 0600, UID/GID 1000:1001, and match SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`.
+Owner pointer scenarios and the causal handoff diagnosis remain **NOT
+VERIFIED**. Restore with `tools/kdockw-v070-dev-stop-and-restore` (the script
+does not implement `--help`; invoking it with that argument still performs
+restoration).
+
+Operational notes: the launcher's `--preflight-only` path unexpectedly ran
+CMake configure/install once outside `codex-build run`; it completed without
+creating container resources. Actual candidate starts were run through
+`codex-build run`. An attempted `--help` inspection of the restore script
+stopped the first candidate and restored stable; this was detected, stable was
+verified, and the same isolated candidate was relaunched with the same ELF and
+profile. No user settings or stable files were changed. The branch has no
+upstream configured; no upstream, push, release, or tag was created.
+
+## 2026-11-20 — input-region and Wayland surface consistency capture
+
+Added diagnostic-only observation of the applied `QWindow` input mask and
+`DockVisibilityController` region requests with reason/controller state,
+Wayland `wl_surface`/`wl_region` requests and commits, registered surface IDs,
+pointer enter/leave/motion state, and read-only QML snapshots. Snapshots read
+cached state and current geometry only: they do not poll or synthesize pointer
+input, invoke hit-testing, or mutate hover/magnification state. All application
+records use monotonic timestamps and share pointer event IDs with the
+`PointerFocusTracker`. A client-side `commit` only proves that the client sent
+the request; KWin's effective input region is not exposed by this capture.
+
+The first filtered protocol file was empty because this installed libwayland
+prints object IDs as `wl_surface#59` and includes queue names, while the parser
+only accepted `wl_surface@59` without a queue. The parser now accepts both
+formats. Its regression test passes 3/3; the registered targeted CTest passed
+1/1 after this correction. Before correction, the affected input-region/QML
+target CTest passed 6/6. `bash -n` and `git diff --check` pass.
+
+Candidate v0.7.0-dev is active for owner capture as PID `4089421`, executable
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+version `0.7.0-dev`, GNU Build ID
+`0adefa7f328528cf5616405bcfb7012047113565`, profile
+`input-region-commit-20261120`, with `--wayland-debug --media-hover-debug`.
+The current application trace is
+`diagnostics/v070-dev/logs/media-hover-input-region-commit-20261120-20261120-102345894730630.jsonl`;
+the bounded protocol trace is
+`diagnostics/v070-dev/logs/wayland-client-input-region-commit-20261120-20261120-102343917603627.jsonl`.
+At the last check, the protocol file held 2,914 selected client records,
+including region creation/add, `set_input_region`, surface commits and
+lifecycle calls. The two-snapshot IPC smoke capture passed with 2/2 available
+read-only snapshots. Its sidecar is
+`diagnostics/v070-dev/logs/owner-capture-input-region-commit-20261120-20261120-102554-71224971029360.jsonl`.
+
+No owner pointer sequence has been recorded yet. Pointer enter/leave events
+were absent from the protocol sidecar during the startup/IPC smoke period; the
+same candidate's Wayland client listener records those callbacks in the
+application trace. The input-region handoff diagnosis and visual behavior are
+therefore still **NOT VERIFIED**. The owner can run
+`tools/kdockw-v070-media-hover-capture` from a terminal; it waits five seconds,
+then takes 60 read-only snapshots at 500 ms intervals while automatically
+marking observed surface/popup transitions. Exercise ordinary icon → Window
+Preview → icon, then Compact → Media Popup → Compact, holding the pointer on
+each surface briefly. Restore stable afterward with
+`tools/kdockw-v070-dev-stop-and-restore`.
+
+Stable `/usr/bin/kdockw` v0.6.0 is paused; exactly one KDockW process is active.
+Production config `/home/stout/.config/kdockwrc` and the profile-specific
+mode-0600 backup
+`diagnostics/v070-dev/backups/kdockwrc.production.input-region-commit-20261120`
+match SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`.
+Source/stage/running Build IDs match and the staged Russian translation and
+KService authorization passed preflight. The existing media card
+`187d5445ee4d474d` remains `review`; no functional fix, release, tag, or push
+was made.
+
+## 2026-11-20 — final candidate after incoming-callback parser correction
+
+The installed libwayland also prints incoming callbacks without an explicit
+direction arrow. The bounded filter now recognizes both request lines with
+`->`/`<-` and implicit incoming events, recording the latter as inferred
+`<-`. Added a regression for un-arrowed `wl_pointer.enter` and filtering of
+unselected callbacks. Direct Python checks passed 3/3 and the registered CTest
+passed 1/1 after this final parser change. No application ELF rebuild was
+needed; its GNU Build ID remains `0adefa7f328528cf5616405bcfb7012047113565`.
+
+After restarting via the project's restore/start flow, the currently active
+candidate is PID `4129836`, executable
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+version `0.7.0-dev`, profile `input-region-commit-20261120`, flags
+`--wayland-debug --media-hover-debug`. The current application trace is
+`diagnostics/v070-dev/logs/media-hover-input-region-commit-20261120-20261120-103411262882348.jsonl`;
+the bounded Wayland trace is
+`diagnostics/v070-dev/logs/wayland-client-input-region-commit-20261120-20261120-103409303672773.jsonl`.
+The latest sidecar IPC smoke series is
+`diagnostics/v070-dev/logs/owner-capture-input-region-commit-20261120-20261120-103431-71742089038956.jsonl`.
+
+At the last check the filtered Wayland file contained 6,121 selected records,
+including 64 pointer `enter`/`leave` callbacks, with no truncation; the
+read-only IPC smoke returned 2/2 available snapshots. These are startup and
+tooling checks only, not the owner's Compact/Popup sequence. The effective
+input region as applied by KWin and the reported pointer handoff cause remain
+**NOT VERIFIED**. Stable v0.6.0 is paused, and the exact profile backup still
+matches production SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96` (mode
+0600). Owner capture: run
+`/home/stout/Documents/vibecoding/kdockw/tools/kdockw-v070-media-hover-capture`;
+restore stable afterward with
+`/home/stout/Documents/vibecoding/kdockw/tools/kdockw-v070-dev-stop-and-restore`.
+
+## 2026-11-20 — final input-region and stationary-pointer capture candidate
+
+### Source-level findings
+
+`DockVisibilityController::applyInputRegion()` uses the explicit interaction
+rectangle when present, otherwise the panel rectangle, and passes visibility,
+edge, hover, surface size, and zoom overflow to `computeDockInputRegion()`.
+`WaylandDockPlatform::setInputRegion()` applies that `QRegion` with
+`QWindow::setMask()`. For a bottom dock, the region's top edge is
+`max(0, panelY - zoomOverflowHeight - margin)` while hovered, and
+`max(0, panelY - margin)` while unhovered; the edge trigger strip is then
+united with it. With the observed `panelY=77`, overflow `26`, and margin `4`,
+these formulas yield `y=47` and `y=73`. This explains the two client-requested
+bounds in code; it does not establish which region KWin had made effective at
+any instant.
+
+QML `_reportPanelRectNow()` derives the interaction rectangle from visible row
+content, parabolic growth, indicator reservation, and the current dock-root
+layout, then reports it to the controller. The QML item hit-test uses mapped
+row/delegate geometry and its own row-depth checks; it is not a query of the
+Wayland input region. Both are expressed in logical surface/root-local spaces
+but use different geometric predicates.
+
+Window Preview follows a separate path: its pre-mapped QWindow receives a
+1x1 region while hidden, acquires `DockVisibilityController::setInteracting(true)`
+when shown, computes a popup-only region with `computePreviewInputRegion()`,
+sets its mask, and explicitly commits the surface. Hiding restores the 1x1
+region and releases the interaction lock. The Media Popup is a separate
+`QQC2.Popup.Window` with its own hover gate, popup hold, and `dockHoverLease`;
+opening it does not acquire the same visibility-controller interaction lock.
+The dock mask therefore continues to track its own hovered state and geometry.
+This is a code-path difference, not proof that it causes the owner-visible
+magnification failure.
+
+An earlier unmarked sample in the protocol-less app trace
+`media-hover-input-region-commit-20261120-20261120-103411262882348.jsonl`
+recorded the last region beginning at y=73, followed by a dock `wl_pointer.enter`
+at local y=58.98; the app later expanded its recorded region to y=47 before
+`outside-row-depth` and leave. Since that run had no filtered Wayland request
+trace, it cannot establish the exact `set_input_region`/commit relationship or
+KWin's effective region. It is a boundary anomaly, not a stationary-pointer
+reproducer or a root-cause proof.
+
+### Read-only capture improvement and checks
+
+The IPC snapshot now reports the current Compact widget index, stable entry ID,
+display mode, and geometry even when no item is hovered and the popup is closed.
+The scan reads existing delegates only; it does not sample/move the pointer,
+run hit-testing, or mutate hover, anchor, magnification, or popup state. The QML
+regression verifies the geometry is available while another item is hovered,
+`sampleWasRecomputed=false`, and pointer motion serial / hovered index / zoom
+state remain unchanged.
+
+Built and staged `kdockw` and `kdockw_qml_tests`; source and stage GNU Build ID
+match: `67ed3029117255960753c878b310f62040e4f75e`. Targeted
+`qml_tst_dock_main` passed 1/1 (135.16 s), Wayland filter Python tests passed
+3/3, and the registered parser CTest passed 1/1. `bash -n` and `git diff
+--check` passed. No full CTest was run for this snapshot-only instrumentation.
+The staged Russian catalog SHA-256 is
+`d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`.
+
+The current candidate is PID `19991`, systemd user unit
+`kdockw-v070-diagnostic-release.service`, stage executable
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+profile `input-region-commit-20261120`, with `--wayland-debug --media-hover-debug`.
+Application trace:
+`diagnostics/v070-dev/logs/media-hover-input-region-commit-20261120-20261120-105803952963609.jsonl`.
+Filtered protocol trace:
+`diagnostics/v070-dev/logs/wayland-client-input-region-commit-20261120-20261120-105758694066138.jsonl`
+(80,188 bytes at handoff, below the 8 MiB cap). The IPC smoke sidecar
+`diagnostics/v070-dev/logs/owner-capture-input-region-commit-20261120-20261120-105833-73183271960533.jsonl`
+returned 2/2 snapshots. Both reported the Compact widget at `(1522.5, 85)`,
+`36x44` logical pixels, index 27, with popup closed. Pointer focus was unknown
+and the motion serial was zero during this idle smoke; this verifies snapshot
+availability, not the owner's pointer sequence.
+
+Production config and the profile-specific backup
+`diagnostics/v070-dev/backups/kdockwrc.production.input-region-commit-20261120`
+are mode 0600, UID:GID 1000:1001, byte-identical, SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`.
+Exactly one KDockW process is active; stable v0.6.0 is paused and restore state
+is present. Run `tools/kdockw-v070-media-hover-capture` once from a terminal;
+it waits 5 seconds, then records 60 read-only snapshots at 500 ms intervals
+and automatically marks observed surface/popup transitions. Perform ordinary
+icon → Window Preview → icon, then Compact → Media Popup → Compact; leave the
+pointer still over Compact for 2–3 seconds if magnification is absent. Do not
+switch focus during a return. Restore stable afterward with
+`tools/kdockw-v070-dev-stop-and-restore`.
+
+The owner pointer sequence and KWin-effective input region remain **NOT
+VERIFIED**. No functional hover, hit-test, mask, popup, or magnification code
+was changed. Media card `187d5445ee4d474d` remains `review`; dependency
+`35353e13722e4769` is unchanged. No release, tag, or push was created.
+
+## 2026-11-20 — Qt input-delivery boundary and Variant B decision
+
+The owner capture `owner-capture-qt-motion-boundary-20261120-20261120-134057-4403785716906.jsonl`
+contains 40 snapshots for candidate GNU Build ID
+`035c59fcb69e234fd7d234ebcca15fd4c4d1ca37`, profile
+`qt-motion-boundary-20261120`. It records two successful Window Preview returns,
+one successful Media Popup return, and a later failed Media Popup return. The
+first Media Popup return (snapshot 16) advanced the QML pointer serial from
+1191 to 1196, hit Compact at index 27, restored spring target 1, and reached
+scale about 1.658. Thus the popup handoff failure is intermittent in this
+capture, not an invariant consequence of popup visibility.
+
+On the reproduced failed return (snapshot 23; main trace sequences 2996–2997),
+the tracker and Qt `QWindow` event filter observed fresh dock motion at logical
+surface position `(1545.5039, 107.875)`, with dock focus. The last QML sample
+remained at `(1545.5039, 84)`, serial 1238, `dockPanelMouse=(-1,-1)`,
+`hoveredIndex=-1`, `zoomActive=false`, spring target 0, and scale 1. Wayland
+motion and QPA `MouseMove` records continued after the last QML
+`MouseArea.onPositionChanged` sample. The first confirmed observable divergence
+is therefore after the `QWindow` event filter and before QML's pointer tracking;
+the capture does not expose the precise internal Qt Quick dispatch decision.
+
+Both the tracker-owned pointer and Qt's pointer received matching leave/enter
+and subsequent motion. The Media Popup's `xdg_popup.grab` was issued on Qt's
+seat, but did not suppress protocol-level pointer motion or dock focus. Its
+causal effect on Qt Quick routing is **NOT VERIFIED**. `QWindow`'s
+`spontaneous` flag does not distinguish a genuine event from a synthetic one.
+
+The research route that sought a local Qt Quick/event-filter fix (Variant A)
+did not identify a defensible specific application-side patch and is marked
+**NOT VERIFIED as an actionable fix**. The approved implementation direction
+is Variant B: publish samples from the existing `PointerFocusTracker` and feed
+the same production hover/hit-test/spring pipeline, with explicit surface and
+generation validation and coordinate mapping. No implementation is recorded
+in this section. Stable was restored as `/usr/bin/kdockw` under
+`kdockw-v051-restored.service`; the production configuration and its
+permission-preserving backup matched SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96` (mode
+0600). The owner must still verify the corrected magnification in real Plasma;
+automated delivery tests cannot prove compositor handoff.

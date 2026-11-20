@@ -48,6 +48,38 @@ namespace kdockw
 namespace
 {
 
+QVariantMap inputRegionDiagnostic(const QRegion &region)
+{
+    QVariantList rectangles;
+    constexpr int maxRectangles = 256;
+    int rectangleIndex = 0;
+    for (const QRect &rect : region) {
+        if (rectangleIndex++ >= maxRectangles) {
+            break;
+        }
+        rectangles.append(QVariantMap{
+            {QStringLiteral("x"), rect.x()},
+            {QStringLiteral("y"), rect.y()},
+            {QStringLiteral("width"), rect.width()},
+            {QStringLiteral("height"), rect.height()},
+        });
+    }
+    const QRect bounds = region.boundingRect();
+    return {
+        {QStringLiteral("coordinateSpace"), QStringLiteral("window-preview-surface-local-logical")},
+        {QStringLiteral("empty"), region.isEmpty()},
+        {QStringLiteral("rectCount"), region.rectCount()},
+        {QStringLiteral("rectanglesTruncated"), region.rectCount() > rectangles.size()},
+        {QStringLiteral("rectangles"), rectangles},
+        {QStringLiteral("boundingRect"), QVariantMap{
+            {QStringLiteral("x"), bounds.x()},
+            {QStringLiteral("y"), bounds.y()},
+            {QStringLiteral("width"), bounds.width()},
+            {QStringLiteral("height"), bounds.height()},
+        }},
+    };
+}
+
 class PreviewFrameImageProvider final : public QQuickImageProvider
 {
 public:
@@ -141,6 +173,9 @@ void PreviewController::initialize()
     // surface is destroyed with this controller (DockShell owns it) instead
     // of leaking on the old output across a topology change.
     m_previewView = std::make_unique<QQuickView>(m_dockView->engine(), nullptr);
+    if (m_dockView->mediaHoverDebugEnabled()) {
+        m_dockView->registerDiagnosticSurface(m_previewView.get(), QStringLiteral("window-preview"));
+    }
     m_previewView->setColor(Qt::transparent);
     m_previewView->setResizeMode(QQuickView::SizeRootObjectToView);
 
@@ -278,6 +313,12 @@ void PreviewController::initialize()
     const QRegion hiddenInputRegion(0, 0, 1, 1);
     m_previewView->setMask(hiddenInputRegion);
     m_inputRegion = hiddenInputRegion;
+    if (m_dockView->mediaHoverDebugEnabled()) {
+        QVariantMap details = inputRegionDiagnostic(hiddenInputRegion);
+        details.insert(QStringLiteral("surfaceRole"), QStringLiteral("window-preview"));
+        details.insert(QStringLiteral("reason"), QStringLiteral("initial-hidden-region"));
+        m_dockView->traceMediaHover(QStringLiteral("surface-input-region"), details);
+    }
 
     // Pre-show the surface so compositor has it mapped and ready for input routing.
     // The 1x1 mask above prevents it from intercepting any meaningful input.
@@ -1272,6 +1313,16 @@ void PreviewController::updateInputRegion()
     m_previewView->setMask(inputRegion);
     m_inputRegion = inputRegion;
     commitInputRegion();
+    if (m_dockView && m_dockView->mediaHoverDebugEnabled()) {
+        QVariantMap details = inputRegionDiagnostic(inputRegion);
+        details.insert(QStringLiteral("surfaceRole"), QStringLiteral("window-preview"));
+        details.insert(QStringLiteral("reason"), QStringLiteral("update-input-region"));
+        details.insert(QStringLiteral("surfaceSize"), QVariantMap{
+            {QStringLiteral("width"), m_previewView->width()},
+            {QStringLiteral("height"), m_previewView->height()},
+        });
+        m_dockView->traceMediaHover(QStringLiteral("surface-input-region"), details);
+    }
 }
 
 void PreviewController::applyPreviewBackgroundEffect()

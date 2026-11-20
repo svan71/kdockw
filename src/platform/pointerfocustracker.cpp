@@ -8,19 +8,25 @@
 #include <algorithm>
 #include <string_view>
 
+#include <QCoreApplication>
+#include <QEnterEvent>
+#include <QEvent>
 #include <QGuiApplication>
+#include <QHoverEvent>
+#include <QMouseEvent>
+#include <QPlatformSurfaceEvent>
+#include <QRegion>
+#include <QScreen>
 #include <QtGui/qguiapplication_platform.h>
 #include <qpa/qplatformnativeinterface.h>
+
+#include <time.h>
 
 namespace kdockw
 {
 
 namespace
 {
-
-void ignoreMotion(void *, wl_pointer *, uint32_t, wl_fixed_t, wl_fixed_t)
-{
-}
 
 void ignoreButton(void *, wl_pointer *, uint32_t, uint32_t, uint32_t, uint32_t)
 {
@@ -71,6 +77,40 @@ void ignoreSeatName(void *, wl_seat *, const char *)
 // wl_seat.release (and wl_pointer.release) need version 5; nothing newer is
 // used, so the pointer never receives events from later versions either.
 constexpr uint32_t s_seatVersion = 5;
+constexpr quint32 s_maxQtWindowInputEvents = 8192;
+constexpr qint64 s_qtWindowMotionSampleIntervalNs = 16'000'000;
+
+QString qtPointerEventName(QEvent::Type type)
+{
+    switch (type) {
+    case QEvent::Enter:
+        return QStringLiteral("Enter");
+    case QEvent::Leave:
+        return QStringLiteral("Leave");
+    case QEvent::MouseMove:
+        return QStringLiteral("MouseMove");
+    case QEvent::MouseButtonPress:
+        return QStringLiteral("MouseButtonPress");
+    case QEvent::MouseButtonRelease:
+        return QStringLiteral("MouseButtonRelease");
+    case QEvent::HoverEnter:
+        return QStringLiteral("HoverEnter");
+    case QEvent::HoverMove:
+        return QStringLiteral("HoverMove");
+    case QEvent::HoverLeave:
+        return QStringLiteral("HoverLeave");
+    default:
+        return {};
+    }
+}
+
+QVariantMap pointDetails(const QPointF &point)
+{
+    return {
+        {QStringLiteral("x"), point.x()},
+        {QStringLiteral("y"), point.y()},
+    };
+}
 
 } // namespace
 
@@ -98,6 +138,9 @@ PointerFocusTracker::PointerFocusTracker(QWindow *window, QObject *parent)
 
 PointerFocusTracker::~PointerFocusTracker()
 {
+    // DockView's trace sink is a later-declared member and is destroyed before
+    // this tracker. Keep teardown from emitting diagnostics through that sink.
+    m_diagnosticEnabled = false;
     releaseSeat();
     m_focusedSurface = nullptr;
     if (m_registry) {
@@ -118,15 +161,24 @@ void PointerFocusTracker::bindSeat(uint32_t name, uint32_t version)
     if (m_seat) {
         m_seatName = name;
         wl_seat_add_listener(m_seat, &listener, this);
+        recordDiagnostic(QStringLiteral("wayland-seat-bound"), {
+            {QStringLiteral("seatGlobalName"), m_seatName},
+            {QStringLiteral("advertisedVersion"), version},
+            {QStringLiteral("boundVersion"), std::min(version, s_seatVersion)},
+        });
     }
 }
 
 void PointerFocusTracker::releaseSeat()
 {
-    releasePointer();
+    releasePointer(QStringLiteral("seat-released"));
     if (!m_seat) {
         return;
     }
+    recordDiagnostic(QStringLiteral("wayland-seat-released"), {
+        {QStringLiteral("seatGlobalName"), m_seatName},
+        {QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails()},
+    });
     if (wl_proxy_get_version(reinterpret_cast<wl_proxy *>(m_seat)) >= WL_SEAT_RELEASE_SINCE_VERSION) {
         wl_seat_release(m_seat);
     } else {
@@ -138,11 +190,20 @@ void PointerFocusTracker::releaseSeat()
 
 void PointerFocusTracker::setCapabilities(uint32_t capabilities)
 {
+    recordDiagnostic(QStringLiteral("wayland-seat-capabilities"), {
+        {QStringLiteral("capabilities"), capabilities},
+        {QStringLiteral("pointerCapability"), (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0},
+        {QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails()},
+    });
     if (!(capabilities & WL_SEAT_CAPABILITY_POINTER)) {
         // The protocol makes the old pointer defunct; a regained capability
         // needs a new one.
-        releasePointer();
+        releasePointer(QStringLiteral("pointer-capability-lost"));
         setFocusedSurface(nullptr);
+        recordDiagnostic(QStringLiteral("wayland-pointer-focus-cleared"), {
+            {QStringLiteral("reason"), QStringLiteral("pointer-capability-lost")},
+            {QStringLiteral("focusedSurfaceAfter"), focusedSurfaceDetails()},
+        });
         return;
     }
     if (m_pointer) {
@@ -154,7 +215,7 @@ void PointerFocusTracker::setCapabilities(uint32_t capabilities)
     static const wl_pointer_listener listener = {
         .enter = &PointerFocusTracker::handleEnter,
         .leave = &PointerFocusTracker::handleLeave,
-        .motion = ignoreMotion,
+        .motion = &PointerFocusTracker::handleMotion,
         .button = ignoreButton,
         .axis = ignoreAxis,
         .frame = ignoreFrame,
@@ -176,15 +237,26 @@ void PointerFocusTracker::setCapabilities(uint32_t capabilities)
     // sends the new pointer an enter right away.
     m_pointer = wl_seat_get_pointer(m_seat);
     if (m_pointer) {
+        ++m_pointerGeneration;
         wl_pointer_add_listener(m_pointer, &listener, this);
+        recordDiagnostic(QStringLiteral("wayland-pointer-created"), {
+            {QStringLiteral("pointerGeneration"), m_pointerGeneration},
+            {QStringLiteral("seatGlobalName"), m_seatName},
+        });
     }
 }
 
-void PointerFocusTracker::releasePointer()
+void PointerFocusTracker::releasePointer(const QString &reason)
 {
     if (!m_pointer) {
         return;
     }
+    recordDiagnostic(QStringLiteral("wayland-pointer-destroyed"), {
+        {QStringLiteral("pointerGeneration"), m_pointerGeneration},
+        {QStringLiteral("seatGlobalName"), m_seatName},
+        {QStringLiteral("reason"), reason},
+        {QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails()},
+    });
     if (wl_proxy_get_version(reinterpret_cast<wl_proxy *>(m_pointer)) >= WL_POINTER_RELEASE_SINCE_VERSION) {
         wl_pointer_release(m_pointer);
     } else {
@@ -232,12 +304,453 @@ QWindow *PointerFocusTracker::pointerFocusWindow() const
     return nullptr;
 }
 
+void PointerFocusTracker::setDiagnosticEnabled(bool enabled)
+{
+    if (m_diagnosticEnabled == enabled) {
+        return;
+    }
+    m_diagnosticEnabled = enabled;
+    if (!enabled) {
+        return;
+    }
+    for (QWindow *window : QGuiApplication::allWindows()) {
+        watchWindow(window, window == m_window ? QStringLiteral("dock") : QStringLiteral("other"));
+    }
+    recordDiagnostic(QStringLiteral("wayland-diagnostics-ready"), {
+        {QStringLiteral("seatGlobalName"), m_seatName},
+        {QStringLiteral("pointerGeneration"), m_pointerGeneration},
+        {QStringLiteral("focusedSurface"), focusedSurfaceDetails()},
+    });
+}
+
+void PointerFocusTracker::registerDiagnosticWindow(QWindow *window, const QString &role)
+{
+    if (!m_diagnosticEnabled || !window) {
+        return;
+    }
+    const QString safeRole = role == QLatin1String("dock")
+            || role == QLatin1String("media-popup")
+            || role == QLatin1String("window-preview")
+        ? role
+        : QStringLiteral("other");
+    watchWindow(window, safeRole);
+    QVariantMap details = windowDetails(window);
+    details.insert(QStringLiteral("registrationRole"), safeRole);
+    details.insert(QStringLiteral("surface"), surfaceDetails(surfaceForWindow(window)));
+    recordDiagnostic(QStringLiteral("wayland-window-registered"), details);
+}
+
+void PointerFocusTracker::recordDiagnostic(const QString &event, QVariantMap details, bool pointerEvent)
+{
+    if (!m_diagnosticEnabled) {
+        return;
+    }
+    details.insert(QStringLiteral("trackerEventSequence"), ++m_diagnosticSequence);
+    if (pointerEvent) {
+        details.insert(QStringLiteral("waylandPointerEventId"), ++m_pointerEventSequence);
+    }
+    details.insert(QStringLiteral("seatGlobalName"), m_seatName);
+    details.insert(QStringLiteral("pointerGeneration"), m_pointerGeneration);
+    details.insert(QStringLiteral("event"), event);
+    m_lastDiagnosticEvent = details;
+    if (pointerEvent) {
+        m_lastPointerEvent = details;
+    }
+    Q_EMIT diagnosticEvent(event, details);
+}
+
+QVariantMap PointerFocusTracker::diagnosticSnapshot() const
+{
+    if (!m_diagnosticEnabled) {
+        return {{QStringLiteral("available"), false},
+                {QStringLiteral("reason"), QStringLiteral("diagnostics-disabled")}};
+    }
+
+    QVariantMap focusedSurface;
+    if (m_focusedSurfaceId != 0) {
+        focusedSurface.insert(QStringLiteral("surfaceId"), m_focusedSurfaceId);
+        const bool surfaceTracked = m_focusedSurface
+            && m_surfaceIds.value(m_focusedSurface) == m_focusedSurfaceId;
+        focusedSurface.insert(QStringLiteral("surfaceStillTracked"), surfaceTracked);
+        if (surfaceTracked) {
+            focusedSurface.insert(QStringLiteral("waylandObjectId"),
+                                  wl_proxy_get_id(reinterpret_cast<wl_proxy *>(m_focusedSurface)));
+        }
+        for (QWindow *window : m_watchedWindows) {
+            if (!window || m_windowSurfaceIds.value(window) != m_focusedSurfaceId) {
+                continue;
+            }
+            focusedSurface.insert(QStringLiteral("surfaceClass"),
+                                  m_windowRoles.value(window, QStringLiteral("other")));
+            focusedSurface.insert(QStringLiteral("window"), windowDetails(window));
+            break;
+        }
+    }
+
+    QVariantList windows;
+    for (QWindow *window : m_watchedWindows) {
+        if (!window) {
+            continue;
+        }
+        QVariantMap details = windowDetails(window);
+        const quint64 surfaceId = m_windowSurfaceIds.value(window);
+        details.insert(QStringLiteral("surfaceId"), surfaceId);
+        if (surfaceId != 0) {
+            if (wl_surface *surface = surfaceForWindow(window)) {
+                details.insert(QStringLiteral("waylandObjectId"),
+                               wl_proxy_get_id(reinterpret_cast<wl_proxy *>(surface)));
+            }
+        }
+        windows.append(details);
+    }
+
+    return {
+        {QStringLiteral("available"), true},
+        {QStringLiteral("seatGlobalName"), m_seatName},
+        {QStringLiteral("pointerGeneration"), m_pointerGeneration},
+        {QStringLiteral("pointerEventSequence"), static_cast<qint64>(m_pointerEventSequence)},
+        {QStringLiteral("pointerCapabilityPresent"), m_pointer != nullptr},
+        {QStringLiteral("pointerFocusKnown"), m_focusedSurface != nullptr},
+        {QStringLiteral("focusedSurface"), focusedSurface},
+        {QStringLiteral("lastWaylandEvent"), m_lastDiagnosticEvent},
+        {QStringLiteral("lastWaylandPointerEvent"), m_lastPointerEvent},
+        {QStringLiteral("lastWaylandPointerMotion"), m_lastPointerMotion},
+        {QStringLiteral("watchedWindows"), windows},
+    };
+}
+
+quint64 PointerFocusTracker::idForSurface(wl_surface *surface)
+{
+    if (!surface) {
+        return 0;
+    }
+    const auto existing = m_surfaceIds.constFind(surface);
+    if (existing != m_surfaceIds.cend()) {
+        return existing.value();
+    }
+    const quint64 id = ++m_nextSurfaceId;
+    m_surfaceIds.insert(surface, id);
+    return id;
+}
+
+wl_surface *PointerFocusTracker::surfaceForWindow(QWindow *window) const
+{
+    if (!window) {
+        return nullptr;
+    }
+    auto *nativeInterface = QGuiApplication::platformNativeInterface();
+    if (!nativeInterface) {
+        return nullptr;
+    }
+    return static_cast<wl_surface *>(nativeInterface->nativeResourceForWindow(
+        QByteArrayLiteral("surface"), window));
+}
+
+QWindow *PointerFocusTracker::windowForSurface(wl_surface *surface) const
+{
+    if (!surface) {
+        return nullptr;
+    }
+    for (QWindow *window : QGuiApplication::allWindows()) {
+        if (surfaceForWindow(window) == surface) {
+            return window;
+        }
+    }
+    return nullptr;
+}
+
+QVariantMap PointerFocusTracker::windowDetails(QWindow *window) const
+{
+    if (!window) {
+        return {};
+    }
+    const QRect geometry = window->geometry();
+    const QRect frameGeometry = window->frameGeometry();
+    const QRegion mask = window->mask();
+    const QRect maskBounds = mask.boundingRect();
+    QVariantList maskRects;
+    constexpr qsizetype maxMaskRects = 256;
+    qsizetype rectIndex = 0;
+    for (const QRect &rect : mask) {
+        if (rectIndex++ >= maxMaskRects) {
+            break;
+        }
+        maskRects.append(QVariantMap{
+            {QStringLiteral("x"), rect.x()},
+            {QStringLiteral("y"), rect.y()},
+            {QStringLiteral("width"), rect.width()},
+            {QStringLiteral("height"), rect.height()},
+        });
+    }
+    const QScreen *screen = window->screen();
+    const QRect screenGeometry = screen ? screen->geometry() : QRect{};
+    return {
+        {QStringLiteral("windowId"), m_windowIds.value(window)},
+        {QStringLiteral("windowRole"), m_windowRoles.value(window, QStringLiteral("other"))},
+        {QStringLiteral("objectName"), window->objectName()},
+        {QStringLiteral("windowType"), static_cast<int>(window->type())},
+        {QStringLiteral("visible"), window->isVisible()},
+        {QStringLiteral("visibility"), static_cast<int>(window->visibility())},
+        {QStringLiteral("devicePixelRatio"), window->devicePixelRatio()},
+        {QStringLiteral("screenName"), screen ? screen->name() : QString()},
+        {QStringLiteral("screenGeometryLogical"), QVariantMap{
+            {QStringLiteral("x"), screenGeometry.x()},
+            {QStringLiteral("y"), screenGeometry.y()},
+            {QStringLiteral("width"), screenGeometry.width()},
+            {QStringLiteral("height"), screenGeometry.height()},
+        }},
+        {QStringLiteral("geometryCoordinateSpace"), QStringLiteral("QWindow logical geometry; layer-shell compositor placement is not independently observable here")},
+        {QStringLiteral("geometry"), QVariantMap{
+            {QStringLiteral("x"), geometry.x()},
+            {QStringLiteral("y"), geometry.y()},
+            {QStringLiteral("width"), geometry.width()},
+            {QStringLiteral("height"), geometry.height()},
+        }},
+        {QStringLiteral("frameGeometry"), QVariantMap{
+            {QStringLiteral("x"), frameGeometry.x()},
+            {QStringLiteral("y"), frameGeometry.y()},
+            {QStringLiteral("width"), frameGeometry.width()},
+            {QStringLiteral("height"), frameGeometry.height()},
+        }},
+        {QStringLiteral("qtWindowMask"), QVariantMap{
+            {QStringLiteral("configured"), !mask.isEmpty()},
+            {QStringLiteral("rectCount"), mask.rectCount()},
+            {QStringLiteral("rectanglesTruncated"), mask.rectCount() > maskRects.size()},
+            {QStringLiteral("rectangles"), maskRects},
+            {QStringLiteral("boundingRect"), QVariantMap{
+                {QStringLiteral("x"), maskBounds.x()},
+                {QStringLiteral("y"), maskBounds.y()},
+                {QStringLiteral("width"), maskBounds.width()},
+                {QStringLiteral("height"), maskBounds.height()},
+            }},
+        }},
+    };
+}
+
+QVariantMap PointerFocusTracker::surfaceDetails(wl_surface *surface)
+{
+    if (!surface) {
+        return {};
+    }
+    const quint64 surfaceId = idForSurface(surface);
+    QWindow *window = windowForSurface(surface);
+    if (window && !m_watchedWindows.contains(window)) {
+        watchWindow(window, window == m_window ? QStringLiteral("dock") : QStringLiteral("other"));
+    }
+    QVariantMap details{
+        {QStringLiteral("surfaceId"), surfaceId},
+        {QStringLiteral("waylandObjectId"), wl_proxy_get_id(reinterpret_cast<wl_proxy *>(surface))},
+        {QStringLiteral("surfaceClass"), window ? m_windowRoles.value(window, QStringLiteral("other"))
+                                                : QStringLiteral("unknown")},
+        {QStringLiteral("windowSurfaceMatch"), window != nullptr},
+    };
+    if (window) {
+        details.insert(QStringLiteral("window"), windowDetails(window));
+    }
+    return details;
+}
+
+QVariantMap PointerFocusTracker::focusedSurfaceDetails()
+{
+    if (!m_focusedSurfaceId) {
+        return {};
+    }
+    if (m_focusedSurface && m_surfaceIds.value(m_focusedSurface) == m_focusedSurfaceId) {
+        return surfaceDetails(m_focusedSurface);
+    }
+    return {
+        {QStringLiteral("surfaceId"), m_focusedSurfaceId},
+        {QStringLiteral("surfaceClass"), QStringLiteral("unknown")},
+        {QStringLiteral("surfaceStillTracked"), false},
+    };
+}
+
+void PointerFocusTracker::watchWindow(QWindow *window, const QString &role)
+{
+    if (!window) {
+        return;
+    }
+    m_windowRoles.insert(window, role);
+    if (!m_windowIds.contains(window)) {
+        m_windowIds.insert(window, ++m_nextWindowId);
+    }
+    if (m_watchedWindows.contains(window)) {
+        return;
+    }
+    m_watchedWindows.insert(window);
+    window->installEventFilter(this);
+    if (wl_surface *surface = surfaceForWindow(window)) {
+        m_windowSurfaceIds.insert(window, idForSurface(surface));
+    }
+    const QPointer<QWindow> guardedWindow(window);
+    const quint64 windowId = m_windowIds.value(window);
+    connect(window, &QWindow::xChanged, this, [this, guardedWindow] {
+        if (guardedWindow) {
+            QVariantMap details = windowDetails(guardedWindow);
+            details.insert(QStringLiteral("change"), QStringLiteral("x"));
+            recordDiagnostic(QStringLiteral("wayland-window-geometry"), details);
+        }
+    });
+    connect(window, &QWindow::yChanged, this, [this, guardedWindow] {
+        if (guardedWindow) {
+            QVariantMap details = windowDetails(guardedWindow);
+            details.insert(QStringLiteral("change"), QStringLiteral("y"));
+            recordDiagnostic(QStringLiteral("wayland-window-geometry"), details);
+        }
+    });
+    connect(window, &QWindow::widthChanged, this, [this, guardedWindow] {
+        if (guardedWindow) {
+            QVariantMap details = windowDetails(guardedWindow);
+            details.insert(QStringLiteral("change"), QStringLiteral("width"));
+            recordDiagnostic(QStringLiteral("wayland-window-geometry"), details);
+        }
+    });
+    connect(window, &QWindow::heightChanged, this, [this, guardedWindow] {
+        if (guardedWindow) {
+            QVariantMap details = windowDetails(guardedWindow);
+            details.insert(QStringLiteral("change"), QStringLiteral("height"));
+            recordDiagnostic(QStringLiteral("wayland-window-geometry"), details);
+        }
+    });
+    connect(window, &QWindow::visibilityChanged, this, [this, guardedWindow](QWindow::Visibility visibility) {
+        QVariantMap details = guardedWindow ? windowDetails(guardedWindow) : QVariantMap{};
+        details.insert(QStringLiteral("visibilityEvent"), static_cast<int>(visibility));
+        recordDiagnostic(QStringLiteral("wayland-window-visibility"), details);
+    });
+    connect(window, &QObject::destroyed, this, [this, window, windowId, role] {
+        const quint64 surfaceId = m_windowSurfaceIds.value(window);
+        recordDiagnostic(QStringLiteral("wayland-window-destroyed"), {
+            {QStringLiteral("windowId"), windowId},
+            {QStringLiteral("windowRole"), m_windowRoles.value(window, role)},
+            {QStringLiteral("surfaceId"), surfaceId},
+        });
+        for (auto it = m_surfaceIds.begin(); it != m_surfaceIds.end();) {
+            if (it.value() == surfaceId) {
+                it = m_surfaceIds.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        m_watchedWindows.remove(window);
+        m_windowIds.remove(window);
+        m_lastWindowMotionDiagnosticNs.remove(window);
+        m_windowRoles.remove(window);
+        m_windowSurfaceIds.remove(window);
+    });
+    QVariantMap details = windowDetails(window);
+    details.insert(QStringLiteral("surface"), surfaceDetails(surfaceForWindow(window)));
+    recordDiagnostic(QStringLiteral("wayland-window-watched"), details);
+}
+
+bool PointerFocusTracker::eventFilter(QObject *watched, QEvent *event)
+{
+    auto *window = qobject_cast<QWindow *>(watched);
+    if (m_diagnosticEnabled && window) {
+        const QString eventName = qtPointerEventName(event->type());
+        if (!eventName.isEmpty()) {
+            bool shouldRecord = true;
+            if (event->type() == QEvent::MouseMove) {
+                timespec now{};
+                clock_gettime(CLOCK_MONOTONIC, &now);
+                const qint64 nowNs = static_cast<qint64>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+                const qint64 lastNs = m_lastWindowMotionDiagnosticNs.value(window, 0);
+                shouldRecord = lastNs == 0 || nowNs - lastNs >= s_qtWindowMotionSampleIntervalNs;
+                if (shouldRecord) {
+                    m_lastWindowMotionDiagnosticNs.insert(window, nowNs);
+                }
+            }
+
+            if (shouldRecord && m_qtWindowInputEventCount < s_maxQtWindowInputEvents) {
+                QVariantMap details{
+                    {QStringLiteral("qtEventBoundary"), QStringLiteral("QWindow eventFilter before QWindow::event")},
+                    {QStringLiteral("qtEventType"), eventName},
+                    {QStringLiteral("qtEventTypeCode"), static_cast<int>(event->type())},
+                    {QStringLiteral("qtEventSpontaneous"), event->spontaneous()},
+                    {QStringLiteral("windowId"), m_windowIds.value(window)},
+                    {QStringLiteral("windowRole"), m_windowRoles.value(window, QStringLiteral("other"))},
+                    {QStringLiteral("surfaceId"), m_windowSurfaceIds.value(window)},
+                    {QStringLiteral("quickWindow"), window->inherits("QQuickWindow")},
+                    {QStringLiteral("pointerFocusMatchesWindow"), m_focusedSurfaceId != 0
+                         && m_windowSurfaceIds.value(window) == m_focusedSurfaceId},
+                    {QStringLiteral("coordinateSpace"), QStringLiteral("QWindow logical coordinates")},
+                };
+
+                if (event->type() == QEvent::Enter) {
+                    const auto *pointerEvent = static_cast<const QEnterEvent *>(event);
+                    details.insert(QStringLiteral("localPosition"), pointDetails(pointerEvent->position()));
+                    details.insert(QStringLiteral("scenePosition"), pointDetails(pointerEvent->scenePosition()));
+                    details.insert(QStringLiteral("globalPosition"), pointDetails(pointerEvent->globalPosition()));
+                    details.insert(QStringLiteral("qtEventTimestamp"), pointerEvent->timestamp());
+                } else if (event->type() == QEvent::MouseMove
+                           || event->type() == QEvent::MouseButtonPress
+                           || event->type() == QEvent::MouseButtonRelease) {
+                    const auto *pointerEvent = static_cast<const QMouseEvent *>(event);
+                    details.insert(QStringLiteral("localPosition"), pointDetails(pointerEvent->position()));
+                    details.insert(QStringLiteral("scenePosition"), pointDetails(pointerEvent->scenePosition()));
+                    details.insert(QStringLiteral("globalPosition"), pointDetails(pointerEvent->globalPosition()));
+                    details.insert(QStringLiteral("qtEventTimestamp"), pointerEvent->timestamp());
+                    details.insert(QStringLiteral("mouseEventSource"), static_cast<int>(pointerEvent->source()));
+                    details.insert(QStringLiteral("button"), static_cast<int>(pointerEvent->button()));
+                    details.insert(QStringLiteral("buttons"), static_cast<int>(pointerEvent->buttons()));
+                } else if (event->type() == QEvent::HoverEnter
+                           || event->type() == QEvent::HoverMove
+                           || event->type() == QEvent::HoverLeave) {
+                    const auto *pointerEvent = static_cast<const QHoverEvent *>(event);
+                    details.insert(QStringLiteral("localPosition"), pointDetails(pointerEvent->position()));
+                    details.insert(QStringLiteral("globalPosition"), pointDetails(pointerEvent->globalPosition()));
+                    details.insert(QStringLiteral("oldLocalPosition"), pointDetails(pointerEvent->oldPosF()));
+                    details.insert(QStringLiteral("qtEventTimestamp"), pointerEvent->timestamp());
+                }
+
+                ++m_qtWindowInputEventCount;
+                recordDiagnostic(QStringLiteral("qt-window-input-event"), details);
+            } else if (shouldRecord && !m_qtWindowInputEventLimitReported) {
+                m_qtWindowInputEventLimitReported = true;
+                recordDiagnostic(QStringLiteral("qt-window-input-events-truncated"), {
+                    {QStringLiteral("maximumEvents"), s_maxQtWindowInputEvents},
+                    {QStringLiteral("boundary"), QStringLiteral("QWindow eventFilter")},
+                });
+            }
+        }
+    }
+
+    if (m_diagnosticEnabled && window && event->type() == QEvent::PlatformSurface) {
+        auto *surfaceEvent = static_cast<QPlatformSurfaceEvent *>(event);
+        wl_surface *surface = surfaceForWindow(window);
+        QVariantMap details = windowDetails(window);
+        const quint64 id = surface ? idForSurface(surface) : m_windowSurfaceIds.value(window);
+        details.insert(QStringLiteral("surfaceId"), id);
+        details.insert(QStringLiteral("surfaceEventType"), static_cast<int>(surfaceEvent->surfaceEventType()));
+        if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceCreated) {
+            if (surface) {
+                m_windowSurfaceIds.insert(window, id);
+            }
+            details.insert(QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails());
+            recordDiagnostic(QStringLiteral("wayland-window-surface-created"), details);
+        } else if (surfaceEvent->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+            details.insert(QStringLiteral("focusedSurfaceBefore"), focusedSurfaceDetails());
+            recordDiagnostic(QStringLiteral("wayland-window-surface-destroying"), details);
+            if (id != 0) {
+                for (auto it = m_surfaceIds.begin(); it != m_surfaceIds.end();) {
+                    if (it.value() == id) {
+                        it = m_surfaceIds.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+            }
+        }
+    }
+    return QObject::eventFilter(watched, event);
+}
+
 void PointerFocusTracker::setFocusedSurface(wl_surface *surface)
 {
     if (surface == m_focusedSurface) {
         return;
     }
     m_focusedSurface = surface;
+    m_focusedSurfaceId = surface ? idForSurface(surface) : 0;
     Q_EMIT pointerFocusChanged();
     // An enter on another surface of this client (e.g. the preview popup)
     // also leaves the window, so compare the derived state, not the surface.
@@ -261,6 +774,10 @@ void PointerFocusTracker::handleGlobalRemove(void *data, wl_registry *, uint32_t
     if (self->m_seat && name == self->m_seatName) {
         self->releaseSeat();
         self->setFocusedSurface(nullptr);
+        self->recordDiagnostic(QStringLiteral("wayland-pointer-focus-cleared"), {
+            {QStringLiteral("reason"), QStringLiteral("seat-global-removed")},
+            {QStringLiteral("focusedSurfaceAfter"), self->focusedSurfaceDetails()},
+        });
     }
 }
 
@@ -269,15 +786,99 @@ void PointerFocusTracker::handleCapabilities(void *data, wl_seat *, uint32_t cap
     static_cast<PointerFocusTracker *>(data)->setCapabilities(capabilities);
 }
 
-void PointerFocusTracker::handleEnter(void *data, wl_pointer *, uint32_t, wl_surface *surface, int32_t, int32_t)
+void PointerFocusTracker::handleEnter(void *data, wl_pointer *, uint32_t serial, wl_surface *surface, int32_t x, int32_t y)
 {
-    static_cast<PointerFocusTracker *>(data)->setFocusedSurface(surface);
+    auto *self = static_cast<PointerFocusTracker *>(data);
+    const quint64 enterSurfaceId = self->idForSurface(surface);
+    const bool addressMatchesFocus = surface == self->m_focusedSurface;
+    const bool stableIdMatchesFocus = enterSurfaceId == self->m_focusedSurfaceId;
+    if (addressMatchesFocus && !stableIdMatchesFocus) {
+        self->recordDiagnostic(QStringLiteral("wayland-surface-address-reused"), {
+            {QStringLiteral("previousSurfaceId"), self->m_focusedSurfaceId},
+            {QStringLiteral("newSurfaceId"), enterSurfaceId},
+            {QStringLiteral("surfaceClass"), self->surfaceDetails(surface).value(QStringLiteral("surfaceClass"))},
+            {QStringLiteral("behaviorNote"), QStringLiteral("Existing pointer handler compares raw surface addresses")},
+        });
+    }
+    self->recordDiagnostic(QStringLiteral("wayland-pointer-enter"), {
+        {QStringLiteral("waylandSerial"), serial},
+        {QStringLiteral("pointerObjectSessionId"), QStringLiteral("pointer-%1").arg(self->m_pointerGeneration)},
+        {QStringLiteral("enterSurface"), self->surfaceDetails(surface)},
+        {QStringLiteral("focusedSurfaceBefore"), self->focusedSurfaceDetails()},
+        {QStringLiteral("focusedSurfaceAfter"), self->surfaceDetails(surface)},
+        {QStringLiteral("focusChangeReason"), QStringLiteral("wl_pointer.enter")},
+        {QStringLiteral("surfaceAddressMatchesFocusBefore"), addressMatchesFocus},
+        {QStringLiteral("stableSurfaceIdMatchesFocusBefore"), stableIdMatchesFocus},
+        {QStringLiteral("surfaceLocalFixed"), QVariantMap{
+            {QStringLiteral("x"), x},
+            {QStringLiteral("y"), y},
+        }},
+        {QStringLiteral("surfaceLocal"), QVariantMap{
+            {QStringLiteral("x"), wl_fixed_to_double(x)},
+            {QStringLiteral("y"), wl_fixed_to_double(y)},
+        }},
+    }, true);
+    self->setFocusedSurface(surface);
+    self->recordDiagnostic(QStringLiteral("wayland-pointer-enter-applied"), {
+        {QStringLiteral("waylandPointerEventId"), self->m_pointerEventSequence},
+        {QStringLiteral("waylandSerial"), serial},
+        {QStringLiteral("focusedSurfaceAfter"), self->focusedSurfaceDetails()},
+        {QStringLiteral("focusWindowId"), self->m_windowIds.value(self->pointerFocusWindow())},
+        {QStringLiteral("pointerInsideDock"), self->isPointerInside()},
+    });
 }
 
-void PointerFocusTracker::handleLeave(void *data, wl_pointer *, uint32_t, wl_surface *)
+void PointerFocusTracker::handleLeave(void *data, wl_pointer *, uint32_t serial, wl_surface *surface)
 {
+    auto *self = static_cast<PointerFocusTracker *>(data);
+    const quint64 leaveSurfaceId = self->idForSurface(surface);
+    const quint64 focusedSurfaceIdBefore = self->m_focusedSurfaceId;
+    self->recordDiagnostic(QStringLiteral("wayland-pointer-leave"), {
+        {QStringLiteral("waylandSerial"), serial},
+        {QStringLiteral("pointerObjectSessionId"), QStringLiteral("pointer-%1").arg(self->m_pointerGeneration)},
+        {QStringLiteral("leaveSurface"), self->surfaceDetails(surface)},
+        {QStringLiteral("focusedSurfaceBefore"), self->focusedSurfaceDetails()},
+        {QStringLiteral("focusedSurfaceAfter"), QVariantMap{}},
+        {QStringLiteral("focusChangeReason"), QStringLiteral("wl_pointer.leave")},
+        {QStringLiteral("leaveMatchesCurrentFocus"), leaveSurfaceId == focusedSurfaceIdBefore},
+        {QStringLiteral("leaveAddressMatchesCurrentFocus"), surface == self->m_focusedSurface},
+        {QStringLiteral("leaveSurfaceId"), leaveSurfaceId},
+        {QStringLiteral("focusedSurfaceIdBefore"), focusedSurfaceIdBefore},
+    }, true);
     // Pointer focus is a single surface, so any leave ends it.
-    static_cast<PointerFocusTracker *>(data)->setFocusedSurface(nullptr);
+    self->setFocusedSurface(nullptr);
+    self->recordDiagnostic(QStringLiteral("wayland-pointer-leave-applied"), {
+        {QStringLiteral("waylandPointerEventId"), self->m_pointerEventSequence},
+        {QStringLiteral("waylandSerial"), serial},
+        {QStringLiteral("leaveSurfaceId"), self->idForSurface(surface)},
+        {QStringLiteral("focusedSurfaceAfter"), self->focusedSurfaceDetails()},
+        {QStringLiteral("focusWindowId"), self->m_windowIds.value(self->pointerFocusWindow())},
+        {QStringLiteral("pointerInsideDock"), self->isPointerInside()},
+    });
+}
+
+void PointerFocusTracker::handleMotion(void *data, wl_pointer *, uint32_t serial, int32_t x, int32_t y)
+{
+    auto *self = static_cast<PointerFocusTracker *>(data);
+    if (!self->m_diagnosticEnabled) {
+        return;
+    }
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const qint64 monotonicReferenceNs = static_cast<qint64>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+    self->m_lastPointerMotion = {
+        {QStringLiteral("waylandSerial"), serial},
+        {QStringLiteral("pointerObjectSessionId"), QStringLiteral("pointer-%1").arg(self->m_pointerGeneration)},
+        {QStringLiteral("focusedSurfaceId"), self->m_focusedSurfaceId},
+        {QStringLiteral("focusedSurfaceObjectId"), self->m_focusedSurface
+             ? QVariant(wl_proxy_get_id(reinterpret_cast<wl_proxy *>(self->m_focusedSurface))) : QVariant{}},
+        {QStringLiteral("surfaceLocalFixed"), QVariantMap{{QStringLiteral("x"), x}, {QStringLiteral("y"), y}}},
+        {QStringLiteral("surfaceLocal"), QVariantMap{
+             {QStringLiteral("x"), wl_fixed_to_double(x)},
+             {QStringLiteral("y"), wl_fixed_to_double(y)},
+         }},
+        {QStringLiteral("monotonicReferenceNs"), monotonicReferenceNs},
+    };
 }
 
 } // namespace kdockw

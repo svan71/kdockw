@@ -107,6 +107,10 @@ Item {
         _hoverTraceInteractionSerial++
         _hoverTraceInteractionKind = kind
         _hoverTraceInteractionId = _hoverTraceScenarioId + "/" + kind + "-" + _hoverTraceInteractionSerial
+        if (typeof DockView.setDiagnosticInteractionContext === "function") {
+            DockView.setDiagnosticInteractionContext(_hoverTraceScenarioId,
+                _hoverTraceInteractionId, _hoverTraceInteractionKind)
+        }
         traceMagnificationState("interaction-start", index, source, -1, index, {
             transition: kind
         })
@@ -137,7 +141,8 @@ Item {
         const itemPoint = item ? item.mapToItem(root, 0, 0) : null
         const media = item ? item.mediaPlayerWidget : null
         const focusKnown = DockView.pointerFocusKnown
-        const focusIsDock = focusKnown && DockView.pointerFocusWindow === root.Window.window
+        const focusWindow = DockView.pointerFocusWindow
+        const focusIsDock = focusKnown && focusWindow === root.Window.window
         const geometry = item ? {
             x: itemPoint.x, y: itemPoint.y, width: item.width, height: item.height,
             currentScale: item.currentScale, targetScale: item.zoomScale
@@ -155,6 +160,8 @@ Item {
             pointerMotionSerial: pointerMotionSerial,
             source: source,
             waylandSurfaceFocus: !focusKnown ? "unknown" : (focusIsDock ? "dock" : "other"),
+            pointerFocusWindowObjectName: focusWindow ? focusWindow.objectName : "",
+            pointerFocusWindowType: focusWindow ? focusWindow.type : -1,
             pointerLocal: { x: _pointerRootX, y: _pointerRootY },
             dockPanelPointer: { x: dockPanel.mouseX, y: dockPanel.mouseY },
             delegateGeometry: geometry,
@@ -180,6 +187,127 @@ Item {
         }
         for (const key in extra) details[key] = extra[key]
         return details
+    }
+
+    // Queried only through diagnostic IPC. This returns cached hover and
+    // magnification state plus current item geometry; it deliberately does
+    // not call trackPointer(), resolveDockItemHit(), or update any state.
+    function mediaHoverDiagnosticSnapshot() {
+        const compactIndex = _compactMediaMagnificationIndex
+        const popupIndex = _mediaPopupHoldIndex
+        let observedIndex = compactIndex >= 0 ? compactIndex
+            : popupIndex >= 0 ? popupIndex : hoveredIndex
+        let item = observedIndex >= 0 && observedIndex < dockRepeater.count
+            ? dockRepeater.itemAt(observedIndex) : null
+        if (item && compactIndex >= 0 && _compactMediaMagnificationEntryId.length > 0
+                && item.dockEntryId !== _compactMediaMagnificationEntryId) {
+            item = null
+        }
+        const media = item ? item.mediaPlayerWidget : null
+        // Keep the diagnostic snapshot useful when hover is currently on a
+        // different item (or no item). In particular, a failed return from a
+        // detached popup may have already cleared both the Compact anchor and
+        // the hovered index, so geometry must not depend on either state.
+        let mediaWidgetIndex = -1
+        const preferredMediaEntryId = _mediaPopupHoldEntryId.length > 0
+            ? _mediaPopupHoldEntryId
+            : _compactMediaMagnificationEntryId.length > 0
+                ? _compactMediaMagnificationEntryId
+                : item && item.isMediaPlayer ? item.dockEntryId : ""
+        for (let i = 0; i < dockRepeater.count; ++i) {
+            const candidate = dockRepeater.itemAt(i)
+            if (!candidate || !candidate.isMediaPlayer) continue
+            if (mediaWidgetIndex < 0) mediaWidgetIndex = i
+            if (preferredMediaEntryId.length > 0
+                    && candidate.dockEntryId === preferredMediaEntryId) {
+                mediaWidgetIndex = i
+                break
+            }
+        }
+        const mediaWidget = mediaWidgetIndex >= 0
+            ? dockRepeater.itemAt(mediaWidgetIndex) : null
+        const rowPoint = dockRow.mapToItem(root, 0, 0)
+        const panelPoint = dockPanel.mapToItem(root, 0, 0)
+        const screen = DockView.screenGeometry
+        const window = root.Window.window
+        const hitResolution = Object.assign({}, _lastHitTestResolution)
+        return {
+            schemaVersion: 1,
+            coordinateSpaces: {
+                pointerRoot: "last QML pointer sample in dock-root logical coordinates; it is not refreshed by this snapshot",
+                dockPanelMouse: "last stored primary/secondary pointer sample in dockPanel coordinates",
+                rowGeometry: "dock-root logical coordinates",
+                globalPointer: "unavailable through QtWayland QCursor; use the recorded wl_pointer surface-local sample"
+            },
+            pointer: {
+                pointerMotionSerial: pointerMotionSerial,
+                lastQmlPointerRoot: { x: _pointerRootX, y: _pointerRootY },
+                dockPanelMouse: { x: dockPanel.mouseX, y: dockPanel.mouseY },
+                pointerOnDock: _pointerOnDock,
+                compositorPointerInsideDock: DockView.pointerInside,
+                pointerFocusKnown: DockView.pointerFocusKnown,
+                focusWindowObjectName: DockView.pointerFocusWindow
+                    ? DockView.pointerFocusWindow.objectName : "",
+                focusWindowType: DockView.pointerFocusWindow ? DockView.pointerFocusWindow.type : -1
+            },
+            dock: {
+                edge: DockView.edge,
+                isVertical: DockView.isVertical,
+                screenGeometry: { x: screen.x, y: screen.y, width: screen.width, height: screen.height },
+                devicePixelRatio: window ? window.devicePixelRatio : 1,
+                surfaceLogicalGeometry: { x: root.x, y: root.y, width: root.width, height: root.height },
+                panelGeometry: { x: panelPoint.x, y: panelPoint.y, width: dockPanel.width, height: dockPanel.height },
+                rowGeometry: { x: rowPoint.x, y: rowPoint.y, width: dockRow.width, height: dockRow.height },
+                rowCount: dockRepeater.count
+            },
+            hitTest: {
+                lastProcessedResult: hitResolution,
+                rawIndex: hitResolution.rawIndex === undefined ? -1 : hitResolution.rawIndex,
+                resolvedIndex: hitResolution.resolvedIndex === undefined ? -1 : hitResolution.resolvedIndex,
+                sampleWasRecomputed: false
+            },
+            magnification: {
+                hoveredIndex: hoveredIndex,
+                hoveredName: hoveredName,
+                magnificationAnchor: hoveredIndex,
+                compactMagnificationIndex: compactIndex,
+                compactMagnificationEntryId: _compactMediaMagnificationEntryId,
+                compactAnchorMatchesCurrentRow: !!item && compactIndex === observedIndex,
+                zoomActive: _zoomActive,
+                mouseInside: dockPanel.mouseInside,
+                springTargetAmount: dockPanel.magnificationMode === 1
+                    ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0),
+                springAmount: dockPanel.magnificationMode === 1 ? springZoom.amount : 0,
+                springCursor: dockPanel.zoomCursor,
+                currentScale: item ? item.currentScale : 1,
+                itemTargetScale: item ? item.zoomScale : 1,
+                magnificationMode: dockPanel.magnificationMode
+            },
+            mediaPopup: {
+                visible: !!media && media.diagnosticPopupVisible,
+                state: media ? media.popupStateName(media.popupState) : "closed",
+                hovered: !!media && media.popupHovered,
+                pinned: !!media && media.popupPinned,
+                dockHoverLease: !!media && media.dockHoverLease,
+                mediaHoverGate: !!media && media.pointerOverDockWidget,
+                popupHoldIndex: popupIndex,
+                popupHoldEntryId: _mediaPopupHoldEntryId,
+                mediaWidgetIndex: mediaWidgetIndex,
+                mediaWidgetEntryId: mediaWidget ? mediaWidget.dockEntryId : "",
+                mediaWidgetDisplayMode: DockSettings.mediaPlayerDisplayMode,
+                compactWidgetGeometry: DockSettings.mediaPlayerDisplayMode === 0
+                    && mediaWidget ? _compactMediaWidgetGeometry(mediaWidgetIndex) : null,
+                mediaWidgetGeometry: mediaWidget
+                    ? _compactMediaWidgetGeometry(mediaWidgetIndex) : null,
+                mediaDelegateGeometry: mediaWidget
+                    ? _dockItemHitGeometry(mediaWidget) : null,
+                delegateGeometry: item ? _dockItemHitGeometry(item) : null
+            },
+            windowPreview: {
+                visible: PreviewController.visible,
+                parentIndex: PreviewController.parentIndex
+            }
+        }
     }
 
     function traceHitTestResolution(source, rawIndex, resolvedIndex, fallbackReason = "",
@@ -1397,7 +1525,7 @@ Item {
 
     // Pointer left the dock: release zoom and hover unless the preview keeps
     // them (dock→preview transition), and end a drag as a drag-out.
-    function _pointerLeft() {
+    function _pointerLeft(source = "unspecified") {
         // Qt Quick can send a local MouseArea leave while the compositor still
         // reports the stationary pointer on the dock surface as the media
         // popup is being prepared. Preserve the Compact target through that
@@ -1405,11 +1533,44 @@ Item {
         // leaving the dock will take the normal cleanup path below.
         const leaveGuardFailures = DockView.mediaHoverDebugEnabled ? [] : null
         const retainCompactTarget = _shouldRetainCompactMediaMagnificationOnSurfaceLeave(leaveGuardFailures)
+        const mediaPopupHoldItem = _mediaPopupHoldIndex >= 0
+            ? dockRepeater.itemAt(_mediaPopupHoldIndex) : null
+        const mediaPopupHoldWidget = mediaPopupHoldItem ? mediaPopupHoldItem.mediaPlayerWidget : null
         if (DockView.mediaHoverDebugEnabled) {
             traceMagnificationState("compact-surface-leave-guard", _compactMediaMagnificationIndex,
                 "_pointerLeft", hoveredIndex, hoveredIndex, {
+                    caller: source,
                     retained: retainCompactTarget,
-                    guardFailures: leaveGuardFailures
+                    guardFailures: leaveGuardFailures,
+                    dockMouseAreaContainsMouse: dockMouseArea.containsMouse,
+                    pointerOnDock: _pointerOnDock,
+                    pointerInside: DockView.pointerInside,
+                    pointerFocusKnown: DockView.pointerFocusKnown,
+                    pointerFocusIsDock: DockView.pointerFocusWindow === root.Window.window,
+                    pointerFocusWindowObjectName: DockView.pointerFocusWindow
+                        ? DockView.pointerFocusWindow.objectName : "",
+                    panelPointer: { x: dockPanel.mouseX, y: dockPanel.mouseY },
+                    mouseInside: dockPanel.mouseInside,
+                    hoveredIndex: hoveredIndex,
+                    compactMagnificationIndex: _compactMediaMagnificationIndex,
+                    activeHit: _lastHitTestResolution,
+                    zoomActive: _zoomActive,
+                    springTargetAmount: dockPanel.magnificationMode === 1
+                        ? springZoom.targetAmount : (dockPanel.mouseInside ? 1 : 0),
+                    springAmount: dockPanel.magnificationMode === 1 ? springZoom.amount : 0,
+                    mediaPopupHoldIndex: _mediaPopupHoldIndex,
+                    mediaPopupHoldEntryId: _mediaPopupHoldEntryId,
+                    popupVisible: !!mediaPopupHoldWidget && mediaPopupHoldWidget.diagnosticPopupVisible,
+                    popupState: mediaPopupHoldWidget
+                        ? mediaPopupHoldWidget.popupStateName(mediaPopupHoldWidget.popupState) : "closed",
+                    popupHovered: !!mediaPopupHoldWidget && mediaPopupHoldWidget.popupHovered,
+                    popupPinned: !!mediaPopupHoldWidget && mediaPopupHoldWidget.popupPinned,
+                    popupWindowObjectName: mediaPopupHoldWidget && mediaPopupHoldWidget.popupWindow
+                        ? mediaPopupHoldWidget.popupWindow.objectName : "",
+                    compactGeometry: _compactMediaMagnificationIndex >= 0
+                        && _compactMediaMagnificationIndex < dockRepeater.count
+                        ? _dockItemHitGeometry(dockRepeater.itemAt(_compactMediaMagnificationIndex))
+                        : null
                 })
         }
         if (retainCompactTarget) {
@@ -1545,7 +1706,7 @@ Item {
                 })
         Qt.callLater(() => {
             if (!DockView.pointerInside) {
-                root._pointerLeft()
+                root._pointerLeft("releaseMediaPopup.pointerOutside")
                 return
             }
             root._pointerOnDock = true
@@ -1564,7 +1725,7 @@ Item {
     function folderStackPopupClosed() {
         Qt.callLater(() => {
             if (!DockView.pointerInside) {
-                root._pointerLeft()
+                root._pointerLeft("folderStackPopupClosed.pointerOutside")
                 return
             }
             root._pointerOnDock = true
@@ -1624,7 +1785,7 @@ Item {
                 root._hoverReconciling = true
                 Qt.callLater(root._reconcileAfterHold)
             } else {
-                root._pointerLeft()
+                root._pointerLeft("DockContextMenu.onOpenChanged")
             }
         }
     }
@@ -1640,7 +1801,7 @@ Item {
                 PreviewController.cancelHide()
             if (!DockView.pointerInside && !root._menuHeld && root._pointerOnDock
                     && !dockMouseArea.containsMouse)
-                root._pointerLeft()
+                root._pointerLeft("DockView.onPointerInsideChanged")
         }
     }
 
@@ -1671,7 +1832,7 @@ Item {
             if (root._menuHeld) return
             if (DockView.performanceDiagnosticsEnabled)
                 root._perfPointerLeaves++
-            root._pointerLeft()
+            root._pointerLeft("dockMouseArea.onExited")
         }
 
         // Start drag hold timer on left-button press.
@@ -2834,6 +2995,13 @@ Item {
                 // Resume a stopped tooltip without delaying a pending hover.
                 tooltipTimer.start()
             }
+        }
+    }
+
+    Connections {
+        target: DockView
+        function onMediaHoverMarkerReceived(label) {
+            root.recordHoverTraceMarker(label)
         }
     }
 

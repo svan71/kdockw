@@ -26,6 +26,7 @@ service="kdockw-v070-diagnostic-release.service"
 preflight_only=false
 wayland_debug=false
 wayland_debug_args=()
+wayland_client_trace_log=""
 profile_name=""
 preview_capture_mode=cpu-only
 task_diagnostics=false
@@ -142,6 +143,8 @@ if [[ "$kservice_trace" == true ]]; then
 fi
 if [[ "$wayland_debug" == true ]]; then
     wayland_debug_args+=(--setenv=WAYLAND_DEBUG=client)
+    wayland_client_trace_log="${diagnostic_root}/logs/wayland-client-${profile_name:-default}-$(date +%Y%m%d-%H%M%S%N).jsonl"
+    wayland_debug_args+=(--setenv="KDOCKW_WAYLAND_CLIENT_TRACE_OUT=${wayland_client_trace_log}")
 fi
 
 [[ -x "$source_binary" ]] || fail "diagnostic build binary is missing: $source_binary"
@@ -404,6 +407,9 @@ if [[ "$media_hover_debug" == true ]]; then
     media_hover_debug_args+=(--setenv="KDOCKW_MEDIA_HOVER_BUILD_ID=${staged_build_id}")
     media_hover_debug_args+=(--setenv="KDOCKW_MEDIA_HOVER_PROFILE=${profile_name}")
 fi
+if [[ "$wayland_debug" == true ]]; then
+    install -m 0600 /dev/null "$wayland_client_trace_log"
+fi
 launcher_timing_args=()
 if [[ "$launcher_timing" == true ]]; then
     launcher_timing_args+=(--setenv=KDOCKW_LAUNCHER_TIMING=1)
@@ -417,8 +423,16 @@ if [[ "$kservice_trace" == true ]]; then
     kservice_trace_args+=(--setenv="KDOCKW_KSERVICE_TRACE_OUT=${kservice_trace_log}")
 fi
 model_logging_args=()
+qt_logging_rules=""
 if [[ "$model_debug" == false ]]; then
-    model_logging_args+=(--setenv='QT_LOGGING_RULES=kdockw.model.debug=false;kdockw.presentation.debug=false')
+    qt_logging_rules='kdockw.model.debug=false;kdockw.presentation.debug=false'
+fi
+if [[ "$wayland_debug" == true ]]; then
+    [[ -z "$qt_logging_rules" ]] || qt_logging_rules+=';'
+    qt_logging_rules+='qt.qpa.wayland.input.debug=true'
+fi
+if [[ -n "$qt_logging_rules" ]]; then
+    model_logging_args+=(--setenv="QT_LOGGING_RULES=${qt_logging_rules}")
 fi
 performance_diagnostic_args=()
 if [[ "$performance_diagnostics" == true ]]; then
@@ -462,6 +476,11 @@ if [[ "$performance_diagnostics" == true ]]; then
         --duration 180 --wait-seconds 20 \
         || fail "could not start the bounded runtime observer"
 fi
+candidate_command=("$binary")
+if [[ "$wayland_debug" == true ]]; then
+    candidate_command=("${script_dir}/kdockw-v070-wayland-trace-exec" "$binary")
+fi
+candidate_command+=("${qml_profiler_args[@]}")
 systemd-run --user --no-block --collect --unit="$service" \
     --property=Type=exec \
     --property="WorkingDirectory=${repo_root}" \
@@ -489,7 +508,7 @@ systemd-run --user --no-block --collect --unit="$service" \
     --setenv="XDG_CACHE_HOME=${runtime_cache_home}" \
     --setenv="KDOCKW_PREVIEW_CAPTURE_MODE=${preview_capture_mode}" \
     "${wayland_debug_args[@]}" \
-    "$binary" "${qml_profiler_args[@]}"
+    "${candidate_command[@]}"
 
 started=false
 for _ in {1..50}; do
@@ -511,6 +530,9 @@ printf 'Started %s\nBinary: %s\nKWin authorization Desktop ID: %s\nPreview captu
     "$service" "$canonical_binary" "$candidate_desktop_id" "$preview_capture_mode" "$task_diagnostics" "$media_popup_trace" "$media_hover_debug" "$launcher_timing" "$model_debug" "$performance_diagnostics" "$qml_profiler" "$kservice_trace" "$config_backup" "$config_file" "$diagnostic_xdg_config_home" "$runtime_data_home" "$runtime_cache_home" "$log_file"
 if [[ "$media_hover_debug" == true ]]; then
     printf 'Media hover event log: %s\n' "$media_hover_debug_log"
+fi
+if [[ "$wayland_debug" == true ]]; then
+    printf 'Filtered Wayland client trace (selected requests/events only, max 8 MiB): %s\n' "$wayland_client_trace_log"
 fi
 if [[ "$kservice_trace" == true ]]; then
     printf 'KService trace: %s\n' "$kservice_trace_log"

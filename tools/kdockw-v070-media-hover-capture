@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Run a finite IPC snapshot series for one active v0.7.0 media-hover candidate."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import socket
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CANDIDATE_SUFFIX = "/build/v070-diagnostic-release/stage/bin/kdockw"
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+BUILD_ID_RE = re.compile(r"(?m)^\s*Build ID:\s*([0-9a-fA-F]+)\s*$")
+PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+def process_info(pid: int) -> tuple[str, dict[str, str]] | None:
+    proc = Path("/proc") / str(pid)
+    try:
+        if (proc / "comm").read_text().strip() != "kdockw":
+            return None
+        executable = str((proc / "exe").resolve())
+        raw_env = (proc / "environ").read_bytes().split(b"\0")
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return None
+    environment: dict[str, str] = {}
+    for item in raw_env:
+        if b"=" in item:
+            key, value = item.split(b"=", 1)
+            environment[key.decode(errors="replace")] = value.decode(errors="replace")
+    return executable, environment
+
+
+def active_docks() -> list[tuple[int, str, dict[str, str]]]:
+    result = []
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            info = process_info(int(entry.name))
+            if info:
+                result.append((int(entry.name), info[0], info[1]))
+    return result
+
+
+def verify_build_id(executable: str, expected: str) -> bool:
+    readelf = "/usr/bin/readelf"
+    if not os.path.isfile(readelf) or not os.access(readelf, os.X_OK):
+        return False
+    try:
+        result = subprocess.run(
+            [readelf, "-n", executable], check=True, capture_output=True, text=True,
+            env={**os.environ, "LC_ALL": "C"}, timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    match = BUILD_ID_RE.search(result.stdout)
+    return bool(match and match.group(1).lower() == expected.lower())
+
+
+def connect_to_candidate(pid: int, runtime_dir: Path):
+    if not runtime_dir.is_dir():
+        raise PermissionError("XDG_RUNTIME_DIR is unavailable")
+    runtime_stat = runtime_dir.stat()
+    if runtime_stat.st_uid != os.getuid() or stat.S_IMODE(runtime_stat.st_mode) & 0o077:
+        raise PermissionError("XDG_RUNTIME_DIR is not private to the current user")
+    socket_path = runtime_dir / f"kdockw-media-hover-{pid}.sock"
+    socket_stat = socket_path.stat()
+    if (not stat.S_ISSOCK(socket_stat.st_mode) or socket_stat.st_uid != os.getuid()
+            or stat.S_IMODE(socket_stat.st_mode) & 0o077):
+        raise PermissionError("candidate IPC socket is not private to the current user")
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(4.0)
+    client.connect(str(socket_path))
+    return client
+
+
+def request(pid: int, runtime_dir: Path, payload: dict[str, object]) -> dict[str, object]:
+    encoded = json.dumps(payload, separators=(",", ":")).encode() + b"\n"
+    with connect_to_candidate(pid, runtime_dir) as client:
+        client.sendall(encoded)
+        client.shutdown(socket.SHUT_WR)
+        response = bytearray()
+        while len(response) <= MAX_RESPONSE_BYTES:
+            part = client.recv(65536)
+            if not part:
+                break
+            response.extend(part)
+    if len(response) > MAX_RESPONSE_BYTES:
+        raise ValueError("candidate IPC response exceeded the 2 MiB safety limit")
+    if "label" in payload:
+        if response != b"OK\n":
+            raise ValueError(f"candidate rejected marker: {response.decode(errors='replace').strip()}")
+        return {"status": "ok"}
+    try:
+        parsed = json.loads(response.decode().strip())
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"candidate returned an invalid response: {error}") from error
+    if not isinstance(parsed, dict) or parsed.get("status") != "ok":
+        raise ValueError(f"candidate rejected request: {parsed!r}")
+    return parsed
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Capture a bounded series of read-only hover snapshots without moving or synthesizing pointer input."
+    )
+    parser.add_argument("--delay", type=float, default=5.0, help="seconds before capture begins (default: 5)")
+    parser.add_argument("--interval", type=float, default=0.5, help="seconds between snapshots (default: 0.5)")
+    parser.add_argument("--count", type=int, default=60, help="number of snapshots (default: 60)")
+    args = parser.parse_args()
+    if not (0 <= args.delay <= 60 and 0.25 <= args.interval <= 5 and 2 <= args.count <= 180):
+        parser.error("use delay 0..60s, interval 0.25..5s, and count 2..180")
+    if args.delay + args.interval * args.count > 120:
+        parser.error("one capture may not exceed 120 seconds")
+
+    docks = active_docks()
+    if len(docks) != 1:
+        print(f"refusing capture: expected exactly one KDockW process, found {len(docks)}", file=sys.stderr)
+        return 2
+    pid, executable, environment = docks[0]
+    if (not executable.startswith(str(REPO_ROOT) + "/") or not executable.endswith(CANDIDATE_SUFFIX)):
+        print(f"refusing capture: active KDockW is not the staged v0.7.0 diagnostic candidate: {executable}", file=sys.stderr)
+        return 2
+    if environment.get("KDOCKW_MEDIA_HOVER_DEBUG") != "1":
+        print("refusing capture: media-hover diagnostics are not enabled", file=sys.stderr)
+        return 2
+
+    profile = environment.get("KDOCKW_MEDIA_HOVER_PROFILE", "")
+    build_id = environment.get("KDOCKW_MEDIA_HOVER_BUILD_ID", "")
+    trace_path = Path(environment.get("KDOCKW_MEDIA_HOVER_TRACE_OUT", ""))
+    runtime_dir = Path(environment.get("XDG_RUNTIME_DIR", ""))
+    if not PROFILE_RE.fullmatch(profile) or not re.fullmatch(r"[0-9a-fA-F]{40,64}", build_id):
+        print("refusing capture: candidate profile or Build ID metadata is invalid", file=sys.stderr)
+        return 2
+    if not trace_path.is_file() or not trace_path.resolve().is_relative_to(REPO_ROOT / "diagnostics/v070-dev/logs"):
+        print("refusing capture: active trace path is outside diagnostics/v070-dev/logs", file=sys.stderr)
+        return 2
+    if not verify_build_id(executable, build_id):
+        print("refusing capture: process ELF GNU Build ID does not match its diagnostic environment", file=sys.stderr)
+        return 2
+
+    timestamp = f"{time.strftime('%Y%m%d-%H%M%S', time.localtime())}-{time.monotonic_ns()}"
+    sidecar = trace_path.parent / f"owner-capture-{profile}-{timestamp}.jsonl"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(sidecar, flags, 0o600)
+    except OSError as error:
+        print(f"refusing capture: cannot create private capture sidecar: {error}", file=sys.stderr)
+        return 1
+
+    def write_record(fd: int, record: dict[str, object]) -> None:
+        data = json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode() + b"\n"
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+
+    print(f"Capture scheduled: {args.delay:g}s delay, {args.count} snapshots at {args.interval:g}s intervals.", flush=True)
+    print("Move the pointer through Window Preview → dock, then Compact → Media Popup → Compact; do not switch focus during either return.", flush=True)
+    try:
+        time.sleep(args.delay)
+        start_ns = time.monotonic_ns()
+        write_record(descriptor, {
+            "event": "capture-start",
+            "monotonicReferenceNs": start_ns,
+            "pid": pid,
+            "buildId": build_id,
+            "profile": profile,
+            "trace": str(trace_path),
+        })
+        request(pid, runtime_dir, {"label": "capture-begin"})
+        print("Capture started; perform both pointer transitions now.", flush=True)
+        previous_focus: str | None = None
+        previous_popup_visible: bool | None = None
+        for sequence in range(args.count):
+            request_id = f"capture-{sequence + 1}-{time.monotonic_ns()}"
+            response = request(pid, runtime_dir, {"command": "snapshot", "requestId": request_id})
+            snapshot = response.get("snapshot")
+            if not isinstance(snapshot, dict) or snapshot.get("available") is not True:
+                raise ValueError(f"candidate snapshot is unavailable: {snapshot!r}")
+            wayland = snapshot.get("waylandPointerTracker")
+            focused = wayland.get("focusedSurface", {}) if isinstance(wayland, dict) else {}
+            focus_role = focused.get("surfaceClass", "unknown") if isinstance(focused, dict) else "unknown"
+            popup_state = snapshot.get("mediaPopup", {})
+            popup_visible = popup_state.get("visible") if isinstance(popup_state, dict) else None
+            write_record(descriptor, {
+                "event": "snapshot",
+                "captureSequence": sequence + 1,
+                "requestId": request_id,
+                "monotonicReferenceNs": time.monotonic_ns(),
+                "snapshot": snapshot,
+            })
+
+            transition = None
+            if previous_focus == "window-preview" and focus_role == "dock":
+                transition = "auto-window-preview-return"
+            elif previous_focus == "dock" and focus_role == "window-preview":
+                transition = "auto-window-preview-enter"
+            elif previous_focus == "media-popup" and focus_role == "dock":
+                transition = "auto-media-popup-return"
+            elif previous_focus == "dock" and focus_role == "media-popup":
+                transition = "auto-media-popup-enter"
+            if transition and LABEL_RE.fullmatch(transition):
+                request(pid, runtime_dir, {"label": transition})
+                write_record(descriptor, {
+                    "event": "auto-transition-marker",
+                    "label": transition,
+                    "captureSequence": sequence + 1,
+                    "monotonicReferenceNs": time.monotonic_ns(),
+                })
+            if previous_popup_visible is not None and popup_visible != previous_popup_visible:
+                label = "auto-media-popup-visible" if popup_visible else "auto-media-popup-hidden"
+                request(pid, runtime_dir, {"label": label})
+                write_record(descriptor, {
+                    "event": "auto-transition-marker",
+                    "label": label,
+                    "captureSequence": sequence + 1,
+                    "monotonicReferenceNs": time.monotonic_ns(),
+                })
+            previous_focus = focus_role
+            previous_popup_visible = popup_visible
+            if sequence + 1 < args.count:
+                time.sleep(args.interval)
+        request(pid, runtime_dir, {"label": "capture-end"})
+        write_record(descriptor, {
+            "event": "capture-end",
+            "monotonicReferenceNs": time.monotonic_ns(),
+            "snapshots": args.count,
+        })
+    except (OSError, ValueError, PermissionError) as error:
+        try:
+            request(pid, runtime_dir, {"label": "capture-error"})
+        except OSError:
+            pass
+        write_record(descriptor, {
+            "event": "capture-error",
+            "monotonicReferenceNs": time.monotonic_ns(),
+            "error": str(error),
+        })
+        print(f"capture failed: {error}", file=sys.stderr)
+        return 1
+    finally:
+        os.close(descriptor)
+
+    print(f"Capture complete. Snapshot trace: {trace_path}\nSeries: {sidecar}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

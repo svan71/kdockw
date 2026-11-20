@@ -13,6 +13,7 @@
 #include <QVariant>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QRegion>
 
 #include <memory>
 #ifdef KDOCKW_DIAGNOSTIC_BUILD
@@ -165,6 +166,12 @@ public:
     [[nodiscard]] bool launcherTimingEnabled() const;
     Q_INVOKABLE qint64 monotonicNowMs() const;
     Q_INVOKABLE void traceMediaHover(const QString &event, const QVariantMap &details) const;
+    Q_INVOKABLE void registerDiagnosticSurface(QObject *windowObject, const QString &role);
+    Q_INVOKABLE void setDiagnosticInteractionContext(const QString &scenarioId,
+                                                     const QString &interactionId,
+                                                     const QString &interactionKind);
+    /// Read the last observed hover/magnification state without polling or running hit testing.
+    Q_INVOKABLE QVariantMap captureMediaHoverDiagnosticSnapshot() const;
     [[nodiscard]] QString launcherDiagnosticPage() const;
     Q_INVOKABLE void traceLauncherUi(const QString &label, const QVariantMap &state) const;
 
@@ -217,6 +224,17 @@ private:
     bool m_mediaHoverDebugEnabled = false;
     QString m_mediaHoverBuildId;
     mutable QFile m_mediaHoverTraceFile;
+    mutable quint64 m_mediaHoverTraceSequence = 0;
+    quint64 m_lastWaylandPointerEventId = 0;
+    QVariantMap m_lastWaylandEvent;
+    QVariantMap m_lastWaylandPointerEvent;
+    QRegion m_lastDockInputRegion;
+    QVariantMap m_lastDockInputRegionState;
+    QString m_lastDockInputRegionReason;
+    bool m_hasLastDockInputRegion = false;
+    QString m_diagnosticScenarioId = QStringLiteral("unmarked");
+    QString m_diagnosticInteractionId = QStringLiteral("unmarked");
+    QString m_diagnosticInteractionKind = QStringLiteral("none");
     std::unique_ptr<QLocalServer> m_mediaHoverMarkerServer;
     bool m_launcherTimingEnabled = false;
 #ifdef KDOCKW_DIAGNOSTIC_BUILD

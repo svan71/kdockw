@@ -305,6 +305,13 @@ Item {
         hideTimer.stop()
     }
 
+    function registerDiagnosticPopupSurface() {
+        if (!DockView.mediaHoverDebugEnabled || !root.popupWindow
+                || typeof DockView.registerDiagnosticSurface !== "function")
+            return
+        DockView.registerDiagnosticSurface(root.popupWindow, "media-popup")
+    }
+
     function startCloseTimer(reason) {
         traceMediaHover("close-timer-start", { reason: reason, intervalMs: hideTimer.interval })
         hideTimer.restart()
@@ -667,6 +674,7 @@ Item {
                 if (positioned) {
                     root.holdDockForPopup()
                     root.popupOpenRequested = true
+                    root.registerDiagnosticPopupSurface()
                     popup.open()
                     root.logPopupState("open-hover-request")
                 } else {
@@ -1423,6 +1431,7 @@ Item {
             root.traceMediaHover("popup-visibility", { visible: false, reason: "closed-signal" })
         }
         onOpened: {
+            root.registerDiagnosticPopupSurface()
             const dockRoot = root.dockDelegate && root.dockDelegate.dockRoot
             if (dockRoot && dockRoot.beginHoverTraceInteraction
                     && dockRoot._hoverTraceInteractionKind !== "media-popup")

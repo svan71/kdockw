@@ -9,8 +9,10 @@
 #include <QObject>
 #include <QModelIndex>
 #include <QPointer>
+#include <QRegion>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
 
 namespace TaskManager
 {
@@ -82,6 +84,9 @@ public:
     /// Set the delay before the dock hides when the mouse leaves the dock area.
     void setHideDelay(int ms);
 
+    /// Enable event-driven input-region diagnostics for an isolated debug run.
+    void setInputRegionDiagnosticsEnabled(bool enabled);
+
     /// Set the zoom overflow height so the hovered input region excludes
     /// non-interactive space above the zoom area (e.g. tooltip reserve).
     void setZoomOverflowHeight(int height);
@@ -115,6 +120,8 @@ Q_SIGNALS:
     void dockVisibleChanged();
     void modeChanged();
     void panelRectChanged();
+    /// Diagnostic observation of the exact Qt input region passed to the platform.
+    void inputRegionApplied(const QRegion &region, const QString &reason, const QVariantMap &state);
     /// The pointer moved (anywhere on screen) during keyboard navigation.
     void pointerMovedDuringKeyboardNavigation();
 
@@ -151,7 +158,7 @@ private:
     QWindow *m_dockWindow;
     QPointer<QScreen> m_dockScreen;
 
-    void applyInputRegion();
+    void applyInputRegion(const QString &reason);
     void updateRegionGeometry();
 
     /// Calculate the dock panel rect in screen coordinates.
@@ -205,6 +212,7 @@ private:
 
     // DodgeWindows sub-option: true = dodge active window only, false = dodge all
     bool m_dodgeActiveOnly = false;
+    bool m_inputRegionDiagnosticsEnabled = false;
 
     // Show timer: fires after mouse dwells in trigger area for showDelay ms
     QTimer m_showTimer;

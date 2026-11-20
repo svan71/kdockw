@@ -2886,6 +2886,23 @@ Item {
             verify(compactItem, "the dock fixture should include a Compact delegate")
             tryVerify(() => compactItem.mediaPlayerWidget, 2000,
                 "the Compact delegate should expose the shared media hover trace")
+            const snapshotStateBefore = {
+                pointerMotionSerial: dock.pointerMotionSerial,
+                hoveredIndex: dock.hoveredIndex,
+                zoomActive: dock._zoomActive,
+                pointerOnDock: dock._pointerOnDock
+            }
+            const readOnlySnapshot = dock.mediaHoverDiagnosticSnapshot()
+            verify(readOnlySnapshot.mediaPopup.compactWidgetGeometry,
+                "the snapshot should report Compact geometry while another app is hovered")
+            compare(readOnlySnapshot.mediaPopup.mediaWidgetIndex, compactItem.index)
+            compare(readOnlySnapshot.mediaPopup.mediaWidgetEntryId, compactItem.dockEntryId)
+            compare(readOnlySnapshot.mediaPopup.compactWidgetGeometry.visible, true)
+            compare(readOnlySnapshot.hitTest.sampleWasRecomputed, false)
+            compare(dock.pointerMotionSerial, snapshotStateBefore.pointerMotionSerial)
+            compare(dock.hoveredIndex, snapshotStateBefore.hoveredIndex)
+            compare(dock._zoomActive, snapshotStateBefore.zoomActive)
+            compare(dock._pointerOnDock, snapshotStateBefore.pointerOnDock)
             compactItem.mediaPlayerWidget.traceMediaHover("comparison-media-snapshot", {
                 rawHitTestIndex: -1,
                 resolvedHitTestIndex: compactItem.index

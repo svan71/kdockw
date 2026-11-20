@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+filter="${script_dir}/kdockw-v070-wayland-trace-filter.py"
+trace_out="${KDOCKW_WAYLAND_CLIENT_TRACE_OUT:-}"
+[[ -n "$trace_out" ]] || { printf 'missing KDOCKW_WAYLAND_CLIENT_TRACE_OUT\n' >&2; exit 2; }
+[[ -r "$filter" ]] || { printf 'Wayland trace filter is unavailable\n' >&2; exit 2; }
+(($# > 0)) || { printf 'usage: %s PROGRAM [ARG ...]\n' "$0" >&2; exit 2; }
+
+# Keep the candidate as systemd's MainPID (the shell is replaced by exec),
+# while filtering only its stderr protocol stream into the bounded sidecar.
+exec "$@" 2> >(python3 "$filter" --output "$trace_out")

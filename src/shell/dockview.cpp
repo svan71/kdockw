@@ -24,6 +24,7 @@
 #include <QPainterPath>
 #include <QRegularExpression>
 #include <QQuickStyle>
+#include <QRegion>
 #include <LayerShellQt/Window>
 
 #include <taskmanager/tasksmodel.h>
@@ -42,11 +43,58 @@
 
 #include <utility>
 #include <functional>
+#include <time.h>
 
 Q_LOGGING_CATEGORY(lcDockView, "kdockw.shell.dockview")
 
 namespace kdockw
 {
+
+namespace
+{
+
+QVariantMap inputRegionDiagnostic(const QRegion &region)
+{
+    QVariantList rectangles;
+    constexpr int maxRectangles = 256;
+    int rectangleIndex = 0;
+    for (const QRect &rect : region) {
+        if (rectangleIndex++ >= maxRectangles) {
+            break;
+        }
+        rectangles.append(QVariantMap{
+            {QStringLiteral("x"), rect.x()},
+            {QStringLiteral("y"), rect.y()},
+            {QStringLiteral("width"), rect.width()},
+            {QStringLiteral("height"), rect.height()},
+        });
+    }
+    const QRect bounds = region.boundingRect();
+    return {
+        {QStringLiteral("coordinateSpace"), QStringLiteral("dock-surface-local-logical")},
+        {QStringLiteral("empty"), region.isEmpty()},
+        {QStringLiteral("rectCount"), region.rectCount()},
+        {QStringLiteral("rectanglesTruncated"), region.rectCount() > rectangles.size()},
+        {QStringLiteral("rectangles"), rectangles},
+        {QStringLiteral("boundingRect"), QVariantMap{
+            {QStringLiteral("x"), bounds.x()},
+            {QStringLiteral("y"), bounds.y()},
+            {QStringLiteral("width"), bounds.width()},
+            {QStringLiteral("height"), bounds.height()},
+        }},
+    };
+}
+
+qint64 monotonicReferenceNowNs()
+{
+    timespec now{};
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return -1;
+    }
+    return static_cast<qint64>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+}
+
+} // namespace
 
 DockView::DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *settings, QWindow *parent)
     : QQuickView(parent)
@@ -58,7 +106,12 @@ DockView::DockView(std::unique_ptr<DockPlatform> platform, KDockWSettings *setti
     m_monotonicClock.start();
 }
 
-DockView::~DockView() = default;
+DockView::~DockView()
+{
+    if (m_pointerFocusTracker) {
+        m_pointerFocusTracker->setDiagnosticEnabled(false);
+    }
+}
 
 void DockView::initialize(TaskManager::TasksModel *tasksModel,
                           TaskManager::VirtualDesktopInfo *virtualDesktopInfo,
@@ -125,6 +178,21 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerInsideChanged, this, &DockView::pointerInsideChanged);
     connect(m_pointerFocusTracker.get(), &PointerFocusTracker::pointerFocusChanged,
             this, &DockView::pointerFocusWindowChanged);
+    connect(m_pointerFocusTracker.get(), &PointerFocusTracker::diagnosticEvent, this,
+            [this](const QString &event, const QVariantMap &details) {
+                m_lastWaylandPointerEventId = details.value(QStringLiteral("waylandPointerEventId"),
+                                                             m_lastWaylandPointerEventId).toULongLong();
+                QVariantMap observed = details;
+                observed.insert(QStringLiteral("event"), event);
+                observed.insert(QStringLiteral("monotonicMs"), m_monotonicClock.elapsed());
+                observed.insert(QStringLiteral("monotonicNs"), m_monotonicClock.nsecsElapsed());
+                observed.insert(QStringLiteral("monotonicReferenceNs"), monotonicReferenceNowNs());
+                m_lastWaylandEvent = observed;
+                if (details.contains(QStringLiteral("waylandPointerEventId"))) {
+                    m_lastWaylandPointerEvent = observed;
+                }
+                traceMediaHover(event, details);
+            });
     m_mediaPopupTraceEnabled = qEnvironmentVariable("KDOCKW_MEDIA_POPUP_TRACE") == QLatin1String("1");
     m_mediaHoverDebugEnabled = qEnvironmentVariable("KDOCKW_MEDIA_HOVER_DEBUG") == QLatin1String("1");
     if (m_mediaHoverDebugEnabled) {
@@ -167,6 +235,31 @@ void DockView::initialize(TaskManager::TasksModel *tasksModel,
                 }
             }
         }
+    }
+    if (m_mediaHoverDebugEnabled && m_pointerFocusTracker) {
+        m_pointerFocusTracker->setDiagnosticEnabled(true);
+        m_pointerFocusTracker->registerDiagnosticWindow(this, QStringLiteral("dock"));
+    }
+    if (m_mediaHoverDebugEnabled && m_visibilityController) {
+        m_visibilityController->setInputRegionDiagnosticsEnabled(true);
+        connect(m_visibilityController, &DockVisibilityController::inputRegionApplied, this,
+                [this](const QRegion &region, const QString &reason, const QVariantMap &state) {
+                    m_lastDockInputRegion = region;
+                    m_lastDockInputRegionReason = reason;
+                    m_lastDockInputRegionState = state;
+                    m_hasLastDockInputRegion = true;
+                    QVariantMap details = inputRegionDiagnostic(region);
+                    details.insert(QStringLiteral("surfaceRole"), QStringLiteral("dock"));
+                    details.insert(QStringLiteral("reason"), reason);
+                    details.insert(QStringLiteral("controllerState"), state);
+                    details.insert(QStringLiteral("windowGeometry"), QVariantMap{
+                        {QStringLiteral("x"), geometry().x()},
+                        {QStringLiteral("y"), geometry().y()},
+                        {QStringLiteral("width"), width()},
+                        {QStringLiteral("height"), height()},
+                    });
+                    traceMediaHover(QStringLiteral("surface-input-region"), details);
+                });
     }
     m_launcherTimingEnabled = qEnvironmentVariable("KDOCKW_LAUNCHER_TIMING") == QLatin1String("1");
 
@@ -397,6 +490,66 @@ qint64 DockView::monotonicNowMs() const
     return m_monotonicClock.elapsed();
 }
 
+QVariantMap DockView::captureMediaHoverDiagnosticSnapshot() const
+{
+    if (!m_mediaHoverDebugEnabled) {
+        return {{QStringLiteral("available"), false},
+                {QStringLiteral("reason"), QStringLiteral("media-hover-diagnostics-disabled")}};
+    }
+
+    QVariant qmlState;
+    QObject *root = rootObject();
+    if (!root || !QMetaObject::invokeMethod(root,
+                                            "mediaHoverDiagnosticSnapshot",
+                                            Qt::DirectConnection,
+                                            Q_RETURN_ARG(QVariant, qmlState))) {
+        return {{QStringLiteral("available"), false},
+                {QStringLiteral("reason"), QStringLiteral("qml-snapshot-method-unavailable")}};
+    }
+
+    QVariantMap snapshot = qmlState.toMap();
+    snapshot.insert(QStringLiteral("available"), true);
+    snapshot.insert(QStringLiteral("snapshotSemantics"),
+                    QStringLiteral("read-only; no pointer polling, hit testing, or hover state update"));
+    snapshot.insert(QStringLiteral("monotonicReferenceNs"), monotonicReferenceNowNs());
+    snapshot.insert(QStringLiteral("lastWaylandEvent"), m_lastWaylandEvent);
+    snapshot.insert(QStringLiteral("lastWaylandPointerEvent"), m_lastWaylandPointerEvent);
+    if (m_pointerFocusTracker) {
+        snapshot.insert(QStringLiteral("waylandPointerTracker"), m_pointerFocusTracker->diagnosticSnapshot());
+    }
+    snapshot.insert(QStringLiteral("dockSurfaceQtMask"), inputRegionDiagnostic(mask()));
+    snapshot.insert(QStringLiteral("lastDockInputRegionSent"), m_hasLastDockInputRegion
+                        ? QVariant(inputRegionDiagnostic(m_lastDockInputRegion)) : QVariant{});
+    snapshot.insert(QStringLiteral("lastDockInputRegionReason"), m_lastDockInputRegionReason);
+    snapshot.insert(QStringLiteral("lastDockInputRegionControllerState"), m_lastDockInputRegionState);
+    snapshot.insert(QStringLiteral("inputRegionObservationLimit"),
+                    QStringLiteral("client-side QWindow mask/request only; KWin's effective region is not exposed here"));
+    return snapshot;
+}
+
+void DockView::registerDiagnosticSurface(QObject *windowObject, const QString &role)
+{
+    if (!m_mediaHoverDebugEnabled || !m_pointerFocusTracker || !windowObject) {
+        return;
+    }
+    auto *window = qobject_cast<QWindow *>(windowObject);
+    if (window) {
+        m_pointerFocusTracker->registerDiagnosticWindow(window, role);
+    }
+}
+
+void DockView::setDiagnosticInteractionContext(const QString &scenarioId,
+                                              const QString &interactionId,
+                                              const QString &interactionKind)
+{
+    if (!m_mediaHoverDebugEnabled) {
+        return;
+    }
+    m_diagnosticScenarioId = scenarioId;
+    m_diagnosticInteractionId = interactionId;
+    m_diagnosticInteractionKind = interactionKind;
+}
+
 void DockView::traceMediaHover(const QString &event, const QVariantMap &details) const
 {
     if (!m_mediaHoverDebugEnabled || !m_mediaHoverTraceFile.isOpen()) {
@@ -404,8 +557,21 @@ void DockView::traceMediaHover(const QString &event, const QVariantMap &details)
     }
 
     QJsonObject record = QJsonObject::fromVariantMap(details);
+    if (!record.contains(QStringLiteral("scenarioId"))) {
+        record.insert(QStringLiteral("scenarioId"), m_diagnosticScenarioId);
+    }
+    if (!record.contains(QStringLiteral("interactionId"))) {
+        record.insert(QStringLiteral("interactionId"), m_diagnosticInteractionId);
+    }
+    if (!record.contains(QStringLiteral("interactionKind"))) {
+        record.insert(QStringLiteral("interactionKind"), m_diagnosticInteractionKind);
+    }
     record.insert(QStringLiteral("event"), event);
     record.insert(QStringLiteral("monotonicMs"), m_monotonicClock.elapsed());
+    record.insert(QStringLiteral("monotonicNs"), m_monotonicClock.nsecsElapsed());
+    record.insert(QStringLiteral("monotonicReferenceNs"), monotonicReferenceNowNs());
+    record.insert(QStringLiteral("traceSequence"), static_cast<qint64>(++m_mediaHoverTraceSequence));
+    record.insert(QStringLiteral("lastWaylandPointerEventId"), static_cast<qint64>(m_lastWaylandPointerEventId));
     record.insert(QStringLiteral("buildId"), m_mediaHoverBuildId);
     record.insert(QStringLiteral("version"), QStringLiteral(KDOCKW_VERSION_STRING));
     record.insert(QStringLiteral("executable"), QCoreApplication::applicationFilePath());
@@ -430,7 +596,7 @@ void DockView::handleMediaHoverMarkerConnection()
         connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
             QByteArray request = socket->property("markerRequest").toByteArray();
             request.append(socket->readAll());
-            if (request.size() > 256) {
+            if (request.size() > 4096) {
                 socket->write("ERR request too large\n");
                 socket->disconnectFromServer();
                 return;
@@ -449,11 +615,44 @@ void DockView::handleMediaHoverMarkerConnection()
 
             QJsonParseError parseError;
             const QJsonDocument document = QJsonDocument::fromJson(request.first(newline), &parseError);
-            const QString label = document.isObject()
-                ? document.object().value(QStringLiteral("label")).toString()
-                : QString();
+            if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+                socket->write("ERR invalid JSON request\n");
+                socket->disconnectFromServer();
+                return;
+            }
+            const QJsonObject object = document.object();
+            const QString command = object.value(QStringLiteral("command")).toString();
+            if (command == QLatin1String("snapshot")) {
+                const QString requestId = object.value(QStringLiteral("requestId")).toString();
+                static const QRegularExpression validRequestId(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
+                if (!validRequestId.match(requestId).hasMatch()) {
+                    socket->write("ERR invalid request id\n");
+                    socket->disconnectFromServer();
+                    return;
+                }
+                const QVariantMap snapshot = captureMediaHoverDiagnosticSnapshot();
+                traceMediaHover(QStringLiteral("owner-diagnostic-snapshot"), {
+                    {QStringLiteral("requestId"), requestId},
+                    {QStringLiteral("snapshot"), snapshot},
+                });
+                const QByteArray response = QJsonDocument(QJsonObject{
+                    {QStringLiteral("status"), QStringLiteral("ok")},
+                    {QStringLiteral("requestId"), requestId},
+                    {QStringLiteral("snapshot"), QJsonObject::fromVariantMap(snapshot)},
+                }).toJson(QJsonDocument::Compact) + '\n';
+                socket->write(response);
+                socket->disconnectFromServer();
+                return;
+            }
+            if (!command.isEmpty()) {
+                socket->write("ERR unsupported command\n");
+                socket->disconnectFromServer();
+                return;
+            }
+
+            const QString label = object.value(QStringLiteral("label")).toString();
             static const QRegularExpression validLabel(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
-            if (parseError.error != QJsonParseError::NoError || !validLabel.match(label).hasMatch()) {
+            if (!validLabel.match(label).hasMatch()) {
                 socket->write("ERR invalid marker label\n");
                 socket->disconnectFromServer();
                 return;

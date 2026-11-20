@@ -165,7 +165,7 @@ void DockVisibilityController::setHovered(bool hovered)
     // When interacting (e.g. preview open) and mouse leaves dock, skip input region
     // shrink to prevent compositor pointer-focus oscillation between surfaces.
     if (m_interactingCount == 0 || hovered) {
-        applyInputRegion();
+        applyInputRegion(QStringLiteral("hovered-state-changed"));
     }
 
     if (hovered) {
@@ -306,7 +306,7 @@ void DockVisibilityController::setInteractionRect(qreal x, qreal y, qreal width,
         m_panelRefY = m_interactionY;
     }
 
-    applyInputRegion();
+    applyInputRegion(QStringLiteral("interaction-geometry-changed"));
     updateRegionGeometry();
 }
 
@@ -322,13 +322,18 @@ void DockVisibilityController::setHideDelay(int ms)
     qCDebug(lcVisibility) << "Hide delay set to:" << ms << "ms";
 }
 
+void DockVisibilityController::setInputRegionDiagnosticsEnabled(bool enabled)
+{
+    m_inputRegionDiagnosticsEnabled = enabled;
+}
+
 void DockVisibilityController::setZoomOverflowHeight(int height)
 {
     if (m_zoomOverflowHeight == height) {
         return;
     }
     m_zoomOverflowHeight = height;
-    applyInputRegion();
+    applyInputRegion(QStringLiteral("zoom-overflow-height-changed"));
 }
 
 void DockVisibilityController::setKeyboardActive(bool active, bool restoreFocus)
@@ -482,7 +487,7 @@ void DockVisibilityController::setVisible(bool visible)
     m_visible = visible;
     qCDebug(lcVisibility) << "Dock visible:" << visible;
 
-    applyInputRegion();
+    applyInputRegion(QStringLiteral("visibility-changed"));
 
     Q_EMIT dockVisibleChanged();
 }
@@ -498,7 +503,7 @@ void DockVisibilityController::requestEvaluate()
     m_evaluateTimer.start();
 }
 
-void DockVisibilityController::applyInputRegion()
+void DockVisibilityController::applyInputRegion(const QString &reason)
 {
     if (!m_dockWindow) {
         return;
@@ -516,7 +521,39 @@ void DockVisibilityController::applyInputRegion()
     params.hovered = m_hovered;
     params.edge = static_cast<int>(m_platform->edge());
 
-    m_platform->setInputRegion(computeDockInputRegion(params));
+    const QRegion region = computeDockInputRegion(params);
+    m_platform->setInputRegion(region);
+    if (m_inputRegionDiagnosticsEnabled) {
+        const auto rectMap = [](const QRect &rect) {
+            return QVariantMap{
+                {QStringLiteral("x"), rect.x()},
+                {QStringLiteral("y"), rect.y()},
+                {QStringLiteral("width"), rect.width()},
+                {QStringLiteral("height"), rect.height()},
+            };
+        };
+        const QRect panel{params.panelX, params.panelY, params.panelWidth, params.panelHeight};
+        const QRect interaction{m_interactionX, m_interactionY, m_interactionWidth, m_interactionHeight};
+        const QVariantMap state{
+            {QStringLiteral("reason"), reason},
+            {QStringLiteral("visible"), m_visible},
+            {QStringLiteral("hovered"), m_hovered},
+            {QStringLiteral("interactionCount"), m_interactingCount},
+            {QStringLiteral("keyboardActive"), m_keyboardActive},
+            {QStringLiteral("dragActive"), m_dragActive},
+            {QStringLiteral("visibilityMode"), static_cast<int>(m_mode)},
+            {QStringLiteral("edge"), params.edge},
+            {QStringLiteral("surfaceSize"), QVariantMap{
+                 {QStringLiteral("width"), params.surfaceWidth},
+                 {QStringLiteral("height"), params.surfaceHeight},
+             }},
+            {QStringLiteral("panelRect"), rectMap(panel)},
+            {QStringLiteral("interactionRect"), rectMap(interaction)},
+            {QStringLiteral("interactionRectExplicit"), m_hasInteractionRect},
+            {QStringLiteral("zoomOverflowHeight"), m_zoomOverflowHeight},
+        };
+        Q_EMIT inputRegionApplied(region, reason, state);
+    }
 }
 
 QRect DockVisibilityController::dockScreenRect() const

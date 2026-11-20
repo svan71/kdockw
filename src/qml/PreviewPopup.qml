@@ -22,6 +22,7 @@ import "BadgeTextColor.js" as BadgeTextColor
 Item {
     id: root
     anchors.fill: parent
+    property int lastDiagnosticHoverSampleMs: -1000
 
     // C++ singletons: PreviewController, DockModel
 
@@ -39,7 +40,24 @@ Item {
     // on popup geometry, which can shift during layout.
     HoverHandler {
         id: surfaceHover
+        onPointChanged: {
+            if (!DockView.mediaHoverDebugEnabled)
+                return
+            const now = DockView.monotonicNowMs()
+            if (now - root.lastDiagnosticHoverSampleMs < 40)
+                return
+            root.lastDiagnosticHoverSampleMs = now
+            DockView.traceMediaHover("window-preview-hover-point", {
+                hovered: hovered,
+                localPosition: { x: point.position.x, y: point.position.y },
+                scenePosition: { x: point.scenePosition.x, y: point.scenePosition.y }
+            })
+        }
         onHoveredChanged: {
+            DockView.traceMediaHover(hovered ? "window-preview-hover-enter" : "window-preview-hover-leave", {
+                localPosition: { x: point.position.x, y: point.position.y },
+                scenePosition: { x: point.scenePosition.x, y: point.scenePosition.y }
+            })
             PreviewController.setPreviewHovered(hovered)
             // Mouse movement cancels keyboard navigation in preview
             if (hovered && PreviewController.previewKeyboardActive) {
@@ -421,6 +439,32 @@ Item {
             }))
         }
 
+        function traceDiagnosticGeometry(reason) {
+            if (!DockView.mediaHoverDebugEnabled)
+                return
+            const surfaceWindow = popup.Window.window
+            DockView.traceMediaHover("window-preview-geometry", {
+                source: "PreviewPopup",
+                reason: reason,
+                surfaceRole: "window-preview-embedded-in-dock",
+                itemGeometry: { x: popup.x, y: popup.y, width: popup.width, height: popup.height },
+                visible: popup.visible,
+                requestedVisible: popup.requestedVisible,
+                opacity: popup.opacity,
+                dockWindow: surfaceWindow ? {
+                    objectName: surfaceWindow.objectName,
+                    visible: surfaceWindow.visible,
+                    geometry: {
+                        x: surfaceWindow.x, y: surfaceWindow.y,
+                        width: surfaceWindow.width, height: surfaceWindow.height
+                    }
+                } : null
+            })
+        }
+
+        Component.onCompleted: traceDiagnosticGeometry("component-completed")
+        onVisibleChanged: traceDiagnosticGeometry("visibility-changed")
+
         Accessible.role: Accessible.PopupMenu
         Accessible.name: PreviewController.appName
             ? i18n("Preview for %1", PreviewController.appName)
@@ -437,11 +481,23 @@ Item {
                 - PreviewController.previewAnchorOffset                 // Bottom
             return PreviewController.contentY                            // Left/Right → centered
         }
-        onXChanged: logPosition("x-changed")
-        onYChanged: logPosition("y-changed")
+        onXChanged: {
+            logPosition("x-changed")
+            traceDiagnosticGeometry("x-changed")
+        }
+        onYChanged: {
+            logPosition("y-changed")
+            traceDiagnosticGeometry("y-changed")
+        }
         // Report size to controller for input region + positioning
-        onWidthChanged: PreviewController.setContentSize(width, height)
-        onHeightChanged: PreviewController.setContentSize(width, height)
+        onWidthChanged: {
+            PreviewController.setContentSize(width, height)
+            traceDiagnosticGeometry("width-changed")
+        }
+        onHeightChanged: {
+            PreviewController.setContentSize(width, height)
+            traceDiagnosticGeometry("height-changed")
+        }
 
         Kirigami.ShadowedRectangle {
             id: card

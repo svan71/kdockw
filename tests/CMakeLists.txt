@@ -22,6 +22,13 @@ if(KDOCKW_PYTHON3_EXECUTABLE)
         COMMAND ${KDOCKW_PYTHON3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_update_checker_launcher.py
     )
     set_tests_properties(kdockw_update_checker_launcher_tests PROPERTIES LABELS "diagnostic;launcher" TIMEOUT 30)
+    if(KDOCKW_DIAGNOSTIC_BUILD AND KDOCKW_DIAGNOSTIC_VERSION STREQUAL "0.7.0")
+        add_test(NAME kdockw_v070_wayland_trace_tools
+            COMMAND ${KDOCKW_PYTHON3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_kdockw_v070_wayland_trace_tools.py
+                ${CMAKE_SOURCE_DIR}/tools/kdockw-v070-wayland-trace-filter.py
+        )
+        set_tests_properties(kdockw_v070_wayland_trace_tools PROPERTIES LABELS "diagnostic;wayland" TIMEOUT 15)
+    endif()
 endif()
 
 add_test(NAME kdockw_desktop_entries
