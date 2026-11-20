@@ -337,6 +337,16 @@ int PreviewController::parentIndex() const
     return m_parentIndex;
 }
 
+QString PreviewController::parentEntryId() const
+{
+    return m_parentEntryId;
+}
+
+bool PreviewController::popupVisualVisible() const
+{
+    return m_popupVisualVisible;
+}
+
 int PreviewController::taskIndexForParent() const
 {
     return m_parentIndex >= 0 ? m_model->dockPresentationModel()->taskIndexForDockIndex(m_parentIndex) : -1;
@@ -754,6 +764,15 @@ void PreviewController::setPreviewHovered(bool hovered)
             m_hideTimer.start();
         }
     }
+}
+
+void PreviewController::setPopupVisualVisible(bool visible)
+{
+    if (m_popupVisualVisible == visible) {
+        return;
+    }
+    m_popupVisualVisible = visible;
+    Q_EMIT popupVisualVisibleChanged(visible);
 }
 
 void PreviewController::setHeld(bool held)

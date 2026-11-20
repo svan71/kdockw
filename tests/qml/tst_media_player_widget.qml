@@ -202,6 +202,32 @@ Item {
             }
         }
 
+        function test_hover_popup_waits_for_window_preview_fade_before_opening() {
+            DockSettings.mediaPlayerHoverPopup = true
+            DockSettings.mediaPlayerHoverDelay = 30
+            PreviewController.visible = true
+            PreviewController.parentEntryId = "task:existing-preview"
+            PreviewController.popupVisualVisible = true
+            const popup = findChild(widget, "mediaPlayerPopup")
+
+            hoverDockIndex(dockAnchor.index)
+            tryCompare(widget, "waitingForPreviewClose", true, 1000)
+            verify(!popup.visible,
+                "Media Popup opened while the Window Preview was still fading out")
+            verify(PreviewController.popupVisualVisible,
+                "the fixture must hold the previous preview in its rendered fade-out")
+            verify(!PreviewController.visible,
+                "the logical Window Preview must begin closing before the handoff waits")
+
+            PreviewController.setPopupVisualVisible(false)
+            tryVerify(() => popup.visible, 1000,
+                "Media Popup did not open after the Window Preview finished fading")
+            verify(!PreviewController.popupVisualVisible,
+                "the Window Preview and Media Popup became visible together")
+            compare(widget.popupPinned, false,
+                "the hover handoff must retain the existing unpinned state")
+        }
+
         function test_popup_does_not_blink_on_layer_surface_pointer_handoff() {
             const popup = findChild(widget, "mediaPlayerPopup")
             mouseMove(stage, 12, 12)

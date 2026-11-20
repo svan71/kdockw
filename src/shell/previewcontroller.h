@@ -46,6 +46,8 @@ class PreviewController : public QObject
 
     Q_PROPERTY(bool visible READ isVisible NOTIFY visibleChanged)
     Q_PROPERTY(int parentIndex READ parentIndex NOTIFY parentIndexChanged)
+    Q_PROPERTY(QString parentEntryId READ parentEntryId NOTIFY parentIndexChanged)
+    Q_PROPERTY(bool popupVisualVisible READ popupVisualVisible NOTIFY popupVisualVisibleChanged)
     Q_PROPERTY(QModelIndex rootModelIndex READ rootModelIndex NOTIFY parentIndexChanged)
     Q_PROPERTY(bool isGrouped READ isGrouped NOTIFY parentIndexChanged)
     Q_PROPERTY(QVariantList windowIds READ windowIds NOTIFY parentIndexChanged)
@@ -73,6 +75,8 @@ public:
 
     [[nodiscard]] bool isVisible() const;
     [[nodiscard]] int parentIndex() const;
+    [[nodiscard]] QString parentEntryId() const;
+    [[nodiscard]] bool popupVisualVisible() const;
     [[nodiscard]] QModelIndex rootModelIndex() const;
     [[nodiscard]] bool isGrouped() const;
     [[nodiscard]] QVariantList windowIds() const;
@@ -120,6 +124,8 @@ public:
 
     /// Update whether the mouse is hovering the preview surface.
     Q_INVOKABLE void setPreviewHovered(bool hovered);
+    /// Report the rendered popup surface state after its QML fade completes.
+    Q_INVOKABLE void setPopupVisualVisible(bool visible);
 
     /// Hold the preview hidden while the dock context menu is open: hides it
     /// now and ignores showPreview() until released. Releasing only clears
@@ -176,6 +182,7 @@ public:
 Q_SIGNALS:
     void visibleChanged(bool visible);
     void parentIndexChanged();
+    void popupVisualVisibleChanged(bool visible);
     void positionChanged();
     void contentSizeChanged();
     void maxPopupWidthChanged();
@@ -216,6 +223,7 @@ private:
     BackgroundEffectPlan m_backgroundEffectPlan;
 
     bool m_visible = false;
+    bool m_popupVisualVisible = false;
     int m_dismissedTaskIndex = -1;
     bool m_previewHovered = false;
     bool m_held = false;

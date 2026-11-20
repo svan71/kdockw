@@ -183,3 +183,22 @@ TEST_CASE("Saved capture mode applies live and environment overrides take preced
     restartedAfterOverride.load();
     CHECK_FALSE(restartedAfterOverride.cpuOnlyPreviewCapture());
 }
+
+TEST_CASE("PreviewController exposes actual popup visibility without duplicate changes", "[preview][handoff]")
+{
+    kdockw::PreviewController controller(nullptr, nullptr, nullptr);
+    QSignalSpy visualVisibilityChanged(&controller, &kdockw::PreviewController::popupVisualVisibleChanged);
+
+    CHECK_FALSE(controller.popupVisualVisible());
+    controller.setPopupVisualVisible(true);
+    CHECK(controller.popupVisualVisible());
+    CHECK(visualVisibilityChanged.count() == 1);
+    CHECK(visualVisibilityChanged.constFirst().constFirst().toBool());
+
+    controller.setPopupVisualVisible(true);
+    CHECK(visualVisibilityChanged.count() == 1);
+    controller.setPopupVisualVisible(false);
+    CHECK_FALSE(controller.popupVisualVisible());
+    CHECK(visualVisibilityChanged.count() == 2);
+    CHECK_FALSE(visualVisibilityChanged.constLast().constFirst().toBool());
+}

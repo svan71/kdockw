@@ -32,6 +32,11 @@ Item {
             Accessible.Polite)
     }
 
+    function syncPopupVisualVisibility() {
+        if (PreviewController.popupVisualVisible !== popup.visible)
+            PreviewController.setPopupVisualVisible(popup.visible)
+    }
+
     // Surface-level hover detection: keep preview visible when mouse is anywhere
     // on this surface. The C++ input region (updateInputRegion) already constrains
     // which events reach this surface to the visible popup rectangle, so detecting
@@ -462,8 +467,14 @@ Item {
             })
         }
 
-        Component.onCompleted: traceDiagnosticGeometry("component-completed")
-        onVisibleChanged: traceDiagnosticGeometry("visibility-changed")
+        Component.onCompleted: {
+            traceDiagnosticGeometry("component-completed")
+            root.syncPopupVisualVisibility()
+        }
+        onVisibleChanged: {
+            traceDiagnosticGeometry("visibility-changed")
+            root.syncPopupVisualVisibility()
+        }
 
         Accessible.role: Accessible.PopupMenu
         Accessible.name: PreviewController.appName

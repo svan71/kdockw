@@ -1445,5 +1445,28 @@ Item {
             tryCompare(PreviewController, "previewKeyboardActive", false)
             mouseMove(stage, -1, -1)
         }
+
+        function test_popupVisualVisibilityTracksTheEffectivePopupVisibility() {
+            const preview = makePopup()
+            const card = T.findFirst(preview, item => item.objectName === "previewCardPopup")
+            verify(card)
+
+            show(0, "Kate")
+            tryVerify(() => card.visible, 1000)
+            tryCompare(PreviewController, "popupVisualVisible", true, 1000)
+
+            PreviewController.visible = false
+            if (card.visible) {
+                verify(card.opacity > 0.01,
+                    "a visible card during fade-out must still have nonzero opacity")
+                verify(PreviewController.popupVisualVisible,
+                    "the controller dropped visibility while the card was still visible")
+                tryVerify(() => !card.visible, 1000,
+                    "the preview card did not finish its existing fade-out")
+            }
+            tryVerify(() => PreviewController.popupVisualVisible === card.visible, 1000,
+                "controller state must follow the card's effective visual visibility")
+            compare(PreviewController.popupVisualVisible, false)
+        }
     }
 }

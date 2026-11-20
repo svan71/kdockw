@@ -136,7 +136,20 @@ void MockTasksModel::applyRoles(QStandardItem *item, const QVariantMap &roles) c
 int MockTasksModel::addTask(const QVariantMap &roles)
 {
     auto *item = new QStandardItem;
-    applyRoles(item, roles);
+    QVariantMap effectiveRoles = roles;
+    if (!effectiveRoles.contains(QStringLiteral("entryId"))) {
+        // Production presentation rows expose a stable entryId role even when
+        // tests only provide the backing TaskManager AppId/launcher URL. Keep
+        // the mock's row role consistent with entryIdForDockIndex().
+        QString entryId = roles.value(QStringLiteral("AppId")).toString();
+        if (entryId.isEmpty()) {
+            entryId = roles.value(QStringLiteral("LauncherUrlWithoutIcon")).toString();
+        }
+        if (!entryId.isEmpty()) {
+            effectiveRoles.insert(QStringLiteral("entryId"), entryId);
+        }
+    }
+    applyRoles(item, effectiveRoles);
     appendRow(item);
     return item->row();
 }

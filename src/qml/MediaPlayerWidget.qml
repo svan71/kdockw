@@ -38,6 +38,7 @@ Item {
     property bool popupOpenRequested: false
     property bool magnificationHeld: false
     property bool handlingPopupClose: false
+    property bool waitingForPreviewClose: false
     readonly property bool progressActive: DockSettings.mediaPlayerEnabled && DockVisibility.dockVisible
         && ((visible && displayMode !== 0) || popup.visible)
     readonly property int displayMode: DockSettings.mediaPlayerDisplayMode
@@ -287,10 +288,14 @@ Item {
     }
 
     function stopOpenTimer(reason) {
-        if (!openTimer.running)
-            return
-        traceMediaHover("open-timer-cancel", { reason: reason })
-        openTimer.stop()
+        if (openTimer.running) {
+            traceMediaHover("open-timer-cancel", { reason: reason })
+            openTimer.stop()
+        }
+        if (waitingForPreviewClose) {
+            waitingForPreviewClose = false
+            traceMediaHover("preview-handoff-cancel", { reason: reason })
+        }
     }
 
     function startOpenTimer(reason) {
@@ -315,6 +320,89 @@ Item {
     function startCloseTimer(reason) {
         traceMediaHover("close-timer-start", { reason: reason, intervalMs: hideTimer.interval })
         hideTimer.restart()
+    }
+
+    function requestHoverPopupOpen() {
+        const failed = pointerOpenFailureReasons()
+        const allowed = failed.length === 0
+        traceMediaHover("open-timer-fired", { allowed: allowed, failedConditions: failed })
+        if (!allowed) {
+            if (popupState === popupStateOpeningPending)
+                setPopupState(popupStateClosed, "open-timer-rejected:" + failed.join(","))
+            return
+        }
+
+        // PreviewController.visible is logical state. Its popup surface remains
+        // rendered through the existing fade, so wait for the visual close
+        // notification before opening this independent Popup.Window.
+        if (PreviewController.popupVisualVisible) {
+            waitingForPreviewClose = true
+            traceMediaHover("window-preview-handoff-wait", {
+                previewLogicalVisible: PreviewController.visible,
+                previewVisualVisible: PreviewController.popupVisualVisible
+            })
+            if (PreviewController.visible)
+                PreviewController.hidePreview()
+            if (waitingForPreviewClose && !PreviewController.popupVisualVisible)
+                completeHoverPopupOpenAfterPreview()
+            return
+        }
+        completeHoverPopupOpenAfterPreview()
+    }
+
+    function completeHoverPopupOpenAfterPreview() {
+        if (popupPinned || popup.visible || popupState !== popupStateOpeningPending)
+            return
+        const failed = pointerOpenFailureReasons()
+        if (failed.length > 0) {
+            waitingForPreviewClose = false
+            traceMediaHover("preview-handoff-open-cancel", { failedConditions: failed })
+            setPopupState(popupStateClosed, "preview-handoff-rejected:" + failed.join(","))
+            return
+        }
+        waitingForPreviewClose = false
+        const positioned = positionPopup()
+        traceMediaHover("popup-position-result", {
+            valid: positioned,
+            requestedX: requestedPopupX,
+            requestedY: requestedPopupY,
+            width: popupWidth,
+            height: popupHeight
+        })
+        if (!positioned) {
+            setPopupState(popupStateClosed, "invalid-popup-anchor")
+            return
+        }
+        holdDockForPopup()
+        popupOpenRequested = true
+        registerDiagnosticPopupSurface()
+        popup.open()
+        logPopupState("open-hover-request")
+    }
+
+    function closeHoverPopupForPreviewHandoff() {
+        if (popupPinned)
+            return false
+        stopOpenTimer("window-preview-handoff")
+        stopCloseTimer("window-preview-handoff")
+        if (!popup.visible) {
+            popupOpenRequested = false
+            setPopupState(popupStateClosed, "window-preview-handoff-no-surface")
+            releaseDockHold("window-preview-handoff-no-surface")
+            return false
+        }
+        setPopupState(popupStateClosingPending, "window-preview-handoff")
+        traceMediaHover("window-preview-handoff-close", { visible: popup.visible })
+        popup.close()
+        return true
+    }
+
+    Connections {
+        target: PreviewController
+        function onPopupVisualVisibleChanged(visible) {
+            if (!visible && root.waitingForPreviewClose)
+                root.completeHoverPopupOpenAfterPreview()
+        }
     }
 
     function logPopupState(phase, reason = "", oldState = popupState, newState = popupState) {
@@ -658,32 +746,7 @@ Item {
     Timer {
         id: openTimer
         interval: DockSettings.mediaPlayerHoverDelay
-        onTriggered: {
-            const failed = root.pointerOpenFailureReasons()
-            const allowed = failed.length === 0
-            root.traceMediaHover("open-timer-fired", { allowed: allowed, failedConditions: failed })
-            if (allowed) {
-                const positioned = root.positionPopup()
-                root.traceMediaHover("popup-position-result", {
-                    valid: positioned,
-                    requestedX: root.requestedPopupX,
-                    requestedY: root.requestedPopupY,
-                    width: root.popupWidth,
-                    height: root.popupHeight
-                })
-                if (positioned) {
-                    root.holdDockForPopup()
-                    root.popupOpenRequested = true
-                    root.registerDiagnosticPopupSurface()
-                    popup.open()
-                    root.logPopupState("open-hover-request")
-                } else {
-                    root.setPopupState(root.popupStateClosed, "invalid-popup-anchor")
-                }
-            } else if (root.popupState === root.popupStateOpeningPending) {
-                root.setPopupState(root.popupStateClosed, "open-timer-rejected:" + failed.join(","))
-            }
-        }
+        onTriggered: root.requestHoverPopupOpen()
     }
     Timer {
         id: hideTimer
@@ -1429,6 +1492,9 @@ Item {
             root.interactionHeld = false
             root.handlingPopupClose = false
             root.traceMediaHover("popup-visibility", { visible: false, reason: "closed-signal" })
+            const dockRoot = root.dockDelegate && root.dockDelegate.dockRoot
+            if (dockRoot && typeof dockRoot.completePreviewAfterMediaPopupClose === "function")
+                dockRoot.completePreviewAfterMediaPopupClose()
         }
         onOpened: {
             root.registerDiagnosticPopupSurface()

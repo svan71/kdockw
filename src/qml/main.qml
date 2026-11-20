@@ -29,6 +29,9 @@ Item {
 
     // Hovered item tracking (for custom tooltip and click targeting)
     property int hoveredIndex: -1
+    // A preview request may wait for an unpinned media popup to finish closing.
+    // Store the stable presentation identity so model reordering cannot retarget it.
+    property string _pendingPreviewHandoffEntryId: ""
     // A separator is a real primary-axis slot, not an overlay in the normal
     // inter-icon gap. The boundary remains a model-free index so task and
     // keyboard indices are unchanged.
@@ -507,15 +510,27 @@ Item {
         if (!_pointerOnDock) {
             _handleDockPointerEntered(mapped.x, mapped.y)
         } else {
-            PreviewController.cancelHide()
             DockVisibility.setHovered(true)
             if (_hoverReconciling)
                 _reconcileAt(mapped.x, mapped.y)
             else
                 trackPointer(mapped.x, mapped.y, false, "wayland-pointer-sample")
+            cancelPreviewHideIfPointerReturnedToOwner()
         }
         pointerMotionSerial++
         tracePointerSample("wayland-pointer-sample", false)
+        return true
+    }
+
+    function cancelPreviewHideIfPointerReturnedToOwner() {
+        if (!PreviewController.visible || hoveredIndex < 0
+                || hoveredIndex >= dockRepeater.count)
+            return false
+        const item = dockRepeater.itemAt(hoveredIndex)
+        if (!item || !PreviewController.parentEntryId
+                || item.dockEntryId !== PreviewController.parentEntryId)
+            return false
+        PreviewController.cancelHide()
         return true
     }
 
@@ -1115,6 +1130,53 @@ Item {
     }
 
     function showPreviewForItem(index, item) {
+        if (!item || !item.dockEntryId)
+            return
+
+        // A hover Window Preview supersedes an unpinned Media Popup. Close the
+        // latter through its own controller and resume by stable entry ID after
+        // its real close event; pinned media remains independent.
+        const media = unpinnedMediaPopupForHandoff()
+        if (media) {
+            _pendingPreviewHandoffEntryId = item.dockEntryId
+            media.closeHoverPopupForPreviewHandoff()
+            if (_pendingPreviewHandoffEntryId === item.dockEntryId
+                    && !media.diagnosticPopupVisible && !media.popupOpenRequested)
+                completePreviewAfterMediaPopupClose()
+            return
+        }
+        _pendingPreviewHandoffEntryId = ""
+        showPreviewForItemNow(index, item)
+    }
+
+    function unpinnedMediaPopupForHandoff() {
+        for (let i = 0; i < dockRepeater.count; ++i) {
+            const item = dockRepeater.itemAt(i)
+            const media = item ? item.mediaPlayerWidget : null
+            if (media && !media.popupPinned
+                    && (media.diagnosticPopupVisible || media.popupOpenRequested))
+                return media
+        }
+        return null
+    }
+
+    function completePreviewAfterMediaPopupClose() {
+        const entryId = _pendingPreviewHandoffEntryId
+        if (!entryId)
+            return
+        _pendingPreviewHandoffEntryId = ""
+        const index = DockModel.dockPresentationModel.dockIndexForEntryId(entryId)
+        const item = index >= 0 && index < dockRepeater.count ? dockRepeater.itemAt(index) : null
+        if (!item || item.dockEntryId !== entryId)
+            return
+        const current = hoveredIndex >= 0 && hoveredIndex < dockRepeater.count
+            ? dockRepeater.itemAt(hoveredIndex) : null
+        if (!keyboardNavigating && (!current || current.dockEntryId !== entryId))
+            return
+        showPreviewForItemNow(index, item)
+    }
+
+    function showPreviewForItemNow(index, item) {
         let centre = item.mapToItem(null, item.width / 2, item.height / 2)
         let ext = DockView.isVertical ? item.height : item.width
         let pos = (DockView.isVertical ? centre.y : centre.x) - ext / 2
@@ -1254,13 +1316,13 @@ Item {
         if (_menuHeld) return
         _pointerRootX = x
         _pointerRootY = y
-        PreviewController.cancelHide()
         _pointerOnDock = true
         DockVisibility.setHovered(true)
         if (_hoverReconciling)
             _reconcileAt(x, y, true)
         else
             trackPointer(x, y, true, "_handleDockPointerEntered")
+        cancelPreviewHideIfPointerReturnedToOwner()
     }
 
     function _dockItemHitGeometry(item) {
@@ -1660,7 +1722,6 @@ Item {
         if (mediaPopupKeepsDockVisible) {
             // Keep the dock visible for the independent media popup lifecycle,
             // while allowing the spring to follow the pointer off the dock.
-            PreviewController.cancelHide()
             DockVisibility.setHovered(true)
         }
         // Ordinary Window Preview retains its established dock→preview anchor.
@@ -1774,7 +1835,6 @@ Item {
                 root._pointerLeft("releaseMediaPopup.pointerOutside")
                 return
             }
-            PreviewController.cancelHide()
             DockVisibility.setHovered(true)
             if (DockView.pointerSourceMode === 1) {
                 root.processAuthoritativePointerSample()
@@ -1784,6 +1844,7 @@ Item {
                         && root._pointerRootX >= 0 && root._pointerRootY >= 0)
                     root.trackPointer(root._pointerRootX, root._pointerRootY)
             }
+            root.cancelPreviewHideIfPointerReturnedToOwner()
         })
     }
 
@@ -1797,7 +1858,6 @@ Item {
                 root._pointerLeft("folderStackPopupClosed.pointerOutside")
                 return
             }
-            PreviewController.cancelHide()
             DockVisibility.setHovered(true)
             if (DockView.pointerSourceMode === 1) {
                 root.processAuthoritativePointerSample()
@@ -1807,6 +1867,7 @@ Item {
                         && root._pointerRootX >= 0 && root._pointerRootY >= 0)
                     root.trackPointer(root._pointerRootX, root._pointerRootY)
             }
+            root.cancelPreviewHideIfPointerReturnedToOwner()
             if (DockModel.taskDiagnosticsEnabled) {
                 console.info("[KDOCKW_HOVER_RESTORE] " + JSON.stringify({
                     pointerInside: DockView.pointerInside,
@@ -1885,8 +1946,6 @@ Item {
         }
         function onPointerSampleChanged() { root.processAuthoritativePointerSample() }
         function onPointerInsideChanged() {
-            if (DockView.pointerInside)
-                PreviewController.cancelHide()
             if (DockView.pointerSourceMode === 0
                     && !DockView.pointerInside && !root._menuHeld && root._pointerOnDock
                     && !dockMouseArea.containsMouse)

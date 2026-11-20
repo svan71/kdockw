@@ -2067,16 +2067,155 @@ Item {
         }
 
         function test_pointerReturnCancelsPendingPreviewHide() {
+            DockView.pointerSourceMode = 1
+            PreviewController.simulateHideTimer = true
+            PreviewController.setHideDelay(300)
             addTasks(["Window"])
             const dock = makeDock(1)
-            PreviewController.visible = true
+            const item = items(dock)[0]
+            dock.showPreviewForItem(item.index, item)
+            tryCompare(PreviewController, "visible", true)
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            DockView.pointerInside = true
             PreviewController.hidePreviewDelayed()
+            verify(PreviewController.hidePending,
+                   "the preview fixture must have a pending hide before pointer return")
             const cancellations = PreviewController.callsTo("cancelHide").length
 
-            DockView.pointerInside = true
+            const point = centerOf(item)
+            DockView.publishPointerSample({ sequence: 1, x: point.x, y: point.y, valid: true })
             tryVerify(() => PreviewController.callsTo("cancelHide").length > cancellations)
             verify(PreviewController.visible,
                    "returning the pointer to the dock must not hide the preview")
+            verify(!PreviewController.hidePending,
+                   "returning to the preview owner must cancel the pending hide")
+        }
+
+        function test_repeatedWaylandSamplesOverUnpreviewableItemDoNotCancelForeignPreviewHide() {
+            DockSettings.previewEnabled = true
+            DockView.pointerSourceMode = 1
+            DockSettings.previewHoverDelay = 1000
+            addTasks(["Preview owner"])
+            DockModel.tasksModel.addTask({
+                display: "Spacer",
+                entryId: "widget:spacer:preview-hide-regression",
+                entryType: "builtInWidget",
+                widgetKind: "spacer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "end",
+                IsLauncher: true,
+                IsWindow: false,
+            })
+
+            const dock = makeDock(2)
+            const [owner, unpreviewable] = items(dock)
+            PreviewController.simulateHideTimer = true
+            PreviewController.setHideDelay(120)
+            DockView.pointerInside = true
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            dock.showPreviewForItem(owner.index, owner)
+            tryCompare(PreviewController, "visible", true)
+            compare(PreviewController.parentEntryId, owner.dockEntryId)
+
+            const target = centerOf(unpreviewable)
+            DockView.publishPointerSample({ sequence: 1, x: target.x, y: target.y, valid: true })
+            tryCompare(dock, "hoveredIndex", unpreviewable.index)
+            verify(PreviewController.hidePending,
+                "moving to the unpreviewable item must leave the owner's hide timer pending")
+            const delayedCalls = PreviewController.callsTo("hidePreviewDelayed").length
+            const cancelCalls = PreviewController.callsTo("cancelHide").length
+
+            for (let sequence = 2; sequence <= 6; ++sequence) {
+                DockView.publishPointerSample({ sequence, x: target.x, y: target.y, valid: true })
+                compare(dock.hoveredIndex, unpreviewable.index)
+                verify(PreviewController.hidePending,
+                    "a repeated sample over the unchanged target cancelled the hide timer")
+                compare(PreviewController.callsTo("hidePreviewDelayed").length, delayedCalls,
+                    "repeated samples restarted the delayed hide")
+                compare(PreviewController.callsTo("cancelHide").length, cancelCalls,
+                    "repeated samples over a foreign item cancelled the owner preview hide")
+            }
+
+            tryCompare(PreviewController, "visible", false, 1000,
+                "the previous preview did not close on its original hide delay")
+        }
+
+        function test_unpinnedMediaPopupClosesBeforeWindowPreviewOpens() {
+            DockSettings.previewEnabled = true
+            DockSettings.magnificationMode = 0
+            DockView.pointerSourceMode = 1
+            DockSettings.previewHoverDelay = 50
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockSettings.mediaPlayerHoverPopup = true
+            DockSettings.mediaPlayerHoverDelay = 30
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:preview-handoff",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                IsWindow: false,
+            })
+            addTasks(["Window"])
+
+            const dock = makeDock(2)
+            const media = items(dock).find(item => item.isMediaPlayer)
+            const app = items(dock).find(item => !item.isMediaPlayer)
+            const widget = media && media.mediaPlayerWidget
+            verify(media && app && widget)
+            DockView.pointerFocusKnown = true
+            DockView.pointerFocusWindow = dock.Window.window
+            DockView.pointerInside = true
+            const mediaPoint = centerOf(media)
+            DockView.publishPointerSample({ sequence: 1, x: mediaPoint.x, y: mediaPoint.y, valid: true })
+            tryVerify(() => widget.diagnosticPopupVisible, 1500)
+            verify(!widget.popupPinned)
+
+            const appPoint = centerOf(app)
+            DockView.publishPointerSample({ sequence: 2, x: appPoint.x, y: appPoint.y, valid: true })
+            compare(dock.hoveredIndex, app.index)
+            tryCompare(PreviewController, "visible", true)
+            verify(!widget.diagnosticPopupVisible,
+                "the unpinned Media Popup remained visible with the Window Preview")
+            compare(PreviewController.parentEntryId, app.dockEntryId)
+        }
+
+        function test_pinnedMediaPopupIsNotClosedByWindowPreviewHandoff() {
+            DockSettings.previewEnabled = true
+            DockSettings.magnificationMode = 0
+            DockSettings.mediaPlayerDisplayMode = 0
+            DockModel.tasksModel.addTask({
+                display: "Media Player",
+                entryId: "widget:mediaPlayer:pinned-preview-handoff",
+                entryType: "builtInWidget",
+                widgetKind: "mediaPlayer",
+                widgetVisible: true,
+                widgetSize: 0,
+                placementSlot: "center",
+                IsLauncher: true,
+                IsWindow: false,
+            })
+            addTasks(["Window"])
+            const dock = makeDock(2)
+            const media = items(dock).find(item => item.isMediaPlayer)
+            const app = items(dock).find(item => !item.isMediaPlayer)
+            const widget = media && media.mediaPlayerWidget
+            verify(media && app && widget)
+            widget.openPinned()
+            tryVerify(() => widget.diagnosticPopupVisible, 1500)
+            verify(widget.popupPinned)
+
+            dock.showPreviewForItem(app.index, app)
+            tryCompare(PreviewController, "visible", true)
+            verify(widget.diagnosticPopupVisible,
+                "a Window Preview handoff closed the explicitly pinned Media Popup")
+            verify(widget.popupPinned)
         }
 
         // Easing curves of ZoomAnimationProfile's easing indices (Qt's formulas),

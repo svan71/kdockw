@@ -12,6 +12,11 @@ QtObject {
     function callsTo(name) { return calls.filter(c => c.name === name) }
     property bool visible: false
     property int parentIndex: -1
+    property string parentEntryId: ""
+    property bool popupVisualVisible: false
+    property bool hidePending: false
+    property int hideDelay: 400
+    property bool simulateHideTimer: false
     property string appName: ""
     property real contentX: 0
     property real contentY: 0
@@ -39,19 +44,40 @@ QtObject {
         _record("showPreview", arguments)
         if (dismissedTaskIndex === i) return
         if (dismissedTaskIndex >= 0) clearDismissedTask()
+        hideTimer.stop()
+        hidePending = false
         previewAnchorOffset = maxZoomOverflow
         parentIndex = i
+        parentEntryId = DockModel.dockPresentationModel.entryIdForDockIndex(i)
         visible = true
     }
     function updatePreviewAnchorGeometry(pos, ext, restEdge, maxZoomOverflow, shadowMargin) {
         _record("updatePreviewAnchorGeometry", arguments)
         previewAnchorOffset = maxZoomOverflow
     }
-    function hidePreview() { _record("hidePreview", arguments); visible = false }
+    function hidePreview() {
+        _record("hidePreview", arguments)
+        hideTimer.stop()
+        hidePending = false
+        visible = false
+        parentEntryId = ""
+    }
     function suppressPreviewUntilPointerLeavesTask(i) { dismissedTaskIndex = i }
     function clearDismissedTask() { dismissedTaskIndex = -1 }
-    function hidePreviewDelayed() { _record("hidePreviewDelayed", arguments) }
-    function cancelHide() { _record("cancelHide", arguments) }
+    function hidePreviewDelayed() {
+        _record("hidePreviewDelayed", arguments)
+        if (simulateHideTimer && visible) {
+            hidePending = true
+            hideTimer.restart()
+        }
+    }
+    function cancelHide() {
+        _record("cancelHide", arguments)
+        hideTimer.stop()
+        hidePending = false
+    }
+    function setHideDelay(ms) { hideDelay = ms }
+    function setPopupVisualVisible(value) { popupVisualVisible = value }
     function setPreviewHovered(v) { previewHovered = v }
     function setContentSize(w, h) { contentWidth = w; contentHeight = h }
     function previewFrameUrl(uuid) {
@@ -105,12 +131,25 @@ QtObject {
     function previewThumbnailCount() { return 0 }
 
     // Restores every property listed in _resettable to its declared value.
-    readonly property var _resettable: ["calls", "visible", "parentIndex", "appName", "contentX", "contentY", "contentWidth", "contentHeight", "maxPopupWidth", "previewAnchorOffset", "simulatedCurrentZoomOverflow", "previewHovered", "previewKeyboardActive", "focusedThumbnailIndex", "cpuCaptureOnly", "previewFrameRevision", "previewFrameUrls", "frameStoreRequests", "dismissedTaskIndex"]
+    // QtObject has no default child property, so own the timer explicitly.
+    property Timer hideTimer: Timer {
+        id: hideTimer
+        interval: parent.hideDelay
+        repeat: false
+        onTriggered: {
+            parent.hidePending = false
+            parent.visible = false
+            parent.parentEntryId = ""
+        }
+    }
+
+    readonly property var _resettable: ["calls", "visible", "parentIndex", "parentEntryId", "popupVisualVisible", "hidePending", "hideDelay", "simulateHideTimer", "appName", "contentX", "contentY", "contentWidth", "contentHeight", "maxPopupWidth", "previewAnchorOffset", "simulatedCurrentZoomOverflow", "previewHovered", "previewKeyboardActive", "focusedThumbnailIndex", "cpuCaptureOnly", "previewFrameRevision", "previewFrameUrls", "frameStoreRequests", "dismissedTaskIndex"]
     property var _defaults: ({})
     Component.onCompleted: {
         for (const k of _resettable) _defaults[k] = this[k]
     }
     function reset() {
+        hideTimer.stop()
         for (const k of _resettable) this[k] = _defaults[k]
     }
 }
