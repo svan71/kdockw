@@ -1523,6 +1523,15 @@ review, restore stable with
 
 ## 2026-11-20 — Window Preview and Media Popup hover handoff
 
+### Owner-accepted baseline
+
+The owner's fifteenth manual review on Build ID
+`a3fd741b95b5d2211bca9a61c2b492daf4c5c41b` scored **14/14 PASS** and accepted
+the unified Wayland pointer source and magnification behavior. That accepted
+coordinate and magnification path is preserved by this follow-up. The separate
+Window Preview retention defect and hover-popup overlap are addressed below;
+their new visual behavior still requires owner review.
+
 ### Implementation
 
 The confirmed Preview hide-timer defect was that every authoritative pointer
