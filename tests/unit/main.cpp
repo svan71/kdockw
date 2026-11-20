@@ -19,6 +19,7 @@
 #include <QQmlEngine>
 #include <QProcess>
 #include <QString>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <memory>
 
@@ -112,17 +113,44 @@ int main(int argc, char *argv[])
         return object->property("general").toString() == expectedLabel ? 0 : 4;
     }
 
-    KLocalizedString::setApplicationDomain(QByteArrayLiteral("kdockw"));
-    qputenv("XDG_CONFIG_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CONFIG_HOME));
-    qputenv("XDG_CACHE_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CACHE_HOME));
-    qputenv("XDG_DATA_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_HOME));
-    qputenv("XDG_DATA_DIRS", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_DIRS));
-    // Catch2 discovery launches each case as its own process. Set locale before
-    // QApplication caches QLocale so the desktop-action locale test is stable.
+    bool sycocaDesktopActionsCase = false;
     bool germanDesktopActionCase = false;
     for (int i = 1; i < argc; ++i) {
-        germanDesktopActionCase |= QString::fromLocal8Bit(argv[i]).contains(QStringLiteral("localized action names"));
+        const QString argument = QString::fromLocal8Bit(argv[i]);
+        sycocaDesktopActionsCase |= argument.contains(QStringLiteral("Desktop actions resolve installed and user-local applications"));
+        germanDesktopActionCase |= argument.contains(QStringLiteral("localized action names"));
     }
+
+    // KService/KStandardPaths resolve their XDG roots while the application
+    // is initialized. The sycoca test writes desktop entries at runtime, so
+    // give that process its own roots before QApplication exists instead of
+    // changing XDG paths inside the already initialized test case.
+    std::unique_ptr<QTemporaryDir> sycocaDesktopActionsRoot;
+    if (sycocaDesktopActionsCase) {
+        sycocaDesktopActionsRoot = std::make_unique<QTemporaryDir>();
+        if (!sycocaDesktopActionsRoot->isValid()) {
+            return 2;
+        }
+        const QString root = sycocaDesktopActionsRoot->path();
+        const QString dataHome = root + QStringLiteral("/data-home");
+        const QString dataDir = root + QStringLiteral("/data-dir");
+        if (!QDir().mkpath(root + QStringLiteral("/cache")) || !QDir().mkpath(root + QStringLiteral("/config"))) {
+            return 2;
+        }
+        qputenv("KDOCKW_TEST_DESKTOP_ACTIONS_ROOT", root.toLocal8Bit());
+        qputenv("XDG_CONFIG_HOME", (root + QStringLiteral("/config")).toLocal8Bit());
+        qputenv("XDG_CACHE_HOME", (root + QStringLiteral("/cache")).toLocal8Bit());
+        qputenv("XDG_DATA_HOME", dataHome.toLocal8Bit());
+        qputenv("XDG_DATA_DIRS", dataDir.toLocal8Bit());
+    } else {
+        qputenv("XDG_CONFIG_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CONFIG_HOME));
+        qputenv("XDG_CACHE_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_CACHE_HOME));
+        qputenv("XDG_DATA_HOME", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_HOME));
+        qputenv("XDG_DATA_DIRS", QByteArrayLiteral(KDOCKW_TEST_CATALOG_DATA_DIRS));
+    }
+    KLocalizedString::setApplicationDomain(QByteArrayLiteral("kdockw"));
+    // Catch2 discovery launches each case as its own process. Set locale before
+    // QApplication caches QLocale so the desktop-action locale test is stable.
     qputenv("LANGUAGE", germanDesktopActionCase ? QByteArrayLiteral("de") : QByteArrayLiteral("C"));
     qputenv("LC_ALL", germanDesktopActionCase ? QByteArrayLiteral("de_DE.UTF-8") : QByteArrayLiteral("C"));
     qputenv("LANG", germanDesktopActionCase ? QByteArrayLiteral("de_DE.UTF-8") : QByteArrayLiteral("C"));

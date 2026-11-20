@@ -18,6 +18,7 @@
 
 #include "kdockw.h"
 #include "models/dockactions.h"
+#include "models/dockentry.h"
 #include "models/dockmodel.h"
 #include "models/launcherentrytracker.h"
 #include "models/notificationtracker.h"
@@ -33,6 +34,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <QApplication>
+#include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -217,7 +219,10 @@ void pinLaunchers()
     }
     QProcess::execute(QStringLiteral("kbuildsycoca6"), {});
     app().settings->setPinnedLaunchers(urls);
-    app().model->setPinnedLaunchers(urls);
+    // This helper may run after the authoritative-pointer test adds a media
+    // player to the shared model. Reset the complete order so hit testing
+    // always sees exactly the five launchers it owns.
+    app().model->loadDockEntries(kdockw::DockEntriesCodec::encode(kdockw::DockEntriesCodec::fromLegacyLaunchers(urls)));
 }
 
 void collectDelegates(QQuickItem *item, QList<QQuickItem *> &out)
@@ -317,23 +322,43 @@ void runEdge(Edge edge)
     // Wait until all launchers are laid out and the slide-in and add/move
     // transitions have settled (geometry unchanged for 500 ms).
     QList<QRectF> previous;
+    QList<QRectF> firstObserved;
+    int geometryChangeSamples = 0;
+    int delegateCountMismatchSamples = 0;
+    int lastDelegateCount = 0;
     QElapsedTimer unchanged;
     unchanged.start();
-    REQUIRE(QTest::qWaitFor(
+    const bool layoutSettled = QTest::qWaitFor(
         [&] {
             const auto items = delegates(view);
             QList<QRectF> now;
             for (auto *item : items) {
                 now.append(baseRect(item));
             }
+            lastDelegateCount = items.size();
+            if (items.size() != kLauncherCount) {
+                ++delegateCountMismatchSamples;
+            }
             if (items.size() != kLauncherCount || now != previous) {
+                if (!now.isEmpty() && firstObserved.isEmpty()) {
+                    firstObserved = now;
+                }
+                if (now != previous) {
+                    ++geometryChangeSamples;
+                }
                 previous = now;
                 unchanged.restart();
                 return false;
             }
             return unchanged.elapsed() >= 500;
         },
-        kTimeoutMs));
+        kTimeoutMs);
+    if (!layoutSettled) {
+        qWarning() << "HITTEST_LAYOUT_TIMEOUT" << edgeName(edge) << "delegateCount" << lastDelegateCount << "geometryChangeSamples"
+                   << geometryChangeSamples << "delegateCountMismatchSamples" << delegateCountMismatchSamples << "first" << firstObserved
+                   << "last" << previous;
+    }
+    REQUIRE(layoutSettled);
 
     const qreal maxZoom = app().settings->maxZoomFactor();
     REQUIRE(maxZoom > 1.2);

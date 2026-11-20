@@ -11,6 +11,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -183,16 +184,12 @@ TEST_CASE("Desktop actions are empty when the entry offers none", "[desktopactio
 
 TEST_CASE("Desktop actions resolve installed and user-local applications", "[desktopactions][sycoca]")
 {
-    // A private XDG tree: KSycoca builds its database from it on first use.
-    QTemporaryDir root;
-    REQUIRE(root.isValid());
-    const QString dataHome = root.path() + QStringLiteral("/data-home");
-    const QString dataDir = root.path() + QStringLiteral("/data-dir");
-    REQUIRE(QDir().mkpath(root.path() + QStringLiteral("/cache")));
-    qputenv("XDG_DATA_HOME", dataHome.toLocal8Bit());
-    qputenv("XDG_DATA_DIRS", dataDir.toLocal8Bit());
-    qputenv("XDG_CACHE_HOME", (root.path() + QStringLiteral("/cache")).toLocal8Bit());
-    qputenv("XDG_CONFIG_HOME", (root.path() + QStringLiteral("/config")).toLocal8Bit());
+    // tests/unit/main.cpp creates these roots before QApplication/KService
+    // initialize their XDG paths, keeping the sycoca database isolated.
+    const QString root = qEnvironmentVariable("KDOCKW_TEST_DESKTOP_ACTIONS_ROOT");
+    REQUIRE_FALSE(root.isEmpty());
+    const QString dataHome = root + QStringLiteral("/data-home");
+    const QString dataDir = root + QStringLiteral("/data-dir");
 
     // System-wide (XDG_DATA_DIRS) and user-local (~/.local/share/applications).
     const QString installed = writeDesktopFile(dataDir + QStringLiteral("/applications"), QStringLiteral("kdockw-fixture-browser.desktop"), browserEntry);
@@ -213,7 +210,13 @@ TEST_CASE("Desktop actions resolve installed and user-local applications", "[des
     // others as file URLs; both must resolve.
     const QList<KServiceAction> byMenuId = kdockw::desktopActions(QUrl(QStringLiteral("applications:kdockw-fixture-browser.desktop")));
     REQUIRE(actionNames(byMenuId) == QStringList{QStringLiteral("new-window"), QStringLiteral("new-private-window")});
-    REQUIRE(byMenuId.at(0).service()->entryPath() == installed);
+    const QString installedEntryPath = byMenuId.at(0).service()->entryPath();
+    const QString canonicalInstalled = QFileInfo(installed).canonicalFilePath();
+    const QString canonicalInstalledEntryPath = QFileInfo(installedEntryPath).canonicalFilePath();
+    INFO("Expected canonical installed entryPath: " << canonicalInstalled.toStdString() << "; actual: "
+                                                       << canonicalInstalledEntryPath.toStdString());
+    REQUIRE_FALSE(canonicalInstalled.isEmpty());
+    REQUIRE(canonicalInstalledEntryPath == canonicalInstalled);
 
     const QList<KServiceAction> byPath = kdockw::desktopActions(QUrl::fromLocalFile(installed));
     REQUIRE(actionNames(byPath) == QStringList{QStringLiteral("new-window"), QStringLiteral("new-private-window")});
@@ -221,6 +224,12 @@ TEST_CASE("Desktop actions resolve installed and user-local applications", "[des
     const QList<KServiceAction> userLocal = kdockw::desktopActions(QUrl(QStringLiteral("applications:kdockw-fixture-local.desktop")));
     REQUIRE(actionNames(userLocal) == QStringList{QStringLiteral("compose")});
     REQUIRE(userLocal.at(0).icon() == QStringLiteral("mail-message-new"));
-    REQUIRE(userLocal.at(0).service()->entryPath() == local);
+    const QString localEntryPath = userLocal.at(0).service()->entryPath();
+    const QString canonicalLocal = QFileInfo(local).canonicalFilePath();
+    const QString canonicalLocalEntryPath = QFileInfo(localEntryPath).canonicalFilePath();
+    INFO("Expected canonical user-local entryPath: " << canonicalLocal.toStdString() << "; actual: "
+                                                       << canonicalLocalEntryPath.toStdString());
+    REQUIRE_FALSE(canonicalLocal.isEmpty());
+    REQUIRE(canonicalLocalEntryPath == canonicalLocal);
     REQUIRE(actionNames(kdockw::desktopActions(QUrl::fromLocalFile(local))) == QStringList{QStringLiteral("compose")});
 }
