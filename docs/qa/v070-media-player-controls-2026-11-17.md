@@ -1426,3 +1426,93 @@ permission-preserving backup matched SHA-256
 `1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96` (mode
 0600). The owner must still verify the corrected magnification in real Plasma;
 automated delivery tests cannot prove compositor handoff.
+
+## 2026-11-20 — authoritative Wayland pointer samples (Variant B)
+
+### Confirmed delivery boundary and implementation
+
+The final Qt motion-boundary capture showed that KWin/Wayland and the dock's
+`QWindow` event filter received a fresh pointer sample inside Compact while
+QML's last `MouseArea` sample remained stale and outside the dock. The QML hit
+resolver therefore did not run for that motion. This identifies the first
+observable divergence between `QWindow` and QML; it does not establish the
+internal Qt Quick dispatch cause or prove that `xdg_popup.grab` caused it.
+
+The approved Variant B now publishes typed samples from the existing
+`PointerFocusTracker` and routes them through the production
+`trackPointer()` → `resolveDockItemHit()` → anchor → `SpringZoomController`
+path. Samples contain logical surface-local position, an independent monotonic
+sample sequence, surface ID/generation, pointer generation, validity, and the
+known focused client window. Enter/motion publish; leave, focus/capability/seat
+loss, pointer destruction, and surface lifecycle changes invalidate. The
+Wayland source remains selected when available even without current pointer
+focus; Qt motion is used only if that source is unavailable. `DockView` rejects
+stale samples and samples belonging to another surface generation. QML maps
+surface coordinates into the dock root with Qt Quick mapping and does not apply
+DPR a second time. Qt remains active for clicks, menus, activation, drag and
+drop, wheel events, and media controls; its motion/enter/leave no longer races
+magnification when Wayland samples are authoritative.
+
+The new adapter-backed integration test sends samples through the real tracker
+interface, `DockView`, and QML bindings. On all four dock edges it covers dock
+enter/motion, popup surface handoff, stale Qt motion, return to Compact, stale
+and duplicate samples, surface mismatch/recreation, true leave, spring target,
+and current scale. It passed in both test configurations. The adapter test is
+synthetic: it verifies the production handoff path and stale-input policy, but
+cannot prove compositor delivery or fractional-scale behavior in Plasma.
+
+### Verification
+
+- Target `kdockw_hittest_tests`: passed 1/1 in Diagnostic after adapting its
+  legacy synthetic Qt-mouse helper to explicitly exercise the unavailable
+  Wayland-source fallback. The new authoritative-sample case runs through the
+  available adapter.
+- Full Production Release CTest: **229/230**. Test #192,
+  `kdockw_hittest_tests`, timed out waiting for launcher bounds to settle for
+  500 ms within the 15 s edge-case window in `runEdge(bottom)`. The same test
+  passed in the immediate isolated retry (**1/1**). This does not erase the
+  full-run failure; the cause of the full-suite-only timing failure is not
+  established.
+- Full Diagnostic Release CTest: **235/235 passed**.
+- Stage preflight: passed; source and stage executable are both version
+  `0.7.0-dev`, GNU Build ID
+  `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`.
+- Russian catalog source/stage comparison passed (SHA-256
+  `d025206dff1e094c85840a0152230dc4743ef0141deb77f6084170686481532d`); `msgfmt
+  --check --check-format`, shell syntax checks, Python compilation, and
+  `git diff --check` passed.
+- No dedicated CPU benchmark or real compositor pointer handoff was performed.
+  Event delivery is callback-driven and adds no polling, extra Wayland proxy,
+  or high-frequency production logging; performance improvement is **NOT
+  VERIFIED**.
+
+The diagnostic launcher reported that `codex/v0.7.0-media-controls` has no
+configured upstream; no upstream or push was added. The media card
+`187d5445ee4d474d`, parent `98d22c570d484bc6`, dependency `35353e13722e4769`,
+and status `review` remain unchanged. Owner acceptance of the updated candidate
+in Plasma/Wayland is still required; do not mark the media feature done.
+
+### Candidate handoff
+
+The isolated candidate was launched for owner review on 2026-11-20. Exactly one
+KDockW process is active: PID `651978`, user unit
+`kdockw-v070-diagnostic-release.service`, executable
+`/home/stout/Documents/vibecoding/kdockw/build/v070-diagnostic-release/stage/bin/kdockw`,
+version `0.7.0-dev`, runtime GNU Build ID
+`a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`. The source, stage, and running ELF
+IDs match. Profile is `wayland-pointer-source-v070`; the process uses the
+isolated profile config at
+`diagnostics/v070-dev/profiles/wayland-pointer-source-v070/kdockwrc` and its
+separate `XDG_CONFIG_HOME`. The dedicated hover/pointer trace is
+`diagnostics/v070-dev/logs/media-hover-wayland-pointer-source-v070-20261120-152144095510552.jsonl`.
+It records pointer-source setup and will record pointer/magnification events as
+the owner moves the cursor; no owner interaction has yet been captured.
+
+Stable `/usr/bin/kdockw` v0.6.0 is paused, not running beside the candidate;
+launcher restore state is present. The exact production config and new
+permission-preserving backup
+`diagnostics/v070-dev/backups/kdockwrc.production.wayland-pointer-source-v070`
+are both owned by `stout`, mode `0600`, and match SHA-256
+`1d3666d7860d996026586780c7c04feca3a8e073af199c100aee4c3899cf5a96`. After
+review, restore stable with
+`/home/stout/Documents/vibecoding/kdockw/tools/kdockw-v070-dev-stop-and-restore`.

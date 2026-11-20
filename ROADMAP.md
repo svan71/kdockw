@@ -560,6 +560,17 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   favorites were still loading. Stable-vs-dev timing A/B and real pointer
   hover in Plasma remain NOT VERIFIED. The historical MPRIS teardown SIGSEGV
   remains unexplained. Stable v0.6.0 was restored; the feature stays `review`.
+  The 2026-11-20 Variant B implementation makes the existing Wayland
+  `PointerFocusTracker` the event-driven source for dock hover/magnification,
+  validates current surface generations, and retains Qt for click/drag and other
+  interactions. Production CTest ended 229/230 on a full-suite layout-settle
+  timeout in `kdockw_hittest_tests`; its isolated retry passed 1/1. Diagnostic
+  Release CTest passed 235/235, and stage preflight passed with matching source
+  and stage Build ID `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`. A dedicated
+  candidate PID `651978` is active in profile
+  `wayland-pointer-source-v070` with Build ID
+  `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`; owner review is pending. Live
+  compositor behavior remains NOT VERIFIED and the card stays `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   a separate grouped-window regression card tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`

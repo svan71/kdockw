@@ -434,6 +434,18 @@ Fedora 45 была экспериментальной в v0.5.0. В кандид
   в Plasma остаются NOT VERIFIED. Причина исторического MPRIS SIGSEGV при
   завершении теста не установлена. Stable v0.6.0 восстановлен; задача остаётся
   `review`.
+  Реализация варианта B от 2026-11-20 использует существующий
+  `PointerFocusTracker` как событийный источник hover/magnification дока,
+  проверяет идентификаторы и поколения текущей поверхности, а Qt сохраняет
+  обработку кликов, DnD и остальных взаимодействий. Полный Production CTest
+  завершился 229/230 из-за тайм-аута стабилизации layout в `kdockw_hittest_tests`;
+  изолированный повтор прошёл 1/1. Diagnostic Release CTest прошёл 235/235;
+  stage preflight подтвердил одинаковый Build ID исходного и staged ELF
+  `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`. Кандидат PID `651978` работает
+  в профиле `wayland-pointer-source-v070`, Build ID
+  `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`; ожидается проверка владельца.
+  Поведение compositor в реальной Plasma/Wayland остаётся NOT VERIFIED,
+  карточка остаётся `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
   отдельная карточка фиксирует зависавшее число точек сгруппированных окон.
   Расхождение dev между дочерними строками предпросмотра и forwarded `ChildCount`

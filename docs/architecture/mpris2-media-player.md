@@ -147,6 +147,44 @@ cost-bounded in-memory cache. Artwork changes only when the art URL changes;
 playback status updates do not re-request the image. Invalid or missing artwork
 falls back to the player's desktop icon or a generic media icon.
 
+## Authoritative Wayland pointer source
+
+`PointerFocusTracker` publishes a typed `PointerSample` on Wayland pointer enter
+and motion using the existing `wl_pointer` proxy and its GUI-thread callbacks.
+Each sample carries a surface-local logical position, a tracker-owned monotonic
+sample sequence, surface ID and generation, pointer generation, validity, and
+the current focused client window when known. The sequence is independent of
+Wayland enter/leave serials; motion events do not provide a protocol serial.
+Samples are invalidated on pointer leave, focus changes, pointer capability or
+seat loss, pointer destruction, and dock surface destruction/recreation.
+
+The tracker is authoritative whenever the supported Wayland source is
+available, even while the pointer is temporarily focused on a popup or outside
+the dock. A missing current focus/sample does not select Qt's potentially stale
+coordinates. Qt/QML is the fallback only when the Wayland tracker/backend is
+unavailable. `DockView` accepts a sample only for its current dock surface and
+generation and rejects duplicate or older sequence values.
+
+The accepted surface-local point is mapped with Qt Quick's scene/root mapping
+(`mapFromItem(null, x, y)`) before it enters the existing
+`trackPointer()` → `resolveDockItemHit()` → anchor → `SpringZoomController`
+pipeline. Coordinates already use logical units; no second DPR multiplication
+is applied. The same resolver and spring serve ordinary icons and all media
+modes. With the Wayland source active, Qt `MouseArea`/`HoverHandler` motion,
+enter, and leave no longer race that magnification state; Qt remains responsible
+for clicks, context menus, activation, wheel input, media controls, and drag and
+drop. Dragging retains its existing magnification restrictions. This path is
+event-driven and adds neither polling nor a second Wayland pointer proxy.
+
+The adapter-backed integration regression sends samples through
+`PointerFocusTracker` → `DockView` → QML bindings and exercises a detached media
+popup round trip on all four dock edges, including stale Qt motion, stale and
+duplicate samples, dock surface identity/generation, leave invalidation, spring
+target, and current scale. It passed in the diagnostic build. Synthetic tests
+do not reproduce compositor event delivery, fractional-scale transforms, or a
+real popup surface handoff; owner verification in Plasma/Wayland remains
+required before claiming visual acceptance.
+
 ## Settings and migration
 
 KConfigXT persists widget enablement, display mode, Expanded widget width,

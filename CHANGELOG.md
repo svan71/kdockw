@@ -37,6 +37,7 @@ carried forward from the Krema-based development period.
 - Rendered media control symbols directly with Kirigami icons so their visible glyphs and contrast do not depend on the active Qt Quick Controls style; emphasized popup play/pause and themed the source selector and volume controls.
 - Kept the media popup anchored to the transformed dock item during hover handoff, aligned it to the dock edge with screen clamping, and preserved the same popup when changing from hover to pinned mode.
 - Kept full-popup geometry independent of track metadata, fixed it at 400 × 360 logical pixels when screen space permits, and kept its 124 px artwork square stable across tracks.
+- Routed dock hover and magnification through current Wayland pointer samples so missed Qt Quick motion updates no longer leave the spring on stale coordinates.
 - Reserved a visible 3 px progress track in Expanded mode, scaled its cover from the dock icon size, and kept title and artist on one ellipsized line while preserving 32 px transport hit areas.
 - Added opt-in Application Launcher opening phase timings for request, catalog/page readiness, and first frame without logging application names.
 - Derived grouped TaskManager indicator counts from live child rows and forwarded the explicit child-count role when group rows change, preventing stale running-window dots.
