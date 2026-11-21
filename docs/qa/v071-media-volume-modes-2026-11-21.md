@@ -1,7 +1,8 @@
 # v0.7.1 Media Player Volume Modes — verification — 2026-11-21
 
-Status: implementation and automated verification complete; owner acceptance in
-real Plasma/Wayland remains pending. No release, tag, or push was created.
+Status: implementation and automated verification complete; owner accepted the
+candidate in real Plasma/Wayland at **14/14 PASS** with no remarks. No release,
+tag, or push was created.
 
 ## Behavior delivered
 
@@ -71,12 +72,11 @@ per-stream fallback is used.
 - The controlled pre-implementation diagnostic is evidence of ignored MPRIS
   volume, not acceptance of this candidate's system-volume fallback.
 
-## Manual acceptance still required
+## Owner acceptance
 
-Run the isolated `v0.7.1-dev` candidate in Plasma/Wayland and verify Elisa in
-Player Volume Only, Yandex Music in Automatic after ignored MPRIS writes,
-Computer Volume mode, external Plasma volume keys, mute/default-output changes,
-mode persistence across a KDockW restart, and UI responsiveness. Specifically
-confirm that Automatic changes the computer output only after MPRIS Volume has
-been established as unsupported or ignored. Stable v0.7.0 remains installed;
-the candidate is isolated and must not run concurrently with it.
+On 2026-11-21 the owner completed manual acceptance of the isolated
+`v0.7.1-dev` Volume Modes candidate: **14/14 PASS**, no remarks, Build ID
+`c13e11f7b34de0db68647d7bbcb5ab464fc05607`, profile
+`volume-modes-20261121`. This records owner acceptance of Volume Modes only;
+it does not claim release publication. The accepted implementation was not
+changed by the subsequent Window Preview activation task.
