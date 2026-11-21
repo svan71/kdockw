@@ -2208,3 +2208,52 @@ msgstr "Повтор"
 #: src/qml/MediaPlayerWidget.qml
 msgid "Unknown track"
 msgstr "Неизвестная композиция"
+
+#: src/qml/settings/MediaPlayerPage.qml src/qml/MediaPlayerWidget.qml
+msgid "Volume control"
+msgstr "Управление громкостью"
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Automatic (recommended)"
+msgstr "Автоматически (рекомендуется)"
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Control the player when it supports volume. Otherwise use the computer's overall volume."
+msgstr "Управлять громкостью самого плеера, если он это поддерживает. Иначе используется общая громкость компьютера."
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Player volume only"
+msgstr "Только громкость плеера"
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Change only the selected music app. Volume control is unavailable if the app cannot change its own volume."
+msgstr "Изменять громкость только выбранного музыкального приложения. Если приложение не поддерживает эту функцию, регулировка будет недоступна."
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Computer volume"
+msgstr "Общая громкость компьютера"
+
+#: src/qml/settings/MediaPlayerPage.qml
+msgid "Change all computer audio, including music, browser audio, notifications, and other apps."
+msgstr "Изменять громкость всего звука: музыки, браузера, уведомлений и других приложений."
+
+#: src/qml/MediaPlayerWidget.qml
+msgid "Player volume"
+msgstr "Громкость плеера"
+
+#: src/qml/MediaPlayerWidget.qml
+msgid "Overall volume"
+msgstr "Общая громкость"
+
+#: src/qml/MediaPlayerWidget.qml
+msgid "Volume control unavailable"
+msgstr "Управление громкостью недоступно"
+
+#: src/qml/MediaPlayerWidget.qml
+#, qt-format
+msgid "%1 — muted"
+msgstr "%1 — звук выключен"
+
+#: src/qml/MediaPlayerWidget.qml
+msgid "The system audio output is muted."
+msgstr "Системный звуковой выход выключен."

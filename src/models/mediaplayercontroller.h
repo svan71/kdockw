@@ -12,6 +12,10 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <optional>
+
+#include "systemvolumebackend.h"
+
 namespace kdockw
 {
 
@@ -39,7 +43,11 @@ class MediaPlayerController final : public QAbstractListModel
     Q_PROPERTY(qint64 durationUs READ durationUs NOTIFY currentSessionChanged)
     Q_PROPERTY(qint64 positionUs READ positionUs NOTIFY positionChanged)
     Q_PROPERTY(double rate READ rate NOTIFY currentSessionChanged)
-    Q_PROPERTY(double volume READ volume NOTIFY currentSessionChanged)
+    Q_PROPERTY(double volume READ volume NOTIFY volumeChanged)
+    Q_PROPERTY(QString activeVolumeSource READ activeVolumeSource NOTIFY volumeControlStateChanged)
+    Q_PROPERTY(bool volumeControlAvailable READ volumeControlAvailable NOTIFY volumeControlStateChanged)
+    Q_PROPERTY(bool volumeMuted READ volumeMuted NOTIFY volumeControlStateChanged)
+    Q_PROPERTY(int volumeControlMode READ volumeControlMode NOTIFY volumeControlModeChanged)
     Q_PROPERTY(bool shuffle READ shuffle NOTIFY currentSessionChanged)
     Q_PROPERTY(bool canControl READ canControl NOTIFY currentSessionChanged)
     Q_PROPERTY(bool canPlay READ canPlay NOTIFY currentSessionChanged)
@@ -61,7 +69,7 @@ public:
     };
     Q_ENUM(Role)
 
-    explicit MediaPlayerController(QObject *parent = nullptr);
+    explicit MediaPlayerController(QObject *parent = nullptr, SystemVolumeBackend *systemVolumeBackend = nullptr);
     ~MediaPlayerController() override;
 
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -88,6 +96,10 @@ public:
     qint64 positionUs() const;
     double rate() const;
     double volume() const;
+    QString activeVolumeSource() const;
+    bool volumeControlAvailable() const;
+    bool volumeMuted() const;
+    int volumeControlMode() const;
     bool shuffle() const;
     bool canControl() const;
     bool canPlay() const;
@@ -107,6 +119,8 @@ public:
     Q_INVOKABLE bool next();
     Q_INVOKABLE bool seekTo(qint64 positionUs, const QString &expectedTrackId);
     Q_INVOKABLE bool setVolume(double value);
+    Q_INVOKABLE void setVolumeControlMode(int mode);
+    Q_INVOKABLE void diagnosticVolumeSliderEvent(const QString &event, double value);
     Q_INVOKABLE bool setShuffle(bool value);
     Q_INVOKABLE bool setLoopStatus(const QString &value);
     Q_INVOKABLE bool raisePlayer();
@@ -119,6 +133,9 @@ Q_SIGNALS:
     void selectionChanged();
     void selectionModeChanged();
     void currentSessionChanged();
+    void volumeChanged();
+    void volumeControlStateChanged();
+    void volumeControlModeChanged();
     void positionChanged();
     void commandFailed(const QString &service, const QString &message);
 
@@ -129,6 +146,8 @@ private Q_SLOTS:
     void onSeeked(qlonglong positionUs, const QDBusMessage &message);
 
 private:
+    enum class VolumeWriteSupport { Unknown, Supported, Unsupported };
+
     struct Session {
         QString service;
         QString owner;
@@ -155,7 +174,20 @@ private:
         bool canGoNext = false;
         bool canSeek = false;
         bool canRaise = false;
+        bool playerPropertiesLoaded = false;
+        bool volumePropertyPresent = false;
+        VolumeWriteSupport volumeWriteSupport = VolumeWriteSupport::Unknown;
+        quint64 volumeWriteRequest = 0;
         quint64 generation = 0;
+    };
+
+    struct PendingVolumeWrite {
+        QString service;
+        QString owner;
+        quint64 generation = 0;
+        quint64 request = 0;
+        double requested = 0.0;
+        double previous = 0.0;
     };
 
     int indexOf(const QString &service) const;
@@ -170,6 +202,15 @@ private:
     void selectService(const QString &service, bool manual);
     bool sendPlayerMethod(const QString &method, const QVariantList &arguments = {});
     bool setPlayerProperty(const QString &name, const QVariant &value);
+    bool setMprisVolume(double value);
+    void requestVolumeReadback(const PendingVolumeWrite &pending, bool finalCheck);
+    void markVolumeWriteSupport(const PendingVolumeWrite &pending, VolumeWriteSupport support);
+    bool isCurrentVolumeWrite(const PendingVolumeWrite &pending) const;
+    void notifyVolumeStateChanged();
+    QString resolvedVolumeSource() const;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    void diagnosticReadVolume(const QString &service, const QString &owner, const QString &reason);
+#endif
     qint64 estimatedPosition(const Session &session) const;
     void updateProgressTimer();
     void updateVisibility();
@@ -188,7 +229,12 @@ private:
     QElapsedTimer m_clock;
     QTimer m_progressTimer;
     QTimer m_stoppedHideTimer;
+    QTimer m_volumeVerificationTimer;
     QSet<QObject *> m_progressClients;
+    SystemVolumeBackend *m_systemVolumeBackend = nullptr;
+    int m_volumeControlMode = 1;
+    quint64 m_nextVolumeWriteRequest = 0;
+    std::optional<PendingVolumeWrite> m_pendingVolumeWrite;
 };
 
 } // namespace kdockw

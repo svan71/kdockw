@@ -5,6 +5,7 @@
 
 #include <QDBusMessage>
 #include <QDBusArgument>
+#include <QDBusError>
 #include <QDBusObjectPath>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -59,14 +60,25 @@ QVariantMap variantMap(const QVariant &value)
 }
 } // namespace
 
-MediaPlayerController::MediaPlayerController(QObject *parent)
+MediaPlayerController::MediaPlayerController(QObject *parent, SystemVolumeBackend *systemVolumeBackend)
     : QAbstractListModel(parent)
     , m_bus(QDBusConnection::sessionBus())
+    , m_systemVolumeBackend(systemVolumeBackend ? systemVolumeBackend : new PactlSystemVolumeBackend({}, this))
 {
     m_clock.start();
     m_progressTimer.setInterval(250);
     m_progressTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_progressTimer, &QTimer::timeout, this, &MediaPlayerController::positionChanged);
+    m_volumeVerificationTimer.setSingleShot(true);
+    m_volumeVerificationTimer.setInterval(900);
+    connect(&m_volumeVerificationTimer, &QTimer::timeout, this, [this] {
+        if (m_pendingVolumeWrite) {
+            requestVolumeReadback(*m_pendingVolumeWrite, true);
+        }
+    });
+    connect(m_systemVolumeBackend, &SystemVolumeBackend::stateChanged, this, [this] {
+        notifyVolumeStateChanged();
+    });
     m_stoppedHideTimer.setSingleShot(true);
     m_stoppedHideTimer.setInterval(m_stoppedHideDelayMs);
     connect(&m_stoppedHideTimer, &QTimer::timeout, this, [this] {
@@ -179,7 +191,6 @@ KDOCKW_CURRENT_GETTER(QUrl, artUrl, artUrl, QUrl())
 KDOCKW_CURRENT_GETTER(QUrl, mediaUrl, mediaUrl, QUrl())
 KDOCKW_CURRENT_GETTER(qint64, durationUs, durationUs, qint64(-1))
 KDOCKW_CURRENT_GETTER(double, rate, rate, 1.0)
-KDOCKW_CURRENT_GETTER(double, volume, volume, 1.0)
 KDOCKW_CURRENT_GETTER(bool, shuffle, shuffle, false)
 KDOCKW_CURRENT_GETTER(bool, canControl, canControl, false)
 KDOCKW_CURRENT_GETTER(bool, canPlay, canPlay, false)
@@ -189,6 +200,72 @@ KDOCKW_CURRENT_GETTER(bool, canGoNext, canGoNext, false)
 KDOCKW_CURRENT_GETTER(bool, canSeek, canSeek, false)
 KDOCKW_CURRENT_GETTER(bool, canRaise, canRaise, false)
 #undef KDOCKW_CURRENT_GETTER
+
+QString MediaPlayerController::resolvedVolumeSource() const
+{
+    const Session *session = selected();
+    const bool playerVolumeReady = session && session->playerPropertiesLoaded
+        && session->volumePropertyPresent
+        && session->volumeWriteSupport != VolumeWriteSupport::Unsupported;
+    const bool playerVolumeUnsupported = session && session->playerPropertiesLoaded
+        && (!session->volumePropertyPresent || session->volumeWriteSupport == VolumeWriteSupport::Unsupported);
+
+    if (m_volumeControlMode == 2) {
+        return m_systemVolumeBackend && m_systemVolumeBackend->available() ? QStringLiteral("system") : QStringLiteral("unavailable");
+    }
+    if (m_volumeControlMode == 1) {
+        return playerVolumeReady ? QStringLiteral("player") : QStringLiteral("unavailable");
+    }
+    if (playerVolumeReady) {
+        return QStringLiteral("player");
+    }
+    if (playerVolumeUnsupported && m_systemVolumeBackend && m_systemVolumeBackend->available()) {
+        return QStringLiteral("system");
+    }
+    return QStringLiteral("unavailable");
+}
+
+double MediaPlayerController::volume() const
+{
+    const QString source = resolvedVolumeSource();
+    if (source == QLatin1String("system")) {
+        return m_systemVolumeBackend ? m_systemVolumeBackend->volume() : 0.0;
+    }
+    if (source == QLatin1String("player")) {
+        const Session *session = selected();
+        return session ? session->volume : 0.0;
+    }
+    return 0.0;
+}
+
+QString MediaPlayerController::activeVolumeSource() const { return resolvedVolumeSource(); }
+bool MediaPlayerController::volumeControlAvailable() const { return resolvedVolumeSource() != QLatin1String("unavailable"); }
+bool MediaPlayerController::volumeMuted() const
+{
+    return resolvedVolumeSource() == QLatin1String("system") && m_systemVolumeBackend && m_systemVolumeBackend->muted();
+}
+int MediaPlayerController::volumeControlMode() const { return m_volumeControlMode; }
+
+void MediaPlayerController::setVolumeControlMode(int mode)
+{
+    mode = std::clamp(mode, 0, 2);
+    if (m_volumeControlMode == mode) return;
+    m_volumeControlMode = mode;
+    Q_EMIT volumeControlModeChanged();
+    notifyVolumeStateChanged();
+}
+
+void MediaPlayerController::notifyVolumeStateChanged()
+{
+    const Session *session = selected();
+    const bool automaticNeedsSystem = m_volumeControlMode == 0 && session && session->playerPropertiesLoaded
+        && (!session->volumePropertyPresent || session->volumeWriteSupport == VolumeWriteSupport::Unsupported);
+    if ((m_volumeControlMode == 2 || automaticNeedsSystem) && m_systemVolumeBackend) {
+        m_systemVolumeBackend->startMonitoring();
+    }
+    Q_EMIT volumeChanged();
+    Q_EMIT volumeControlStateChanged();
+}
 
 qint64 MediaPlayerController::positionUs() const
 {
@@ -314,6 +391,7 @@ void MediaPlayerController::removeService(const QString &service)
         Q_EMIT selectionChanged();
         Q_EMIT selectionModeChanged();
         Q_EMIT currentSessionChanged();
+        notifyVolumeStateChanged();
     }
     updateAutomaticSelection();
     logDiagnosticSources(QStringLiteral("service-removed"));
@@ -336,6 +414,20 @@ void MediaPlayerController::requestProperties(const QString &service, const QStr
             return;
         }
         applyProperties(m_sessions[row], interfaceName, reply.value());
+        if (interfaceName == QLatin1String(kPlayerInterface)) {
+            Session &session = m_sessions[row];
+            session.playerPropertiesLoaded = true;
+            const bool hasVolume = reply.value().contains(QStringLiteral("Volume"));
+            if (!hasVolume) {
+                session.volumePropertyPresent = false;
+                session.volumeWriteSupport = VolumeWriteSupport::Unsupported;
+            } else {
+                if (!session.volumePropertyPresent || session.volumeWriteSupport == VolumeWriteSupport::Unsupported) {
+                    session.volumeWriteSupport = VolumeWriteSupport::Unknown;
+                }
+                session.volumePropertyPresent = true;
+            }
+        }
         notifySessionChanged(service);
         updateAutomaticSelection();
         logDiagnosticSources(QStringLiteral("initial-properties"));
@@ -412,9 +504,33 @@ void MediaPlayerController::onPropertiesChanged(const QString &interfaceName, co
     }
     if (row < 0) return;
     const QString service = m_sessions.at(row).service;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    if (interfaceName == QLatin1String(kPlayerInterface)) {
+        const auto volume = changed.constFind(QStringLiteral("Volume"));
+        if (volume != changed.cend()) {
+            const QVariant value = unbox(volume.value());
+            bool ok = false;
+            const double numericValue = value.toDouble(&ok);
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-changed service=%2 valid=%3 value=%4")
+                       .arg(m_clock.elapsed()).arg(service, ok ? QStringLiteral("true") : QStringLiteral("false"),
+                                                   ok ? QString::number(numericValue, 'g', 12) : QStringLiteral("<invalid>"));
+        }
+        if (invalidated.contains(QStringLiteral("Volume"))) {
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-invalidated service=%2 property=Volume")
+                       .arg(m_clock.elapsed()).arg(service);
+        }
+    }
+#endif
     applyProperties(m_sessions[row], interfaceName, changed);
     Session &session = m_sessions[row];
     const bool player = interfaceName == QLatin1String(kPlayerInterface);
+    const auto changedVolume = player ? changed.constFind(QStringLiteral("Volume")) : changed.cend();
+    const bool volumeWasChanged = changedVolume != changed.cend();
+    if (volumeWasChanged) {
+        session.volumePropertyPresent = true;
+    }
     for (const QString &property : invalidated) {
         if (player) {
             if (property == QLatin1String("PlaybackStatus")) session.playbackStatus.clear();
@@ -446,6 +562,11 @@ void MediaPlayerController::onPropertiesChanged(const QString &interfaceName, co
     }
     session.positionTimestampMs = m_clock.elapsed();
     notifySessionChanged(service);
+    if (volumeWasChanged && m_pendingVolumeWrite && m_pendingVolumeWrite->service == service
+        && isCurrentVolumeWrite(*m_pendingVolumeWrite)
+        && qAbs(session.volume - m_pendingVolumeWrite->requested) <= 0.02) {
+        markVolumeWriteSupport(*m_pendingVolumeWrite, VolumeWriteSupport::Supported);
+    }
     const auto diagnosticProperty = [](const QString &name) {
         return name == QLatin1String("Identity") || name == QLatin1String("PlaybackStatus")
             || name == QLatin1String("Metadata") || name.startsWith(QLatin1String("Can"));
@@ -484,6 +605,7 @@ void MediaPlayerController::notifySessionChanged(const QString &service, const Q
     if (row >= 0) Q_EMIT dataChanged(index(row), index(row), roles);
     if (service == m_selectedService) {
         Q_EMIT currentSessionChanged();
+        notifyVolumeStateChanged();
         updateProgressTimer();
         Q_EMIT positionChanged();
     }
@@ -570,6 +692,7 @@ void MediaPlayerController::selectService(const QString &service, bool manual)
     Q_EMIT selectionChanged();
     Q_EMIT selectionModeChanged();
     Q_EMIT currentSessionChanged();
+    notifyVolumeStateChanged();
     Q_EMIT availabilityChanged();
     updateProgressTimer();
     updateVisibility();
@@ -614,7 +737,10 @@ void MediaPlayerController::selectAutomatic()
     const QString old = m_selectedService;
     m_selectedService.clear();
     updateAutomaticSelection();
-    if (old == m_selectedService) Q_EMIT currentSessionChanged();
+    if (old == m_selectedService) {
+        Q_EMIT currentSessionChanged();
+        notifyVolumeStateChanged();
+    }
 }
 
 void MediaPlayerController::setVisibilityPolicy(bool autoVisibility, bool showPaused, int hideDelayMs)
@@ -684,24 +810,278 @@ bool MediaPlayerController::setPlayerProperty(const QString &name, const QVarian
 {
     const Session *s = selected();
     if (!s || !s->canControl) return false;
+    const QString service = s->service;
+    const QString owner = s->owner;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    const bool traceVolume = name == QLatin1String("Volume");
+    if (traceVolume) {
+        qCInfo(lcMediaPlayer).noquote()
+            << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-dispatch service=%2 owner=%3 value=%4")
+                   .arg(m_clock.elapsed()).arg(service, owner, value.toString());
+    }
+#endif
     QDBusMessage call = QDBusMessage::createMethodCall(s->owner, QString::fromLatin1(kMprisPath),
         QString::fromLatin1(kPropertiesInterface), QStringLiteral("Set"));
     call << QString::fromLatin1(kPlayerInterface) << name << QVariant::fromValue(QDBusVariant(value));
-    const QString service = s->service;
     auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service, name](QDBusPendingCallWatcher *finished) {
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service, name
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+                                                                 , owner, traceVolume
+#endif
+    ](QDBusPendingCallWatcher *finished) {
         const QDBusPendingReply<> reply = *finished;
         finished->deleteLater();
-        if (reply.isError()) Q_EMIT commandFailed(service, name + QStringLiteral(": ") + reply.error().message());
+        if (reply.isError()) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            if (traceVolume) {
+                qCInfo(lcMediaPlayer).noquote()
+                    << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-error service=%2 error_name=%3 message=%4")
+                           .arg(m_clock.elapsed()).arg(service, reply.error().name(), reply.error().message());
+            }
+#endif
+            Q_EMIT commandFailed(service, name + QStringLiteral(": ") + reply.error().message());
+        }
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        else if (traceVolume) {
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-success service=%2")
+                       .arg(m_clock.elapsed()).arg(service);
+        }
+        if (traceVolume) diagnosticReadVolume(service, owner, QStringLiteral("after-set"));
+#endif
     });
     return true;
 }
 
 bool MediaPlayerController::setVolume(double value)
 {
+    const double boundedValue = std::clamp(value, 0.0, 1.0);
+    const QString source = resolvedVolumeSource();
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
     const Session *s = selected();
-    return s && s->canControl && setPlayerProperty(QStringLiteral("Volume"), std::clamp(value, 0.0, 1.0));
+    qCInfo(lcMediaPlayer).noquote()
+        << QStringLiteral("MPRIS Volume trace t_ms=%1 event=set-volume-call source=%2 service=%3 owner=%4 can-control=%5 cached-volume=%6 requested=%7")
+               .arg(m_clock.elapsed())
+               .arg(source, s ? s->service : QStringLiteral("<none>"), s ? s->owner : QStringLiteral("<none>"))
+               .arg(s && s->canControl ? QStringLiteral("true") : QStringLiteral("false"))
+               .arg(s ? QString::number(s->volume, 'g', 12) : QStringLiteral("<none>"), QString::number(boundedValue, 'g', 12));
+#endif
+    const bool accepted = source == QLatin1String("player") ? setMprisVolume(boundedValue)
+        : source == QLatin1String("system") && m_systemVolumeBackend ? (m_systemVolumeBackend->setVolume(boundedValue), true)
+        : false;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    qCInfo(lcMediaPlayer).noquote()
+        << QStringLiteral("MPRIS Volume trace t_ms=%1 event=set-volume-return accepted=%2")
+               .arg(m_clock.elapsed()).arg(accepted ? QStringLiteral("true") : QStringLiteral("false"));
+#endif
+    return accepted;
 }
+
+bool MediaPlayerController::setMprisVolume(double value)
+{
+    Session *session = selected();
+    if (!session || !session->volumePropertyPresent
+        || session->volumeWriteSupport == VolumeWriteSupport::Unsupported) {
+        return false;
+    }
+
+    PendingVolumeWrite pending;
+    pending.service = session->service;
+    pending.owner = session->owner;
+    pending.generation = session->generation;
+    pending.request = ++m_nextVolumeWriteRequest;
+    pending.requested = std::clamp(value, 0.0, 1.0);
+    pending.previous = session->volume;
+    session->volumeWriteRequest = pending.request;
+    m_pendingVolumeWrite = pending;
+    m_volumeVerificationTimer.stop();
+    const bool changedEnoughToVerify = qAbs(pending.requested - pending.previous) > 0.02;
+    const bool supportWasUnknown = session->volumeWriteSupport == VolumeWriteSupport::Unknown;
+
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    qCInfo(lcMediaPlayer).noquote()
+        << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-dispatch service=%2 owner=%3 value=%4")
+               .arg(m_clock.elapsed()).arg(pending.service, pending.owner,
+                                            QString::number(pending.requested, 'g', 12));
+#endif
+    QDBusMessage call = QDBusMessage::createMethodCall(pending.owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("Set"));
+    call << QString::fromLatin1(kPlayerInterface) << QStringLiteral("Volume")
+         << QVariant::fromValue(QDBusVariant(pending.requested));
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, pending, changedEnoughToVerify, supportWasUnknown](QDBusPendingCallWatcher *finished) {
+        const QDBusPendingReply<> reply = *finished;
+        finished->deleteLater();
+        if (!isCurrentVolumeWrite(pending)) {
+            return;
+        }
+        if (reply.isError()) {
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-error service=%2 error_name=%3 message=%4")
+                       .arg(m_clock.elapsed()).arg(pending.service, reply.error().name(), reply.error().message());
+#endif
+            if (reply.error().name() == QLatin1String("org.freedesktop.DBus.Error.UnknownProperty")
+                || reply.error().name() == QLatin1String("org.freedesktop.DBus.Error.PropertyReadOnly")) {
+                markVolumeWriteSupport(pending, VolumeWriteSupport::Unsupported);
+            } else {
+                m_pendingVolumeWrite.reset();
+            }
+            Q_EMIT commandFailed(pending.service, QStringLiteral("Volume: ") + reply.error().message());
+            return;
+        }
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        qCInfo(lcMediaPlayer).noquote()
+            << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-set-success service=%2")
+                   .arg(m_clock.elapsed()).arg(pending.service);
+        diagnosticReadVolume(pending.service, pending.owner, QStringLiteral("after-set-response"));
+#endif
+        if (!changedEnoughToVerify && supportWasUnknown) {
+            m_pendingVolumeWrite.reset();
+            return;
+        }
+        requestVolumeReadback(pending, false);
+    });
+    return true;
+}
+
+bool MediaPlayerController::isCurrentVolumeWrite(const PendingVolumeWrite &pending) const
+{
+    const int row = indexOf(pending.service);
+    return m_pendingVolumeWrite && m_pendingVolumeWrite->request == pending.request
+        && row >= 0 && m_sessions.at(row).owner == pending.owner
+        && m_sessions.at(row).generation == pending.generation
+        && m_sessions.at(row).volumeWriteRequest == pending.request;
+}
+
+void MediaPlayerController::markVolumeWriteSupport(const PendingVolumeWrite &pending, VolumeWriteSupport support)
+{
+    if (!isCurrentVolumeWrite(pending)) return;
+    const int row = indexOf(pending.service);
+    if (row < 0) return;
+    m_sessions[row].volumeWriteSupport = support;
+    m_pendingVolumeWrite.reset();
+    m_volumeVerificationTimer.stop();
+    if (pending.service == m_selectedService) {
+        notifyVolumeStateChanged();
+    }
+}
+
+void MediaPlayerController::requestVolumeReadback(const PendingVolumeWrite &pending, bool finalCheck)
+{
+    if (!isCurrentVolumeWrite(pending)) return;
+    QDBusMessage call = QDBusMessage::createMethodCall(pending.owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("Get"));
+    call << QString::fromLatin1(kPlayerInterface) << QStringLiteral("Volume");
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, pending, finalCheck](QDBusPendingCallWatcher *finished) {
+        const QDBusMessage response = finished->reply();
+        finished->deleteLater();
+        if (!isCurrentVolumeWrite(pending)) return;
+        if (response.type() == QDBusMessage::ErrorMessage) {
+            const QDBusError error = response;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=verification-get-error service=%2 final=%3 error_name=%4")
+                       .arg(m_clock.elapsed()).arg(pending.service, finalCheck ? QStringLiteral("true") : QStringLiteral("false"), error.name());
+#endif
+            if (error.name() == QLatin1String("org.freedesktop.DBus.Error.UnknownProperty")
+                || error.name() == QLatin1String("org.freedesktop.DBus.Error.PropertyReadOnly")) {
+                markVolumeWriteSupport(pending, VolumeWriteSupport::Unsupported);
+            } else if (finalCheck) {
+                m_pendingVolumeWrite.reset();
+            } else {
+                m_volumeVerificationTimer.start();
+            }
+            return;
+        }
+        const QList<QVariant> arguments = response.arguments();
+        if (arguments.isEmpty()) {
+            if (finalCheck) m_pendingVolumeWrite.reset();
+            else m_volumeVerificationTimer.start();
+            return;
+        }
+        bool valid = false;
+        const double readback = unbox(arguments.constFirst()).toDouble(&valid);
+        if (!valid || !std::isfinite(readback)) {
+            if (finalCheck) m_pendingVolumeWrite.reset();
+            else m_volumeVerificationTimer.start();
+            return;
+        }
+        const double boundedReadback = std::clamp(readback, 0.0, 1.0);
+        const int row = indexOf(pending.service);
+        if (row >= 0) m_sessions[row].volume = boundedReadback;
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+        qCInfo(lcMediaPlayer).noquote()
+            << QStringLiteral("MPRIS Volume trace t_ms=%1 event=verification-get-result service=%2 final=%3 value=%4 requested=%5 previous=%6")
+                   .arg(m_clock.elapsed())
+                   .arg(pending.service, finalCheck ? QStringLiteral("true") : QStringLiteral("false"),
+                        QString::number(boundedReadback, 'g', 12), QString::number(pending.requested, 'g', 12),
+                        QString::number(pending.previous, 'g', 12));
+#endif
+        if (qAbs(boundedReadback - pending.requested) <= 0.02) {
+            markVolumeWriteSupport(pending, VolumeWriteSupport::Supported);
+        } else if (!finalCheck) {
+            m_volumeVerificationTimer.start();
+        } else if (qAbs(pending.requested - pending.previous) > 0.02
+                   && qAbs(boundedReadback - pending.previous) <= 0.02) {
+            markVolumeWriteSupport(pending, VolumeWriteSupport::Unsupported);
+        } else {
+            m_pendingVolumeWrite.reset();
+        }
+        if (pending.service == m_selectedService) {
+            notifySessionChanged(pending.service);
+        }
+    });
+}
+
+void MediaPlayerController::diagnosticVolumeSliderEvent(const QString &event, double value)
+{
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+    qCInfo(lcMediaPlayer).noquote()
+        << QStringLiteral("MPRIS Volume trace t_ms=%1 event=ui-slider-%2 value=%3")
+               .arg(m_clock.elapsed()).arg(event, QString::number(std::clamp(value, 0.0, 1.0), 'g', 12));
+#else
+    Q_UNUSED(event);
+    Q_UNUSED(value);
+#endif
+}
+
+#ifdef KDOCKW_DIAGNOSTIC_BUILD
+void MediaPlayerController::diagnosticReadVolume(const QString &service, const QString &owner, const QString &reason)
+{
+    QDBusMessage call = QDBusMessage::createMethodCall(owner, QString::fromLatin1(kMprisPath),
+        QString::fromLatin1(kPropertiesInterface), QStringLiteral("Get"));
+    call << QString::fromLatin1(kPlayerInterface) << QStringLiteral("Volume");
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(call), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service, reason](QDBusPendingCallWatcher *finished) {
+        const QDBusMessage response = finished->reply();
+        finished->deleteLater();
+        if (response.type() == QDBusMessage::ErrorMessage) {
+            const QDBusError error = response;
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-get-error reason=%2 service=%3 error_name=%4 message=%5")
+                       .arg(m_clock.elapsed()).arg(reason, service, error.name(), error.message());
+            return;
+        }
+        const QList<QVariant> arguments = response.arguments();
+        if (arguments.isEmpty()) {
+            qCInfo(lcMediaPlayer).noquote()
+                << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-get-empty reason=%2 service=%3")
+                       .arg(m_clock.elapsed()).arg(reason, service);
+            return;
+        }
+        const QVariant value = unbox(arguments.constFirst());
+        bool ok = false;
+        const double volume = value.toDouble(&ok);
+        qCInfo(lcMediaPlayer).noquote()
+            << QStringLiteral("MPRIS Volume trace t_ms=%1 event=properties-get-result reason=%2 service=%3 valid=%4 value=%5")
+                   .arg(m_clock.elapsed()).arg(reason, service)
+                   .arg(ok ? QStringLiteral("true") : QStringLiteral("false"),
+                        ok ? QString::number(volume, 'g', 12) : QString::fromLatin1(value.metaType().name()));
+    });
+}
+#endif
 
 bool MediaPlayerController::setShuffle(bool value)
 {

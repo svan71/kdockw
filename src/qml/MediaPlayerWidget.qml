@@ -28,6 +28,12 @@ Item {
             || (DockView.pointerInside && dockDelegate && dockDelegate.dockRoot
                 && dockDelegate.dockRoot.hoveredIndex === dockDelegate.index))
     readonly property var controller: DockModel.mediaPlayerController
+    readonly property string volumeSourceLabel: !controller.volumeControlAvailable
+        ? i18n("Volume control unavailable")
+        : controller.activeVolumeSource === "player" ? i18n("Player volume")
+        : controller.activeVolumeSource === "system" ? i18n("Overall volume") : i18n("Volume control unavailable")
+    readonly property string volumeSourceTooltip: controller.volumeMuted
+        ? i18n("%1 — muted", volumeSourceLabel) : volumeSourceLabel
     readonly property bool verticalDock: DockView.isVertical
     readonly property int popupStateClosed: 0
     readonly property int popupStateOpeningPending: 1
@@ -1459,23 +1465,45 @@ Item {
             }
 
             RowLayout {
-                visible: DockSettings.mediaPlayerShowVolume && controller.canControl
+                visible: DockSettings.mediaPlayerShowVolume
                 Layout.fillWidth: true
-                Kirigami.Icon { objectName: "mediaPlayerVolumeLowIcon"; source: "audio-volume-low"; color: root.foreground; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                Kirigami.Icon {
+                    objectName: "mediaPlayerVolumeLowIcon"
+                    source: controller.volumeMuted ? "audio-volume-muted" : "audio-volume-low"
+                    color: root.foreground
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                    Accessible.name: root.volumeSourceTooltip
+                }
                 QQC2.Slider {
                     id: volumeSlider
                     objectName: "mediaPlayerVolumeSlider"
                     Layout.fillWidth: true
                     from: 0; to: 1
                     value: controller.volume
+                    enabled: controller.volumeControlAvailable
                     palette.highlight: Kirigami.Theme.highlightColor
                     palette.windowText: root.foreground
+                    Accessible.name: root.volumeSourceLabel
+                    Accessible.description: controller.volumeMuted ? i18n("The system audio output is muted.") : ""
+                    QQC2.ToolTip.visible: hovered || visualFocus
+                    QQC2.ToolTip.text: root.volumeSourceTooltip
                     onPressedChanged: {
                         root.syncInteractionHeld()
-                        if (!pressed) controller.setVolume(value)
+                        if (!pressed) {
+                            controller.diagnosticVolumeSliderEvent("released", value)
+                            controller.setVolume(value)
+                        }
                     }
                 }
-                Kirigami.Icon { objectName: "mediaPlayerVolumeHighIcon"; source: "audio-volume-high"; color: root.foreground; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                Kirigami.Icon {
+                    objectName: "mediaPlayerVolumeHighIcon"
+                    source: "audio-volume-high"
+                    color: root.foreground
+                    visible: !controller.volumeMuted
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                }
             }
         }
 

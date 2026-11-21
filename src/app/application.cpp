@@ -35,6 +35,7 @@
 
 #include <QAction>
 #include <QEvent>
+#include <QFileInfo>
 #include <QIcon>
 #include <QLoggingCategory>
 #include <QLocale>
@@ -247,6 +248,7 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::MediaPlayerHoverPopupChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerHoverDelayChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerShowVolumeChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::MediaPlayerVolumeModeChanged, context, saveSettings);
     connect(settings, &KDockWSettings::MediaPlayerShowSourceChanged, context, saveSettings);
     connect(settings, &KDockWSettings::StartPinnedApplicationsChanged, context, saveSettings);
     connect(settings, &KDockWSettings::LaunchpadFoldersChanged, context, saveSettings);
@@ -264,11 +266,22 @@ void Application::migrateLegacySettings(KDockWSettings *settings)
     // Keep the v0.4.x launcher list intact while seeding the typed, ordered
     // entry format. The dock still reads PinnedLaunchers until the mixed model
     // is integrated, so this migration cannot change the current rendering.
+    const bool hadExistingConfig = QFileInfo(settings->config()->name()).isFile();
     KConfigGroup group = settings->config()->group(QStringLiteral("General"));
+    KConfigGroup mediaPlayerGroup = settings->config()->group(QStringLiteral("MediaPlayer"));
     bool migratedDockEntries = false;
+    bool migratedVolumeMode = false;
     if (!group.hasKey(QStringLiteral("DockEntries"))) {
         settings->setDockEntries(DockEntriesCodec::encode(DockEntriesCodec::fromLegacyLaunchers(settings->pinnedLaunchers())));
         migratedDockEntries = true;
+    }
+
+    // v0.7.0 only controlled the selected player through MPRIS. Preserve that
+    // behavior for an existing config; a fresh installation gets the new
+    // Automatic mode declared by the KConfigXT default.
+    if (!mediaPlayerGroup.hasKey(QStringLiteral("MediaPlayerVolumeMode"))) {
+        settings->setMediaPlayerVolumeMode(hadExistingConfig ? 1 : 0);
+        migratedVolumeMode = true;
     }
 
     // KDockW 0.10 stored a single ZoomAnimationDuration (only when changed from
@@ -277,7 +290,7 @@ void Application::migrateLegacySettings(KDockWSettings *settings)
     // upgraded dock keeps exactly the old feel, and drop the obsolete key.
     const QString legacyKey = QStringLiteral("ZoomAnimationDuration");
     if (!group.hasKey(legacyKey)) {
-        if (migratedDockEntries) {
+        if (migratedDockEntries || migratedVolumeMode) {
             settings->save();
         }
         return;
@@ -474,6 +487,9 @@ int Application::run(const KAboutData &aboutData)
     });
     connect(s, &KDockWSettings::MediaPlayerDisplayModeChanged, this, [this]() {
         m_dockModel->dockPresentationModel()->setMediaPlayerDisplayMode(m_settings->mediaPlayerDisplayMode());
+    });
+    connect(s, &KDockWSettings::MediaPlayerVolumeModeChanged, this, [this]() {
+        m_dockModel->mediaPlayerController()->setVolumeControlMode(m_settings->mediaPlayerVolumeMode());
     });
     connect(s, &KDockWSettings::MediaPlayerExpandedWidthChanged, this, [this]() {
         m_dockModel->dockPresentationModel()->setMediaPlayerExpandedWidth(m_settings->mediaPlayerExpandedWidth());

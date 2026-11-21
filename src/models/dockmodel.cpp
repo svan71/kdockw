@@ -384,6 +384,7 @@ DockModel::DockModel(QObject *parent, KDockWSettings *settings)
     if (settings) {
         m_dockPresentationModel->setMediaPlayerDisplayMode(settings->mediaPlayerDisplayMode());
         m_dockPresentationModel->setMediaPlayerExpandedWidth(settings->mediaPlayerExpandedWidth());
+        m_mediaPlayerController->setVolumeControlMode(settings->mediaPlayerVolumeMode());
     }
     if (settings) {
         m_mediaPlayerController->setVisibilityPolicy(settings->mediaPlayerAutoVisibility(),

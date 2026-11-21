@@ -65,6 +65,8 @@ add_library(kdockw_lib STATIC
     models/applicationlauncherstate.cpp
     models/mediaplayercontroller.h
     models/mediaplayercontroller.cpp
+    models/systemvolumebackend.h
+    models/systemvolumebackend.cpp
     models/mediaartworkitem.cpp
     models/plasmafavoritesreader.h
     models/plasmafavoritesreader.cpp

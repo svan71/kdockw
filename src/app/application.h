@@ -49,8 +49,10 @@ public:
     /// Migrates settings written by older KDockW releases. A legacy
     /// ZoomAnimationDuration key becomes the Custom zoom animation preset with
     /// that duration and an ease-out curve in both directions (unless a preset
-    /// is already stored); the legacy key is always removed and @p settings
-    /// saved. Call right after load().
+    /// is already stored). It also preserves v0.7.0's Player Only volume mode
+    /// for existing configs while leaving Automatic as the fresh-install
+    /// default. Legacy keys are removed and migrations are saved. Call after
+    /// load().
     static void migrateLegacySettings(KDockWSettings *settings);
 
 private:

@@ -78,6 +78,36 @@ SettingsPage {
         }
     }
 
+    FormCard.FormHeader { title: i18n("Volume control") }
+    FormCard.FormCard {
+        Accessible.role: Accessible.Grouping
+        Accessible.name: i18n("Volume control")
+
+        FormCard.FormRadioDelegate {
+            objectName: "mediaPlayerVolumeModeAutomatic"
+            text: i18n("Automatic (recommended)")
+            description: i18n("Control the player when it supports volume. Otherwise use the computer's overall volume.")
+            checked: DockSettings.mediaPlayerVolumeMode === 0
+            onToggled: if (checked) DockSettings.mediaPlayerVolumeMode = 0
+        }
+        FormCard.FormDelegateSeparator {}
+        FormCard.FormRadioDelegate {
+            objectName: "mediaPlayerVolumeModePlayer"
+            text: i18n("Player volume only")
+            description: i18n("Change only the selected music app. Volume control is unavailable if the app cannot change its own volume.")
+            checked: DockSettings.mediaPlayerVolumeMode === 1
+            onToggled: if (checked) DockSettings.mediaPlayerVolumeMode = 1
+        }
+        FormCard.FormDelegateSeparator {}
+        FormCard.FormRadioDelegate {
+            objectName: "mediaPlayerVolumeModeSystem"
+            text: i18n("Computer volume")
+            description: i18n("Change all computer audio, including music, browser audio, notifications, and other apps.")
+            checked: DockSettings.mediaPlayerVolumeMode === 2
+            onToggled: if (checked) DockSettings.mediaPlayerVolumeMode = 2
+        }
+    }
+
     FormCard.FormHeader { title: i18n("Popup") }
     FormCard.FormCard {
         FormCard.FormSwitchDelegate {

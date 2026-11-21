@@ -706,6 +706,12 @@
       <label>Show the media volume control in the popup</label>
       <default>true</default>
     </entry>
+    <entry name="MediaPlayerVolumeMode" type="Int">
+      <label>Media player volume control mode (0=Automatic, 1=Player, 2=System)</label>
+      <default>0</default>
+      <min>0</min>
+      <max>2</max>
+    </entry>
     <entry name="MediaPlayerShowSource" type="Bool">
       <label>Show the selected media source</label>
       <default>true</default>
