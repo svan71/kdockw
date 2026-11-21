@@ -2,12 +2,17 @@
 // SPDX-FileCopyrightText: 2026 KDockW Contributors
 
 #include "config/applicationconfig.h"
+#include "app/application.h"
 #include "kdockw.h"
 #include "models/icondiag.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <QTemporaryDir>
+#include <QDir>
+#include <QFileInfo>
+#include <KSharedConfig>
+#include <KConfigGroup>
 
 namespace
 {
@@ -127,4 +132,69 @@ TEST_CASE("Badge colors default to the approved palette and persist independentl
     restarted.load();
     CHECK(restarted.badgeBackgroundColor() == QStringLiteral("#ff123456"));
     CHECK(restarted.badgeTextColor() == QStringLiteral("#ffabcdef"));
+}
+
+TEST_CASE("Media volume mode migration preserves v0.7.0 behavior and fresh defaults", "[settings][migration][media-player]")
+{
+    SECTION("An existing v0.7.0 config migrates to Player Only")
+    {
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("legacy/kdockwrc"));
+        REQUIRE(QDir().mkpath(QFileInfo(path).absolutePath()));
+        const auto config = KSharedConfig::openConfig(path, KConfig::SimpleConfig);
+        config->group(QStringLiteral("General")).writeEntry(QStringLiteral("IconSize"), 48);
+        config->sync();
+        REQUIRE(QFileInfo::exists(path));
+
+        KDockWSettings settings;
+        settings.setSharedConfig(config);
+        settings.load();
+        kdockw::Application::migrateLegacySettings(&settings);
+        CHECK(settings.mediaPlayerVolumeMode() == 1);
+
+        KDockWSettings restarted;
+        restarted.setSharedConfig(KSharedConfig::openConfig(path, KConfig::SimpleConfig));
+        restarted.load();
+        CHECK(restarted.mediaPlayerVolumeMode() == 1);
+    }
+
+    SECTION("A new config keeps Automatic as its default")
+    {
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("new/kdockwrc"));
+        REQUIRE(QDir().mkpath(QFileInfo(path).absolutePath()));
+        const auto config = KSharedConfig::openConfig(path, KConfig::SimpleConfig);
+        REQUIRE_FALSE(QFileInfo::exists(path));
+
+        KDockWSettings settings;
+        settings.setSharedConfig(config);
+        settings.load();
+        kdockw::Application::migrateLegacySettings(&settings);
+        CHECK(settings.mediaPlayerVolumeMode() == 0);
+
+        KDockWSettings restarted;
+        restarted.setSharedConfig(KSharedConfig::openConfig(path, KConfig::SimpleConfig));
+        restarted.load();
+        CHECK(restarted.mediaPlayerVolumeMode() == 0);
+    }
+
+    SECTION("An explicit user selection is retained")
+    {
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.filePath(QStringLiteral("selected/kdockwrc"));
+        REQUIRE(QDir().mkpath(QFileInfo(path).absolutePath()));
+        const auto config = KSharedConfig::openConfig(path, KConfig::SimpleConfig);
+        config->group(QStringLiteral("General")).writeEntry(QStringLiteral("IconSize"), 48);
+        config->group(QStringLiteral("MediaPlayer")).writeEntry(QStringLiteral("MediaPlayerVolumeMode"), 2);
+        config->sync();
+
+        KDockWSettings settings;
+        settings.setSharedConfig(config);
+        settings.load();
+        kdockw::Application::migrateLegacySettings(&settings);
+        CHECK(settings.mediaPlayerVolumeMode() == 2);
+    }
 }

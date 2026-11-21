@@ -74,6 +74,7 @@ set(KDOCKW_QML_TEST_FILES
     tst_preview_frame_prefetcher
     tst_preview_border_color
     tst_media_player_widget
+    tst_media_player_settings
     tst_preview_size_presets
     tst_tooltip_bounds
 )

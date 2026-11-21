@@ -141,6 +141,23 @@ Item {
             compare(findChild(widget, "mediaPlayerPopup").visible, false)
         }
 
+        function test_volume_slider_reports_the_active_route_and_mute_state() {
+            widget.openPinned()
+            const popup = findChild(widget, "mediaPlayerPopup")
+            const slider = findChild(widget, "mediaPlayerVolumeSlider")
+            tryVerify(() => popup && popup.visible && slider && slider.enabled)
+            compare(widget.volumeSourceLabel, "Player volume")
+
+            widget.controller.activeVolumeSource = "system"
+            tryCompare(widget, "volumeSourceLabel", "Overall volume")
+            widget.controller.volumeMuted = true
+            compare(widget.volumeSourceTooltip, "Overall volume — muted")
+            widget.controller.volumeControlAvailable = false
+            tryVerify(() => !slider.enabled)
+            compare(widget.volumeSourceLabel, "Volume control unavailable")
+            popup.close()
+        }
+
         function test_rendered_media_icons_have_visible_pixels_in_controls_and_popup() {
             function hasPaintedPixels(item) {
                 const image = grabImage(item)

@@ -20,6 +20,10 @@ QtObject {
     property double durationUs: 180000000
     property double positionUs: 30000000
     property double volume: 0.7
+    property string activeVolumeSource: "player"
+    property bool volumeControlAvailable: true
+    property bool volumeMuted: false
+    property int volumeControlMode: 1
     property bool shuffle: false
     property bool canControl: true
     property bool canPlay: true
