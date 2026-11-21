@@ -1,9 +1,10 @@
 # v0.7.1 Window Preview activation — verification — 2026-11-21
 
-Status: the activation fix and automated verification are complete. Owner
-manual acceptance in a real Plasma/Wayland session is **NOT VERIFIED** and is
-required before this behavior is accepted. No release, tag, or push was
-created.
+Status: the activation fix is owner accepted in real Plasma/Wayland. The
+owner's complete v0.7.1 feature acceptance is **36/36 PASS** with no remarks:
+Shadow Settings 10/10, Volume Modes 14/14, and Window Preview Activation
+12/12. This records feature acceptance only; release publication remains
+pending and no tag or push was created.
 
 ## Confirmed cause
 
@@ -40,12 +41,15 @@ were not changed.
 
 ## Automated verification
 
-- Production Release full CTest: **245/246 passed**. The sole failure was the
-  unrelated `Authoritative Wayland samples restore Compact magnification after
-  media popup` case in `kdockw_hittest_tests`; it failed waiting for the media
-  hover index on the right edge. The isolated test retry passed **1/1**. The
-  full-run failure remains recorded.
-- Diagnostic Release full CTest: **250/250 passed**.
+- Historical Production Release full CTest: **245/246 passed**. The sole
+  failure was the `Authoritative Wayland samples restore Compact magnification
+  after media popup` case in `kdockw_hittest_tests`; the isolated retry passed
+  **1/1**. Two targeted parallel five-repeat checks subsequently passed; they
+  do not establish the historical cause.
+- Final Production Release full CTest: **246/246 passed**, serial,
+  `diagnostics/v071-dev/logs/final-production-ctest-20261121.log`.
+- Final Diagnostic Release full CTest: **250/250 passed**, serial,
+  `diagnostics/v071-dev/logs/final-diagnostic-ctest-20261121.log`.
 - Private KWin grouped activation regression: **16 assertions / 1 case passed**.
 - Diagnostic `qml_tst_preview_popup` and `qml_preview_close_button_states`
   passed; selected-thumbnail QML regressions passed **5/5**.
@@ -61,22 +65,18 @@ were not changed.
   `ddb7110edd6f3d505c57f185041fb7958848e009`.
 - The v0.7.1 launcher KService preflight resolved the staged executable and
   required KWin interfaces; the Russian catalog matches the build output.
-- Candidate is running as PID `2251543` from
-  `/home/stout/Documents/vibecoding/kdockw/build/v071-diagnostic-release/stage/bin/kdockw`
-  with isolated profile `preview-activate-20261121`.
-- Runtime log:
-  `diagnostics/v071-dev/logs/kdockw.log`.
-- Installed stable `/usr/bin/kdockw` is stopped while the candidate is active;
-  no second dock is running.
+- Candidate PID `2251543` has been stopped using the official
+  `tools/kdockw-v071-dev-stop-and-restore` helper; restore state is clear.
+- Stable `/usr/bin/kdockw` v0.7.0 has been restored and is the only running
+  dock. Its active process is PID `2314489` under
+  `kdockw-v071-restored.service`.
 - Production configuration backup:
   `diagnostics/v071-dev/backups/kdockwrc.production.preview-activate-20261121`.
   Its mode/owner match the source (`0600`, uid 1000, gid 1001), and both files
   currently have SHA-256
   `3ea77074b7261ffb799b494b56fc0e01992e1d8a38b65cc9f8abaeb0dfd2c740`.
 
-Owner manual acceptance in Plasma/Wayland remains **NOT VERIFIED**. Check a
-grouped application with at least two windows: hover its dock icon, click a
-non-active or minimized thumbnail, and confirm that the exact selected window
-activates/restores; repeat with another thumbnail. Also verify that the close
-button still closes only its thumbnail's window. Restore stable afterwards
-with `tools/kdockw-v071-dev-stop-and-restore`.
+The owner confirmed Window Preview Activation **12/12 PASS** on the candidate
+with Build ID `ddb7110edd6f3d505c57f185041fb7958848e009`. The tested behavior
+included activating the selected window, grouped-window selection and close
+button behavior. Stable v0.7.0 is restored after acceptance.
