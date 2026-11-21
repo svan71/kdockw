@@ -67,6 +67,7 @@ set(KDOCKW_QML_TEST_FILES
     tst_animation_settings
     tst_settings_mini_dock
     tst_settings_layout
+    tst_shadow_settings
     tst_rounded_clip
     tst_dock_main
     tst_preview_popup

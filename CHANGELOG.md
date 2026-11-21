@@ -8,6 +8,16 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the shadow-light drag scene with a compact live preview, a 0–359°
+  shadow-direction slider and numeric control, and a collapsed section for
+  advanced shadow values.
+
+### Fixed
+
+- Kept shadow controls responsive by coalescing continuous setting writes while preserving immediate live updates and flushing pending changes on application exit.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added

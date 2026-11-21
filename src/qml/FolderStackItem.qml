@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import com.thicking.kdockw 1.0
 import "BadgeTextColor.js" as BadgeTextColor
+import "ShadowVector.js" as ShadowVector
 
 Item {
     id: stackItem
@@ -510,10 +511,12 @@ Item {
                 border.width: 1
                 border.color: stackPopup.outlineColor
                 shadow.size: DockSettings.shadowEnabled ? DockSettings.shadowLightRadius * 2 : 0
-                shadow.xOffset: -DockSettings.shadowLightX * DockSettings.shadowElevation
-                    / Math.max(1, DockSettings.shadowLightZ)
-                shadow.yOffset: -DockSettings.shadowLightY * DockSettings.shadowElevation
-                    / Math.max(1, DockSettings.shadowLightZ)
+                shadow.xOffset: -ShadowVector.lightX(
+                    DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
+                    * DockSettings.shadowElevation / Math.max(1, DockSettings.shadowLightZ)
+                shadow.yOffset: -ShadowVector.lightY(
+                    DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
+                    * DockSettings.shadowElevation / Math.max(1, DockSettings.shadowLightZ)
                 shadow.color: Qt.alpha(DockSettings.shadowColor, DockSettings.shadowIntensity)
 
                 Kirigami.Theme.colorSet: Kirigami.Theme.Window

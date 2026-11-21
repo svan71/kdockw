@@ -3,7 +3,10 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
-build_dir="${repo_root}/build/v070-diagnostic-release"
+candidate_numeric_version="${KDOCKW_CANDIDATE_VERSION:-0.7.0}"
+candidate_version="${candidate_numeric_version}-dev"
+stable_version="${KDOCKW_STABLE_VERSION:-0.6.0}"
+build_dir="${KDOCKW_DIAGNOSTIC_BUILD_DIR:-${repo_root}/build/v070-diagnostic-release}"
 source_binary="${build_dir}/bin/kdockw"
 binary="${build_dir}/stage/bin/kdockw"
 source "${script_dir}/lib/kdockw-stage-build-id.sh"
@@ -12,17 +15,18 @@ metadata_checker="${build_dir}/bin/kdockw_diagnostic_metadata_check"
 # Tests may redirect launcher-owned state into a temporary directory. This
 # changes only the isolated diagnostic root; the production/stable guard stays
 # active and all candidate paths remain rooted beneath this directory.
-diagnostic_root="${KDOCKW_TEST_DIAGNOSTIC_ROOT:-${repo_root}/diagnostics/v070-dev}"
+diagnostic_root="${KDOCKW_TEST_DIAGNOSTIC_ROOT:-${KDOCKW_DIAGNOSTIC_ROOT:-${repo_root}/diagnostics/v070-dev}}"
 state_dir="${diagnostic_root}/launcher-state"
 desktop_candidate="${state_dir}/candidate.desktop"
 runtime_data_home="${state_dir}/runtime-data"
 runtime_cache_home="${state_dir}/runtime-cache"
 state_file="${state_dir}/restore-state"
-candidate_desktop_id="kdockw-v070-diagnostic-release.desktop"
+candidate_desktop_id="${KDOCKW_CANDIDATE_DESKTOP_ID:-kdockw-v070-diagnostic-release.desktop}"
 config_file="${diagnostic_root}/config/kdockwrc"
 diagnostic_xdg_config_home="${diagnostic_root}/xdg-config"
 log_file="${diagnostic_root}/logs/kdockw.log"
-service="kdockw-v070-diagnostic-release.service"
+service="${KDOCKW_CANDIDATE_SERVICE:-kdockw-v070-diagnostic-release.service}"
+restore_script="${KDOCKW_RESTORE_SCRIPT:-${repo_root}/tools/kdockw-v070-dev-stop-and-restore}"
 preflight_only=false
 wayland_debug=false
 wayland_debug_args=()
@@ -43,7 +47,8 @@ media_popup_trace=false
 media_hover_debug=false
 launcher_timing=false
 
-fail() { printf 'KDockW v0.7.0-dev launcher refused: %s\n' "$1" >&2; exit 1; }
+fail() { printf 'KDockW v%s launcher refused: %s\n' "$candidate_version" "$1" >&2; exit 1; }
+[[ "$candidate_numeric_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "candidate version must be numeric x.y.z"
 
 while (($#)); do
     case "$1" in
@@ -153,12 +158,12 @@ command -v dbus-run-session >/dev/null || fail "dbus-run-session is required to 
 [[ -f "${build_dir}/CMakeCache.txt" ]] || fail "CMake cache is missing"
 grep -Fxq 'CMAKE_BUILD_TYPE:STRING=Release' "${build_dir}/CMakeCache.txt" || fail "candidate must use Release"
 grep -Fxq 'KDOCKW_DIAGNOSTIC_BUILD:BOOL=ON' "${build_dir}/CMakeCache.txt" || fail "candidate must use KDOCKW_DIAGNOSTIC_BUILD=ON"
-[[ "$("$source_binary" --version)" == 'kdockw 0.7.0-dev' ]] || fail "build binary is not KDockW 0.7.0-dev"
+[[ "$("$source_binary" --version)" == "kdockw ${candidate_version}" ]] || fail "build binary is not KDockW ${candidate_version}"
 
 stable_binary="$(command -v kdockw || true)"
-[[ -n "$stable_binary" && -x "$stable_binary" ]] || fail "installed KDockW v0.6.0 executable was not found"
+[[ -n "$stable_binary" && -x "$stable_binary" ]] || fail "installed KDockW v${stable_version} executable was not found"
 stable_binary="$(readlink -f -- "$stable_binary")"
-[[ "$("$stable_binary" --version)" == 'kdockw 0.6.0' ]] || fail "installed KDockW is not v0.6.0: $stable_binary"
+[[ "$("$stable_binary" --version)" == "kdockw ${stable_version}" ]] || fail "installed KDockW is not v${stable_version}: $stable_binary"
 
 manager_env="$(systemctl --user show-environment)" || fail "cannot read Plasma user-manager environment"
 for required in XDG_RUNTIME_DIR WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS XDG_CURRENT_DESKTOP KDE_SESSION_VERSION XDG_DATA_DIRS; do
@@ -218,7 +223,7 @@ cmake -S "$repo_root" -B "$build_dir" \
 cmake --build "$build_dir" --target install --parallel \
     || fail "could not refresh the isolated diagnostic install tree"
 [[ -x "$binary" ]] || fail "installed diagnostic binary is missing: $binary"
-[[ "$("$binary" --version)" == 'kdockw 0.7.0-dev' ]] || fail "installed candidate is not KDockW 0.7.0-dev"
+[[ "$("$binary" --version)" == "kdockw ${candidate_version}" ]] || fail "installed candidate is not KDockW ${candidate_version}"
 source_build_id="$(kdockw_elf_build_id "$source_binary")" \
     || fail "could not read ELF GNU Build ID from $source_binary"
 staged_build_id="$(kdockw_elf_build_id "$binary")" \
@@ -246,14 +251,14 @@ cmp -s "$source_catalog" "$staged_catalog" || fail "staged Russian catalog does 
 
 check_candidate_metadata() {
     local temporary_home
-    temporary_home="$(mktemp -d "${TMPDIR:-/tmp}/kdockw-v070-preflight.XXXXXX")"
+    temporary_home="$(mktemp -d "${TMPDIR:-/tmp}/kdockw-${candidate_numeric_version}-preflight.XXXXXX")"
     trap 'rm -rf -- "$temporary_home"' RETURN
     mkdir -p "${temporary_home}/applications" "${temporary_home}/cache"
     cat > "${temporary_home}/applications/${candidate_desktop_id}" <<EOF
 [Desktop Entry]
 Type=Application
-Name=KDockW v0.7.0-dev Diagnostic
-Name[ru]=KDockW v0.7.0-dev — диагностика
+Name=KDockW v${candidate_version} Diagnostic
+Name[ru]=KDockW v${candidate_version} — диагностика
 NoDisplay=true
 Terminal=false
 Exec=${canonical_binary}
@@ -320,8 +325,8 @@ fi
 cat > "$desktop_candidate" <<EOF
 [Desktop Entry]
 Type=Application
-Name=KDockW v0.7.0-dev Diagnostic
-Name[ru]=KDockW v0.7.0-dev — диагностика
+Name=KDockW v${candidate_version} Diagnostic
+Name[ru]=KDockW v${candidate_version} — диагностика
 NoDisplay=true
 Terminal=false
 Exec=${canonical_binary}
@@ -362,7 +367,7 @@ cleanup_failed_start() {
             fi
         fi
         if ! systemctl --user is-active --quiet "$service"; then
-            restore_desktop_entry || printf 'Automatic restore failed; run %s/tools/kdockw-v070-dev-stop-and-restore\n' "$repo_root" >&2
+            restore_desktop_entry || printf 'Automatic restore failed; run %s\n' "$restore_script" >&2
         fi
     fi
     exit "$result"
@@ -540,4 +545,4 @@ fi
 if [[ "$performance_diagnostics" == true ]]; then
     printf 'Bounded runtime telemetry: %s (%s, up to 180 s)\n' "$runtime_observer_service" "$runtime_observer_log"
 fi
-printf 'After visual testing, run: %s/tools/kdockw-v070-dev-stop-and-restore\n' "$repo_root"
+printf 'After visual testing, run: %s\n' "$restore_script"

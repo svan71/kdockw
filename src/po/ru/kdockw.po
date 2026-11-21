@@ -287,8 +287,7 @@ msgstr "Высота источника света"
 msgid "Light radius"
 msgstr "Радиус источника света"
 
-#: src/qml/SettingsDialog.qml:72 src/qml/settings/ShadowScene3D.qml:582
-#: src/qml/settings/ShadowPage.qml:346
+#: src/qml/SettingsDialog.qml:82 src/qml/settings/ShadowPage.qml:360
 msgid "Panel elevation"
 msgstr "Высота панели"
 
@@ -663,15 +662,6 @@ msgstr "Предпросмотр %1 — %2"
 msgid "Preview for %1"
 msgstr "Предпросмотр %1"
 
-#: src/qml/settings/ShadowScene3D.qml:49
-msgid "Light position"
-msgstr "Положение источника света"
-
-#: src/qml/settings/ShadowScene3D.qml:51
-msgctxt "@info light source state and keyboard help"
-msgid "X %1, Y %2, height %3, radius %4. Arrow keys move the light (Shift for larger steps), Page Up and Page Down change its height, plus and minus change its radius."
-msgstr "X: %1, Y: %2, высота: %3, радиус: %4. Перемещайте источник света стрелками (Shift — крупный шаг), меняйте высоту клавишами Page Up и Page Down, а радиус — клавишами «плюс» и «минус»."
-
 #: src/qml/settings/PreviewPage.qml:15
 msgid "Thumbnails of an app's windows, shown above the dock on hover"
 msgstr "Миниатюры окон приложения появляются над доком при наведении"
@@ -721,26 +711,41 @@ msgctxt "@label milliseconds"
 msgid "%1 ms"
 msgstr "%1 мс"
 
-#: src/qml/settings/ShadowPage.qml:15
-msgid "Where the light sits decides where the dock's shadow falls and how soft it is"
-msgstr "Положение источника света определяет направление и мягкость тени дока"
+#: src/qml/settings/ShadowPage.qml
+msgid "Set the shadow direction, intensity and color"
+msgstr "Задайте направление и цвет тени, а также её интенсивность"
 
-#: src/qml/settings/ShadowPage.qml:122
+#: src/qml/settings/ShadowPage.qml
 msgid "Shadow preview"
 msgstr "Предпросмотр тени"
 
-#: src/qml/settings/ShadowPage.qml:123
-msgid "The shadow the real dock casts on the desktop"
-msgstr "Тень, которую док отбрасывает на рабочий стол"
+#: src/qml/settings/ShadowPage.qml
+msgid "Live preview of the shadow cast by the dock"
+msgstr "Предпросмотр тени, которую отбрасывает док"
 
-#: src/qml/settings/ShadowPage.qml:168
-msgctxt "@label chip on the real-shadow inset"
-msgid "Result"
-msgstr "Результат"
+#: src/qml/settings/ShadowPage.qml
+msgid "Direction"
+msgstr "Направление"
 
-#: src/qml/settings/ShadowPage.qml:187
-msgid "Drag the light to move it, scroll for its height, Shift+scroll for softness, and drag the dock for its elevation."
-msgstr "Перетаскивайте источник света, чтобы переместить его; прокручивайте колесо, чтобы менять высоту, а с Shift — мягкость тени. Перетаскивайте док, чтобы изменить его высоту."
+#: src/qml/settings/ShadowPage.qml
+msgid "Shadow direction angle"
+msgstr "Угол направления тени"
+
+#: src/qml/settings/ShadowPage.qml
+msgid "Angle measured clockwise on screen: 0 degrees is right, 90 is down, 180 is left, and 270 is up"
+msgstr "Угол измеряется по экрану по часовой стрелке: 0° — вправо, 90° — вниз, 180° — влево, 270° — вверх"
+
+#: src/qml/settings/ShadowPage.qml
+msgid "Use the arrow keys or enter a value from 0 to 359 degrees"
+msgstr "Изменяйте угол стрелками или введите число от 0 до 359"
+
+#: src/qml/settings/ShadowPage.qml
+msgid "0° right · 90° down · 180° left · 270° up"
+msgstr "0° — вправо · 90° — вниз · 180° — влево · 270° — вверх"
+
+#: src/qml/settings/ShadowPage.qml
+msgid "Appearance"
+msgstr "Внешний вид"
 
 #: src/qml/settings/ShadowPage.qml:217 src/qml/settings/MonitorsPage.qml:768
 #: src/qml/settings/PanelStylePage.qml:166
@@ -766,9 +771,9 @@ msgctxt "@info:status expander"
 msgid "Collapsed"
 msgstr "Свёрнуто"
 
-#: src/qml/settings/ShadowPage.qml:285
-msgid "Exact values for the light position, height, radius and the panel elevation"
-msgstr "Точные значения положения и высоты света, радиуса и высоты панели"
+#: src/qml/settings/ShadowPage.qml
+msgid "Exact light position, height, radius and panel elevation"
+msgstr "Точные значения положения источника, его высоты и радиуса, а также высоты панели"
 
 #: src/qml/settings/AnimationsPage.qml:16
 msgid "How apps demand attention and how notification badges appear on the dock"

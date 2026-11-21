@@ -9,6 +9,7 @@ import org.kde.kirigami as Kirigami
 import org.kde.taskmanager as TaskManager
 import com.thicking.kdockw 1.0
 import "BadgeTextColor.js" as BadgeTextColor
+import "ShadowVector.js" as ShadowVector
 
 /**
  * Main dock container.
@@ -2272,8 +2273,10 @@ Item {
         property real panelHeight: dockBackground.height
         property real cornerRadius: dockBackground.radius
         property real elevation: DockSettings.shadowElevation
-        property real lightX: DockSettings.shadowLightX
-        property real lightY: DockSettings.shadowLightY
+        property real lightX: ShadowVector.lightX(
+            DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
+        property real lightY: ShadowVector.lightY(
+            DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
         property real lightZ: DockSettings.shadowLightZ
         property real lightRadius: DockSettings.shadowLightRadius
         property color _shadowColor: DockSettings.shadowColor
@@ -3337,10 +3340,12 @@ Item {
         border.width: 1
         border.color: Qt.alpha(BadgeTextColor.choose(color, Kirigami.Theme.textColor), 0.27)
         shadow.size: DockSettings.shadowEnabled ? DockSettings.shadowLightRadius * 2 : 0
-        shadow.xOffset: -DockSettings.shadowLightX * DockSettings.shadowElevation
-            / Math.max(1, DockSettings.shadowLightZ)
-        shadow.yOffset: -DockSettings.shadowLightY * DockSettings.shadowElevation
-            / Math.max(1, DockSettings.shadowLightZ)
+        shadow.xOffset: -ShadowVector.lightX(
+            DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
+            * DockSettings.shadowElevation / Math.max(1, DockSettings.shadowLightZ)
+        shadow.yOffset: -ShadowVector.lightY(
+            DockSettings.shadowLightX, DockSettings.shadowLightY, DockSettings.shadowDirectionAngle)
+            * DockSettings.shadowElevation / Math.max(1, DockSettings.shadowLightZ)
         shadow.color: Qt.alpha(DockSettings.shadowColor, DockSettings.shadowIntensity)
         z: 100
 

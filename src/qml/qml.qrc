@@ -16,6 +16,7 @@
         <file>ApplicationLauncherFavoritesSource.qml</file>
         <file>ApplicationLauncherHierarchical.qml</file>
         <file>BadgeTextColor.js</file>
+        <file>ShadowVector.js</file>
         <file>ZoomAnimationProfile.qml</file>
         <file>SettingsDialog.qml</file>
         <file>PreviewPopup.qml</file>
@@ -29,7 +30,6 @@
         <file>settings/DesktopStage.qml</file>
         <file>settings/MiniDock.qml</file>
         <file>settings/ColorSwatchButton.qml</file>
-        <file>settings/ShadowScene3D.qml</file>
         <file>settings/IconsPage.qml</file>
         <file>settings/GeneralPage.qml</file>
         <file>settings/LayoutPage.qml</file>

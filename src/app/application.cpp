@@ -39,6 +39,7 @@
 #include <QLoggingCategory>
 #include <QLocale>
 #include <QQuickStyle>
+#include <QTimer>
 #include <QtQml>
 
 #include <algorithm>
@@ -124,9 +125,28 @@ void Application::applyLanguagePreference(const QString &language)
 
 void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *context)
 {
-    auto saveSettings = [settings]() {
+    constexpr int shadowSaveDebounceMs = 180;
+    auto *shadowSaveTimer = new QTimer(context);
+    shadowSaveTimer->setSingleShot(true);
+    auto saveSettings = [settings, shadowSaveTimer]() {
+        shadowSaveTimer->stop();
         settings->save();
     };
+    // Shadow sliders update the live in-memory settings on every input sample,
+    // but writing the complete KConfig file for each sample blocks the GUI
+    // thread. Coalesce the continuous shadow controls and flush on shutdown.
+    connect(shadowSaveTimer, &QTimer::timeout, context, saveSettings);
+    const auto scheduleShadowSave = [shadowSaveTimer]() {
+        shadowSaveTimer->start(shadowSaveDebounceMs);
+    };
+    if (auto *application = QCoreApplication::instance()) {
+        connect(application, &QCoreApplication::aboutToQuit, context, [settings, shadowSaveTimer]() {
+            if (shadowSaveTimer->isActive()) {
+                shadowSaveTimer->stop();
+                settings->save();
+            }
+        });
+    }
     connect(settings, &KDockWSettings::IconSizeChanged, context, saveSettings);
     connect(settings, &KDockWSettings::CheckForUpdatesAutomaticallyChanged, context, saveSettings);
     connect(settings, &KDockWSettings::NotifyAboutUpdatesChanged, context, saveSettings);
@@ -177,13 +197,14 @@ void Application::connectSettingsAutoSave(KDockWSettings *settings, QObject *con
     connect(settings, &KDockWSettings::PreviewHideDelayChanged, context, saveSettings);
     connect(settings, &KDockWSettings::ShadowEnabledChanged, context, saveSettings);
     connect(settings, &KDockWSettings::GroupedWindowClickActionChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowLightXChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowLightYChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowLightZChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowLightRadiusChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::ShadowLightXChanged, context, scheduleShadowSave);
+    connect(settings, &KDockWSettings::ShadowLightYChanged, context, scheduleShadowSave);
+    connect(settings, &KDockWSettings::ShadowDirectionAngleChanged, context, scheduleShadowSave);
+    connect(settings, &KDockWSettings::ShadowLightZChanged, context, scheduleShadowSave);
+    connect(settings, &KDockWSettings::ShadowLightRadiusChanged, context, scheduleShadowSave);
     connect(settings, &KDockWSettings::ShadowColorChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowIntensityChanged, context, saveSettings);
-    connect(settings, &KDockWSettings::ShadowElevationChanged, context, saveSettings);
+    connect(settings, &KDockWSettings::ShadowIntensityChanged, context, scheduleShadowSave);
+    connect(settings, &KDockWSettings::ShadowElevationChanged, context, scheduleShadowSave);
     connect(settings, &KDockWSettings::IconNormalizationChanged, context, saveSettings);
     connect(settings, &KDockWSettings::AttentionAnimationChanged, context, saveSettings);
     connect(settings, &KDockWSettings::AttentionAnimationEnabledChanged, context, saveSettings);

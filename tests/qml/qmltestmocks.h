@@ -18,6 +18,7 @@
 #include <QQuickItem>
 #include <QAbstractListModel>
 #include <QRectF>
+#include <QSizeF>
 #include <QHash>
 #include <QStandardItemModel>
 #include <QStringList>
@@ -369,8 +370,12 @@ private:
 class ZoomLayoutEngine : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QSizeF screenSize READ screenSize CONSTANT)
+    Q_PROPERTY(QUrl wallpaperUrl READ wallpaperUrl CONSTANT)
 public:
     using QObject::QObject;
+    QSizeF screenSize() const { return QSizeF(1920, 1080); }
+    QUrl wallpaperUrl() const { return {}; }
     Q_INVOKABLE QVariantMap zoomLayout(int count,
                                        qreal restStart,
                                        qreal iconSize,

@@ -342,6 +342,13 @@
       <max>300</max>
     </entry>
 
+    <entry name="ShadowDirectionAngle" type="Int">
+      <label>Shadow direction angle in screen coordinates; -1 means derive from the legacy light position</label>
+      <default>-1</default>
+      <min>-1</min>
+      <max>359</max>
+    </entry>
+
     <entry name="ShadowLightZ" type="Int">
       <label>Light source height above screen surface</label>
       <default>500</default>

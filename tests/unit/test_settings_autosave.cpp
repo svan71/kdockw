@@ -16,9 +16,12 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 
+#include <QDateTime>
+#include <QFileInfo>
 #include <QMetaProperty>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QTest>
 
 #include <memory>
 
@@ -39,6 +42,15 @@ const QSet<QString> kCheckerCacheSettings{
     QStringLiteral("CachedReleaseUrl"),
     QStringLiteral("LastNotifiedReleaseVersion"),
     QStringLiteral("ReleaseApiRetryAfter"),
+};
+const QSet<QString> kDebouncedShadowSettings{
+    QStringLiteral("ShadowLightX"),
+    QStringLiteral("ShadowLightY"),
+    QStringLiteral("ShadowDirectionAngle"),
+    QStringLiteral("ShadowLightZ"),
+    QStringLiteral("ShadowLightRadius"),
+    QStringLiteral("ShadowIntensity"),
+    QStringLiteral("ShadowElevation"),
 };
 
 QMetaProperty propertyFor(const KDockWSettings &settings, const QString &itemName)
@@ -152,6 +164,9 @@ TEST_CASE("Changing any single setting persists it across a restart", "[settings
             REQUIRE(written.isValid());
             REQUIRE(property.write(settings.get(), written));
             REQUIRE(property.read(settings.get()) == written);
+            if (kDebouncedShadowSettings.contains(name)) {
+                QTest::qWait(240); // allow the trailing-edge shadow save to complete
+            }
         }
 
         // Session 2: KDockW starts again and loads kdockwrc.
@@ -293,6 +308,7 @@ TEST_CASE("First-run settings match the validated KDockW appearance", "[settings
     CHECK(settings.shadowEnabled());
     CHECK(settings.shadowLightX() == 65);
     CHECK(settings.shadowLightY() == -132);
+    CHECK(settings.shadowDirectionAngle() == -1);
     CHECK(settings.shadowLightZ() == 500);
     CHECK(settings.shadowLightRadius() == 5.5);
     CHECK(settings.shadowIntensity() == Catch::Approx(0.2));
@@ -317,6 +333,64 @@ TEST_CASE("First-run settings match the validated KDockW appearance", "[settings
     CHECK(settings.runningIndicatorColorMode() == 1);
     CHECK(settings.runningIndicatorColor() == QStringLiteral("#ffffffff"));
     CHECK(settings.separateLaunchers());
+}
+
+TEST_CASE("Continuous shadow changes settle and persist together", "[settings][shadow]")
+{
+    const ScopedConfigHome home;
+    {
+        KConfig seed(home.configFilePath(), KConfig::SimpleConfig);
+        auto general = seed.group(QStringLiteral("General"));
+        general.writeEntry(QStringLiteral("ShadowLightX"), 65);
+        general.writeEntry(QStringLiteral("ShadowLightY"), -132);
+        seed.sync();
+    }
+    QTest::qWait(25);
+    const QDateTime initialWrite = QFileInfo(home.configFilePath()).lastModified();
+
+    KDockWSettings settings;
+    settings.setConfig(std::make_unique<KConfig>(home.configFilePath(), KConfig::SimpleConfig));
+    settings.load();
+    QObject context;
+    kdockw::Application::connectSettingsAutoSave(&settings, &context);
+
+    settings.setShadowLightX(-121);
+    settings.setShadowLightY(-83);
+    settings.setShadowDirectionAngle(214);
+    settings.setShadowIntensity(0.73);
+    settings.setShadowElevation(23);
+    QTest::qWait(40);
+    CHECK(QFileInfo(home.configFilePath()).lastModified() == initialWrite);
+    QTest::qWait(240);
+    CHECK(QFileInfo(home.configFilePath()).lastModified() > initialWrite);
+
+    KDockWSettings restarted;
+    restarted.setConfig(std::make_unique<KConfig>(home.configFilePath(), KConfig::SimpleConfig));
+    restarted.load();
+    CHECK(restarted.shadowLightX() == -121);
+    CHECK(restarted.shadowLightY() == -83);
+    CHECK(restarted.shadowDirectionAngle() == 214);
+    CHECK(restarted.shadowIntensity() == Catch::Approx(0.73));
+    CHECK(restarted.shadowElevation() == 23);
+}
+
+TEST_CASE("Legacy shadow coordinates load unchanged without a direction key", "[settings][shadow][compatibility]")
+{
+    const ScopedConfigHome home;
+    {
+        KConfig legacyConfig(home.configFilePath(), KConfig::SimpleConfig);
+        auto general = legacyConfig.group(QStringLiteral("General"));
+        general.writeEntry(QStringLiteral("ShadowLightX"), 119);
+        general.writeEntry(QStringLiteral("ShadowLightY"), -47);
+        legacyConfig.sync();
+    }
+
+    KDockWSettings settings;
+    settings.setConfig(std::make_unique<KConfig>(home.configFilePath(), KConfig::SimpleConfig));
+    settings.load();
+    CHECK(settings.shadowLightX() == 119);
+    CHECK(settings.shadowLightY() == -47);
+    CHECK(settings.shadowDirectionAngle() == -1);
 }
 
 TEST_CASE("Explicit user preferences override the new factory defaults", "[settings][defaults]")

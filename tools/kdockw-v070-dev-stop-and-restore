@@ -3,14 +3,19 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
-diagnostic_root="${repo_root}/diagnostics/v070-dev"
+candidate_numeric_version="${KDOCKW_CANDIDATE_VERSION:-0.7.0}"
+candidate_version="${candidate_numeric_version}-dev"
+stable_version="${KDOCKW_STABLE_VERSION:-0.6.0}"
+build_dir="${KDOCKW_DIAGNOSTIC_BUILD_DIR:-${repo_root}/build/v070-diagnostic-release}"
+diagnostic_root="${KDOCKW_TEST_DIAGNOSTIC_ROOT:-${KDOCKW_DIAGNOSTIC_ROOT:-${repo_root}/diagnostics/v070-dev}}"
 state_dir="${diagnostic_root}/launcher-state"
 desktop_candidate="${state_dir}/candidate.desktop"
 state_file="${state_dir}/restore-state"
-service="kdockw-v070-diagnostic-release.service"
-restore_service="kdockw-v051-restored.service"
+candidate_desktop_id="${KDOCKW_CANDIDATE_DESKTOP_ID:-kdockw-v070-diagnostic-release.desktop}"
+service="${KDOCKW_CANDIDATE_SERVICE:-kdockw-v070-diagnostic-release.service}"
+restore_service="${KDOCKW_RESTORE_SERVICE:-kdockw-v051-restored.service}"
 
-fail() { printf 'KDockW v0.7.0-dev restore refused: %s\n' "$1" >&2; exit 1; }
+fail() { printf 'KDockW v%s restore refused: %s\n' "$candidate_version" "$1" >&2; exit 1; }
 
 [[ -f "$state_file" ]] || fail "no restore state is recorded"
 mapfile -t restore_values < "$state_file"
@@ -22,15 +27,15 @@ runtime_data_home="${restore_values[3]}"
 runtime_cache_home="${restore_values[4]}"
 data_home="${restore_values[5]}"
 desktop_id="${restore_values[6]}"
-expected_binary="$(readlink -f -- "${repo_root}/build/v070-diagnostic-release/stage/bin/kdockw" 2>/dev/null || true)"
+expected_binary="$(readlink -f -- "${build_dir}/stage/bin/kdockw" 2>/dev/null || true)"
 [[ -n "$expected_binary" && "$test_binary" == "$expected_binary" ]] || fail "restore state does not match this diagnostic binary"
 [[ "$desktop_file" == "${data_home}/applications/${desktop_id}" \
-    && "$desktop_id" == "kdockw-v070-diagnostic-release.desktop" \
+    && "$desktop_id" == "$candidate_desktop_id" \
     && "$runtime_data_home" == "${state_dir}/runtime-data" \
     && "$runtime_cache_home" == "${state_dir}/runtime-cache" \
     && -f "$desktop_candidate" ]] || fail "isolated candidate Desktop Entry record is invalid"
-[[ "$("$stable_binary" --version 2>/dev/null || true)" == 'kdockw 0.6.0' ]] \
-    || fail "installed stable binary is no longer KDockW v0.6.0: $stable_binary"
+[[ "$("$stable_binary" --version 2>/dev/null || true)" == "kdockw ${stable_version}" ]] \
+    || fail "installed stable binary is no longer KDockW v${stable_version}: $stable_binary"
 
 if systemctl --user is-active --quiet "$service"; then
     main_pid="$(systemctl --user show "$service" -p MainPID --value 2>/dev/null || true)"
@@ -90,7 +95,7 @@ if ((${#running_pids[@]} > 0)); then
         fi
     done
     if [[ "$stable_running" == true ]]; then
-        printf 'Stopped the diagnostic candidate; installed KDockW v0.6.0 is already running and was left untouched.\n'
+        printf 'Stopped the diagnostic candidate; installed KDockW v%s is already running and was left untouched.\n' "$stable_version"
         exit 0
     fi
 fi
@@ -113,5 +118,5 @@ for _ in {1..50}; do
     fi
     sleep 0.1
 done
-[[ "$restored" == true ]] || fail "installed KDockW v0.6.0 did not become active"
-printf 'Stopped the diagnostic candidate and started installed KDockW v0.6.0: %s\n' "$stable_binary"
+[[ "$restored" == true ]] || fail "installed KDockW v${stable_version} did not become active"
+printf 'Stopped the diagnostic candidate and started installed KDockW v%s: %s\n' "$stable_version" "$stable_binary"
