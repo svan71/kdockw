@@ -3,12 +3,12 @@
 ## Status
 
 Local release preparation is complete. Feature acceptance is **36/36 PASS** with
-no owner remarks. Publication remains unauthorized and was not performed.
-Debian 13's full local Distro E2E is recorded as a harness/baseline failure,
-not a pass; the same screenshot-helper failure reproduced on the stable v0.7.0
-package. Treat the Debian result as an explicit release-gate exception to
-resolve or accept before publication. No application code or test criteria
-were changed to hide it.
+no owner remarks. The Debian 13 screenshot-helper blocker has since been
+closed in local test infrastructure: the latest full Distro E2E passed 221
+tests, skipped 21, and failed none. The original `218/21/1` run remains in the
+historical section below and is not relabeled. No application behavior or
+test criteria were changed. Publication remains unauthorized; no tag, push,
+or release was performed.
 
 ## Owner acceptance
 
@@ -48,7 +48,7 @@ No production settings were changed.
   isolated retry. No timeout was raised, no test was disabled, and no
   magnification code was changed in response.
 
-## Required distro E2E
+## Initial distro E2E before ScreenShot2 helper correction (historical)
 
 All three package builds and install-time E2E workflows ran under the existing
 Podman/Buildah environment through the registered `codex-build` resource
@@ -73,6 +73,56 @@ failed; the result must not be represented as a green full matrix. Its
 additional skips include output-count constraints and a Qt-version-gated
 AT-SPI case. Ubuntu/Fedora skips are multi-output cases unavailable in the
 single-output test session.
+
+## Debian ScreenShot2 infrastructure correction — 2026-11-22
+
+The failing artifact was `test_mouse002_pinned_launch_bounces/launch-14.png`.
+It requested `CaptureArea(474, 674, 76, 91)` and the Python subprocess deadline
+expired after 30 seconds. At capture time, diagnostics recorded a live
+`kwin_wayland` process (PID 31) and a valid `org.kde.KWin` session-bus owner.
+The harness had started its virtual Wayland session and pytest; this path calls
+KWin's ScreenShot2 D-Bus API directly and does not depend on xdg-desktop-portal.
+
+Inspection of the pinned upstream helper and KWin 6.3.6 writer path located the
+hang in the helper's pipe-read phase: KWin replies with frame metadata before
+the asynchronous pipe writer completes, while the helper's non-blocking read
+loop did not terminate on EOF or no progress. The timeout therefore came from
+the test helper's pipe protocol, not a KDockW production regression, missing
+portal, or unready KWin service.
+
+The test images now patch only the pinned test helper to use a Linux memfd
+file-backed sink, wait up to 25 seconds for the exact `stride * height` frame
+size, and read the completed image. The Python capture wrapper retries only an
+explicit incomplete-frame result, with no more than three attempts inside the
+existing 30-second total deadline. D-Bus and unrelated helper failures are not
+retried. No production source or screenshot assertion changed.
+
+Evidence after correction:
+
+- Full Debian 13 Distro E2E on v0.7.1: **221 passed, 21 skipped, 0 failed**
+  (242 collected; 43:09). Log and JUnit:
+  `tests/appium/artifacts-distro-debian-13-final-screenshotfix-20261122/`.
+- The affected `test_mouse002_pinned_launch_bounces` and the screenshot retry
+  unit test passed together on v0.7.1 and on the v0.7.0 package in the same
+  patched Debian image: **2 passed** each. The shared screenshotter ELF Build
+  ID was `564a1a2a926749198577db7acc9123be6549163f`.
+- Ubuntu 26.04 screenshot smoke plus retry unit test: **2 passed**;
+  Fedora 45: **2 passed**. The new image input hashes are `78b0fbcd28c3`
+  (Ubuntu) and `3c1c603562d5` (Fedora); Debian used `47c0f832d816`.
+- The same-image v0.7.0 test layer is image ID
+  `41bc8734682965fe7ee01a7a2a14d39f72b4b1c7fd7154b241daad3a24dc7eaf`;
+  the v0.7.1 image used for the full Debian run is
+  `a6b0a199b727827fb570ca8c1badab87cfc642d363cf21f2f05bed7d134a3117`.
+- Previous full Ubuntu 26.04 and Fedora 45 results remain **227 passed / 13
+  skipped / 0 failed** each. The current infrastructure change was checked
+  there with the targeted screenshot smoke and retry test above, not with a
+  second full suite.
+
+The Debian release blocker is closed for local verification. Production and
+Diagnostic CTest remain applicable at **246/246** and **250/250** respectively:
+this change touches only test infrastructure and documentation, not KDockW or
+CTest sources. Exact-pushed-SHA GitHub Actions has not been run because the
+branch has not been pushed.
 
 Package upgrade was verified in an isolated Debian 13 container:
 `kdockw 0.7.0-1` → `kdockw 0.7.1-1`, with the installed executable reporting
@@ -133,9 +183,9 @@ push is prohibited until separate owner authorization. Local branch is
 ## Release gate disposition
 
 The application behavior is owner accepted and local Production/Diagnostic
-CTest plus Ubuntu/Fedora distro E2E passed. The only unresolved test result is
-the Debian 13 screenshot-helper timeout, reproduced on v0.7.0 in the same local
-harness. It is not identified as an application regression, but the Debian
-full-run status remains failed. Exact-SHA remote CI and GitHub publication are
-not attempted. Obtain the owner's explicit publication authorization only
-after the Debian baseline failure has an accepted disposition.
+CTest passed. The Debian 13 blocker is closed by the test-infrastructure fix
+and a green full local Debian run; current targeted Ubuntu/Fedora checks passed.
+This local result does not replace the release process's exact-commit GitHub
+Actions matrix. The branch is not pushed, so remote Exact-SHA Actions remain
+NOT VERIFIED. No tag, push, or GitHub publication was attempted; publication
+still requires the separately authorized release procedure.

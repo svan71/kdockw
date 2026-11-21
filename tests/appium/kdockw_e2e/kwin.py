@@ -234,6 +234,36 @@ def can_capture() -> bool:
     return compositing_type() != "QPainter"
 
 
+def _capture_with_screenshotter(
+    command: list[str], timeout: float = 30.0
+) -> tuple[subprocess.CompletedProcess[bytes] | None, str]:
+    """Capture one complete ScreenShot2 frame within a single wall-clock budget.
+
+    KWin 6.3 can return before its asynchronous ScreenShot2 frame is written.
+    Retry only an explicitly detected incomplete frame; other helper and
+    D-Bus errors remain immediate.
+    """
+    deadline = time.monotonic() + timeout
+    attempts: list[str] = []
+    for attempt in range(3):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, f"Screenshot2 helper timed out after {timeout:g}s\n" + "\n".join(attempts)
+        try:
+            proc = subprocess.run(command, capture_output=True, timeout=remaining)
+        except subprocess.TimeoutExpired:
+            return None, f"Screenshot2 helper timed out after {timeout:g}s\n" + "\n".join(attempts)
+
+        stderr = proc.stderr.decode(errors="replace")
+        if proc.returncode == 0 and proc.stdout:
+            return proc, stderr
+
+        attempts.append(f"attempt {attempt + 1}: exit={proc.returncode}; {stderr[-1000:]}")
+        if "incomplete screenshot frame" not in stderr or attempt == 2:
+            return proc, "\n".join(attempts)
+    raise AssertionError("unreachable screenshot retry state")
+
+
 def bounds(*rects: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     """Bounding (x, y, width, height) of ``rects``, e.g. to capture the
     area several pixel checks read with one :func:`screenshot`."""
@@ -281,13 +311,7 @@ def screenshot(path: str | Path, area: tuple[int, int, int, int] | None = None) 
         # The helper's "0 0 0 0" means the active output.
         args = (box[0], box[1], box[2] - box[0], box[3] - box[1]) if box else (0, 0, 0, 0)
         command = ["selenium-webdriver-at-spi-screenshotter", *map(str, args)]
-        try:
-            proc = subprocess.run(command, capture_output=True, timeout=30)
-        except subprocess.TimeoutExpired as error:
-            proc = None
-            stderr = f"Screenshot2 helper timed out after {error.timeout}s"
-        else:
-            stderr = proc.stderr.decode(errors="replace")
+        proc, stderr = _capture_with_screenshotter(command)
         if proc is None or proc.returncode != 0 or not proc.stdout:
             out = Path(path)
             out.parent.mkdir(parents=True, exist_ok=True)

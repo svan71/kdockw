@@ -50,12 +50,13 @@ RUN sh /usr/local/lib/kdockw-distro/packages.sh runtime
 FROM runtime-base AS swas-build
 RUN sh /usr/local/lib/kdockw-distro/packages.sh build
 ARG SWAS_COMMIT=d45a21e8f1b3591dc921f0be85f1ecd834cbe413
-COPY --from=appium-tools inputsynth-fixes.patch run-output-count.patch run-permission-checks.patch session-attach-probe-first.patch pipelined-tree.patch /src/
+COPY --from=appium-tools inputsynth-fixes.patch run-output-count.patch run-permission-checks.patch session-attach-probe-first.patch pipelined-tree.patch fix-screenshotter-pipe.py /src/
 RUN git init /src/swas && cd /src/swas \
     && git remote add origin https://invent.kde.org/sdk/selenium-webdriver-at-spi.git \
     && git fetch --depth 1 origin "${SWAS_COMMIT}" \
     && git checkout --detach FETCH_HEAD \
     && git apply /src/inputsynth-fixes.patch /src/run-output-count.patch /src/run-permission-checks.patch /src/session-attach-probe-first.patch /src/pipelined-tree.patch \
+    && python3 /src/fix-screenshotter-pipe.py screenshotter/main.cpp \
     && sed -i '/add_subdirectory(videorecorder)/d' CMakeLists.txt \
     && cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=OFF \
     && cmake --build build \

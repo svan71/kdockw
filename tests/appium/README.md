@@ -209,6 +209,22 @@ skip `Build & tests`. `CI gate` still reports for them.
 | `startup-crash/` | logs of a session whose KWin crashed before pytest started (see below) |
 | `[startup-crash-]backtrace-<core>.txt` | gdb backtrace of a KWin startup core when the host's `core_pattern` is a visible path and the runtime image has gdb |
 
+**ScreenShot2 data path.** The pinned `selenium-webdriver-at-spi` helper uses
+KWin's ScreenShot2 D-Bus interface. KWin returns frame metadata before its
+asynchronous writer has necessarily finished writing the pixels. The upstream
+helper used a non-blocking pipe and read until `stride * height` bytes without
+handling EOF or a no-progress read, so a short frame could leave the helper
+spinning until Python's 30-second subprocess timeout even while KWin and its
+session D-Bus name remained alive. The test images apply
+`tools/fix-screenshotter-pipe.py`: the helper now gives KWin a Linux memfd
+file-backed sink, waits a bounded time for the exact frame size, then reads
+the completed frame. `kwin.screenshot()` retries only an explicitly
+incomplete frame, within the original 30-second total budget; D-Bus errors and
+other failures remain immediate. This is test infrastructure only and does
+not change KDockW behavior or relax/skip screenshot assertions. The Debian
+v0.7.1 investigation and distro results are recorded in
+`docs/qa/v071-release-readiness-2026-11-21.md`.
+
 **KWin startup crash.** `kwin_wayland` occasionally dies from SIGSEGV (in
 its `QQmlThread`) about a second into the session, before
 `selenium-webdriver-at-spi-run` hands over to pytest: an upstream crash,
