@@ -38,6 +38,8 @@ No production settings were changed.
   two passing full suites.
 - v0.7.0 media-volume migration regression passed: old configuration retains
   Player Volume Only behavior; new configuration uses the documented default.
+- Release tooling tests: **153 passed, 1 skipped**; documentation SEO checks
+  passed; `scripts/release.py --help` passed.
 - Historical parallel Production run: **245/246**. Only
   `Authoritative Wayland samples restore Compact magnification after media popup`
   failed. Isolated retry passed 1/1; two targeted parallel five-repeat runs
