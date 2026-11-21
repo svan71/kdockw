@@ -46,6 +46,12 @@ per-stream fallback is used.
 
 - Production Release full CTest: **245/245 passed**.
 - Diagnostic Release full CTest: **249/249 passed**.
+- After those full runs, an explicit two-session regression was added for a
+  pending ignored MPRIS write. Its first isolated attempt exposed a test-fixture
+  race: the assertion ran before the newly selected service's asynchronous
+  `GetAll` completed. The test now waits for that session's player-volume state;
+  the focused MPRIS/volume group passed **9/9**. This was a test-only change;
+  no application source or staged binary changed.
 - The first Diagnostic full run had one failure in the System mode fixture:
   the test assumed its fake MPRIS service was already selected while the live
   test session could expose another player. The fixture now waits for and
