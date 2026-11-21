@@ -8,6 +8,8 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-21
+
 ### Added
 
 - Added Automatic, Player Volume Only, and Computer Volume modes to the media widget, with verified MPRIS writes and a safe default-output fallback.

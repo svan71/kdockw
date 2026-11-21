@@ -73,6 +73,12 @@
     <color type="primary" scheme_preference="dark">#8CE7F5</color>
   </branding>
   <releases>
+    <release version="0.7.1" date="2026-11-21">
+      <description>
+        <p>Improves shadow settings with responsive direction controls and a precise angle value. Adds three media volume modes with safe routing, and activates the exact selected window from Window Preview thumbnails.</p>
+        <p xml:lang="ru">Упрощает настройки тени: направление регулируется плавно и точно. Добавляет три режима управления громкостью с безопасной маршрутизацией и активацию выбранного окна по миниатюре предпросмотра.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-11-20">
       <description>
         <p>Adds a built-in MPRIS2 media player widget with Compact, Controls, and Expanded dock modes, automatic visibility, session selection, and an interactive playback popup. Improves Wayland pointer handling and magnification handoff between dock previews and media popups.</p>

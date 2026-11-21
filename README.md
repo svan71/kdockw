@@ -151,11 +151,11 @@ In Selected monitors mode, Toggle Dock and app-number shortcuts target the selec
 
 ## Installation
 
-KDockW 0.7.0 is the latest stable release. Download the source archive, packages, and checksums from the [KDockW 0.7.0 GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.0). See the [release process](docs/releasing/release-process.md), [versioning policy](docs/releasing/versioning.md), and, on TUXEDO OS, the [build guide](docs/building/tuxedo-os.md) for current Qt/KDE package names and release-build instructions.
+KDockW 0.7.1 is the latest stable release. Download the source archive, packages, and checksums from the [KDockW 0.7.1 GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.1). See the [release process](docs/releasing/release-process.md), [versioning policy](docs/releasing/versioning.md), and, on TUXEDO OS, the [build guide](docs/building/tuxedo-os.md) for current Qt/KDE package names and release-build instructions.
 
 ### Linux package targets
 
-The v0.7.0 release provides packages for Debian 13, Ubuntu 26.04 LTS, and Fedora 45. These are the required package and Distro E2E targets; older compatibility recipes remain available for manual checks but are not release assets. GitHub Releases is the only publication channel.
+The v0.7.1 release provides packages for Debian 13, Ubuntu 26.04 LTS, and Fedora 45. These are the required package and Distro E2E targets; older compatibility recipes remain available for manual checks but are not release assets. GitHub Releases is the only publication channel.
 
 Building KDockW from source requires Qt 6.8 or newer and KDE Frameworks 6.0 or newer.
 
@@ -167,9 +167,9 @@ Building KDockW from source requires Qt 6.8 or newer and KDE Frameworks 6.0 or n
 Install a downloaded package with the system package manager:
 
 ```bash
-sudo apt install ./kdockw-0.7.0-debian-13.deb
-sudo apt install ./kdockw-0.7.0-ubuntu-26.04.deb
-sudo dnf install ./kdockw-0.7.0-fedora-45.rpm
+sudo apt install ./kdockw-0.7.1-debian-13.deb
+sudo apt install ./kdockw-0.7.1-ubuntu-26.04.deb
+sudo dnf install ./kdockw-0.7.1-fedora-45.rpm
 ```
 
 ```bash

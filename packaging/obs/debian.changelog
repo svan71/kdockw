@@ -1,3 +1,11 @@
+kdockw (0.7.1-1) unstable; urgency=medium
+
+  * Simplify shadow settings with a responsive direction slider and precise angle control.
+  * Add Automatic, Player Volume Only, and Computer Volume media control modes with safe routing.
+  * Activate the exact selected window from Window Preview thumbnails.
+
+ -- thicking <thicking@gmail.com>  Sat, 21 Nov 2026 00:00:00 +0500
+
 kdockw (0.7.0-1) unstable; urgency=medium
 
   * Add a persistent MPRIS2 media player widget with three dock modes and an interactive popup.
