@@ -46,9 +46,9 @@ Item {
             // Row 0: single-window app. Row 1: grouped app with three windows.
             DockModel.tasksModel.addTask({ display: "Kate", IsWindow: true, IsActive: true, WinIdList: ["kate-1"] })
             DockModel.tasksModel.addTask({ display: "Konsole", IsWindow: true, WinIdList: ["k-1", "k-2", "k-3"] })
-            DockModel.tasksModel.addChildTask(1, { display: "Konsole 1", IsActive: true, WinIdList: ["k-1"] })
-            DockModel.tasksModel.addChildTask(1, { display: "Konsole 2", WinIdList: ["k-2"] })
-            DockModel.tasksModel.addChildTask(1, { display: "Konsole 3", IsMinimized: true, WinIdList: ["k-3"] })
+            DockModel.tasksModel.addChildTask(1, { display: "Konsole 1", IsWindow: true, IsActive: true, WinIdList: ["k-1"] })
+            DockModel.tasksModel.addChildTask(1, { display: "Konsole 2", IsWindow: true, WinIdList: ["k-2"] })
+            DockModel.tasksModel.addChildTask(1, { display: "Konsole 3", IsWindow: true, IsMinimized: true, WinIdList: ["k-3"] })
             // Row 2: launcher without windows.
             DockModel.tasksModel.addTask({ display: "Okular", IsWindow: false })
         }
@@ -542,6 +542,9 @@ Item {
             tryCompare(PreviewController, "visible", false)
             compare(PreviewController.dismissedTaskIndex, -1,
                     "a thumbnail click happens outside the dock icon and must not leave it suppressed")
+            compare(PreviewController.callsTo("activateWindowByUuid").length, 1)
+            compare(PreviewController.callsTo("activateWindowByUuid")[0].args[0], "k-2",
+                    "the clicked thumbnail must route its stable UUID to the production activation entry point")
             compare(DockModel.tasksModel.activateRequests, 1)
             compare(DockModel.tasksModel.lastRequestRow, 1)
             compare(DockModel.tasksModel.lastRequestChild, 1,

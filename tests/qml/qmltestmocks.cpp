@@ -337,6 +337,42 @@ void MockTasksModel::requestActivate(const QModelIndex &index)
     Q_EMIT requestsChanged();
 }
 
+bool MockTasksModel::requestActivateByUuid(const QString &windowUuid)
+{
+    if (windowUuid.isEmpty()) {
+        return false;
+    }
+    const int winIdListRole = roleForName(QStringLiteral("WinIdList"));
+    const auto matches = [this, &windowUuid, winIdListRole](const QModelIndex &index) {
+        if (!index.isValid() || !index.data(MockAbstractTasksModel::IsWindow).toBool()) {
+            return false;
+        }
+        const QVariantList ids = index.data(winIdListRole).toList();
+        return std::any_of(ids.cbegin(), ids.cend(), [&windowUuid](const QVariant &id) {
+            return id.toString() == windowUuid;
+        });
+    };
+
+    for (int row = 0; row < rowCount(); ++row) {
+        const QModelIndex parentIndex = index(row, 0);
+        if (rowCount(parentIndex) == 0) {
+            if (matches(parentIndex)) {
+                requestActivate(parentIndex);
+                return true;
+            }
+            continue;
+        }
+        for (int child = 0; child < rowCount(parentIndex); ++child) {
+            const QModelIndex childIndex = makeModelIndex(row, child);
+            if (matches(childIndex)) {
+                requestActivate(childIndex);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void MockTasksModel::requestClose(const QModelIndex &index)
 {
     ++m_closeRequests;

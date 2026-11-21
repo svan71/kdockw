@@ -228,6 +228,7 @@ public:
     // TaskManager::TasksModel API used by KDockW's QML.
     Q_INVOKABLE QModelIndex makeModelIndex(int row, int childRow = -1) const;
     Q_INVOKABLE void requestActivate(const QModelIndex &index);
+    Q_INVOKABLE bool requestActivateByUuid(const QString &windowUuid);
     Q_INVOKABLE void requestClose(const QModelIndex &index);
 
 Q_SIGNALS:

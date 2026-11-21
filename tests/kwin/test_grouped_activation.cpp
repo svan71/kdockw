@@ -14,6 +14,7 @@
 
 #include "models/dockactions.h"
 #include "models/dockmodel.h"
+#include "shell/previewcontroller.h"
 
 #include <taskmanager/abstracttasksmodel.h>
 #include <taskmanager/tasksmodel.h>
@@ -235,6 +236,79 @@ bool noStaleTestWindows()
 }
 
 } // namespace
+
+TEST_CASE("Window preview activates the selected grouped child by UUID", "[preview-activation][grouped-activation]")
+{
+    REQUIRE(noStaleTestWindows());
+    QProcess child;
+    const auto stopChild = startChild(child, QStringLiteral("--child"));
+    REQUIRE(child.waitForStarted(kTimeoutMs));
+
+    const bool grouped = QTest::qWaitFor(
+        [] {
+            return groupRow() >= 0;
+        },
+        kTimeoutMs);
+    INFO("tasks:\n" << describeTasks());
+    REQUIRE(grouped);
+
+    const int taskRow = groupRow();
+    const QString separatorId = model().dockEntriesModel()->appendSeparator(QStringLiteral("start"));
+    REQUIRE_FALSE(separatorId.isEmpty());
+    const auto removeSeparator = qScopeGuard([separatorId] {
+        model().dockEntriesModel()->removeBuiltInWidget(separatorId);
+    });
+
+    auto *presentation = model().dockPresentationModel();
+    REQUIRE(QTest::qWaitFor(
+        [presentation, taskRow] {
+            const int dockRow = presentation->dockIndexForTaskIndex(taskRow);
+            return dockRow >= 0 && dockRow != taskRow
+                && presentation->taskIndexForDockIndex(dockRow) == taskRow;
+        },
+        kTimeoutMs));
+
+    const QModelIndex target = windowIndex(kWindowA);
+    REQUIRE(target.isValid());
+    const QVariantList targetIds = target.data(AbstractTasksModel::WinIdList).toList();
+    REQUIRE(targetIds.size() == 1);
+    const QString targetUuid = targetIds.constFirst().toString();
+    REQUIRE_FALSE(targetUuid.isEmpty());
+
+    auto *tasks = model().tasksModel();
+    const int dockRow = presentation->dockIndexForTaskIndex(taskRow);
+    const QModelIndex oldCoordinateTarget = tasks->makeModelIndex(dockRow, target.row());
+    bool oldCoordinatesMatchUuid = false;
+    const QVariantList oldCoordinateIds = oldCoordinateTarget.data(AbstractTasksModel::WinIdList).toList();
+    for (const QVariant &id : oldCoordinateIds) {
+        oldCoordinatesMatchUuid |= id.toString() == targetUuid;
+    }
+    CHECK_FALSE(oldCoordinatesMatchUuid);
+
+    REQUIRE(target.data(AbstractTasksModel::IsMinimizable).toBool());
+    tasks->requestToggleMinimized(target);
+    REQUIRE(QTest::qWaitFor(
+        [] {
+            const QModelIndex minimized = windowIndex(kWindowA);
+            return minimized.isValid() && minimized.data(AbstractTasksModel::IsMinimized).toBool();
+        },
+        kTimeoutMs));
+
+    kdockw::PreviewController preview(&model(), nullptr, nullptr);
+    REQUIRE(preview.activateWindowByUuid(targetUuid));
+    REQUIRE(QTest::qWaitFor(
+        [] {
+            const QModelIndex activated = windowIndex(kWindowA);
+            return activated.isValid() && activated.data(AbstractTasksModel::IsActive).toBool()
+                && !activated.data(AbstractTasksModel::IsMinimized).toBool();
+        },
+        kTimeoutMs));
+
+    // The same production request remains valid for an already active target.
+    REQUIRE(preview.activateWindowByUuid(targetUuid));
+    CHECK_FALSE(preview.activateWindowByUuid(QStringLiteral("missing-window-uuid")));
+    CHECK(windowIndex(kWindowA).data(AbstractTasksModel::IsActive).toBool());
+}
 
 TEST_CASE("Left-click on a grouped app cycles through its windows", "[grouped-activation]")
 {

@@ -79,6 +79,11 @@ QtObject {
     function setHideDelay(ms) { hideDelay = ms }
     function setPopupVisualVisible(value) { popupVisualVisible = value }
     function setPreviewHovered(v) { previewHovered = v }
+    function activateWindowByUuid(uuid) {
+        const windowUuid = String(uuid || "")
+        _record("activateWindowByUuid", [windowUuid])
+        return DockModel.tasksModel.requestActivateByUuid(windowUuid)
+    }
     function setContentSize(w, h) { contentWidth = w; contentHeight = h }
     function previewFrameUrl(uuid) {
         const revision = previewFrameRevision

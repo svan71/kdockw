@@ -775,6 +775,53 @@ void PreviewController::setPopupVisualVisible(bool visible)
     Q_EMIT popupVisualVisibleChanged(visible);
 }
 
+bool PreviewController::activateWindowByUuid(const QString &windowUuid)
+{
+    if (!m_model || windowUuid.isEmpty()) {
+        return false;
+    }
+
+    auto *tasksModel = m_model->tasksModel();
+    if (!tasksModel) {
+        return false;
+    }
+    const auto matchesWindow = [&windowUuid](const QModelIndex &index) {
+        if (!index.isValid() || !index.data(TaskManager::AbstractTasksModel::IsWindow).toBool()) {
+            return false;
+        }
+        const QVariantList ids = index.data(TaskManager::AbstractTasksModel::WinIdList).toList();
+        return std::any_of(ids.cbegin(), ids.cend(), [&windowUuid](const QVariant &id) {
+            return id.toString() == windowUuid;
+        });
+    };
+
+    for (int row = 0; row < tasksModel->rowCount(); ++row) {
+        const QModelIndex parentIndex = tasksModel->index(row, 0);
+        if (!parentIndex.isValid()) {
+            continue;
+        }
+
+        const int childCount = tasksModel->rowCount(parentIndex);
+        if (childCount == 0) {
+            if (matchesWindow(parentIndex)) {
+                tasksModel->requestActivate(parentIndex);
+                return true;
+            }
+            continue;
+        }
+
+        for (int child = 0; child < childCount; ++child) {
+            const QModelIndex childIndex = tasksModel->makeModelIndex(row, child);
+            if (matchesWindow(childIndex)) {
+                tasksModel->requestActivate(childIndex);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void PreviewController::setHeld(bool held)
 {
     if (m_held == held) {

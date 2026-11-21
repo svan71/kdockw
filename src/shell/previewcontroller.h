@@ -127,6 +127,11 @@ public:
     /// Report the rendered popup surface state after its QML fade completes.
     Q_INVOKABLE void setPopupVisualVisible(bool visible);
 
+    /// Request activation of the live window identified by its TaskManager UUID.
+    /// Resolving by UUID avoids confusing DockPresentationModel rows with
+    /// TasksModel rows and survives sibling reorderings while a preview is open.
+    Q_INVOKABLE bool activateWindowByUuid(const QString &windowUuid);
+
     /// Hold the preview hidden while the dock context menu is open: hides it
     /// now and ignores showPreview() until released. Releasing only clears
     /// the hold; QML re-shows the preview through its normal hover pipeline.

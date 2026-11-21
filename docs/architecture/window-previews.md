@@ -48,9 +48,13 @@ The app name is a compact card header; each window title sits immediately above
 its own thumbnail. A grouped close action resolves that thumbnail's UUID against
 the live child rows immediately before calling TaskManager, so a stale delegate
 index cannot redirect it to a neighboring window. If the UUID has already
-disappeared, the action does nothing. Thumbnail activation remains separate
-from the close control. There is no arrow. Opacity animates on show/hide; the
-controller's
+disappeared, the action does nothing. Thumbnail activation passes the stable
+window UUID to `PreviewController`, which searches the current `TasksModel` root
+and child rows and calls `requestActivate()` on the matching live model index.
+The thumbnail's parent row belongs to `DockPresentationModel`; it must not be
+used as a `TasksModel` row because the dock model can insert built-in widgets
+and other non-task entries. If the UUID has already disappeared, activation
+does nothing. There is no arrow. Opacity animates on show/hide; the controller's
 existing geometry and edge placement remain in charge of screen bounds. For
 Panel Inherit and Acrylic styles, the existing KWin blur/contrast helpers are
 applied to the rounded card region on the same preview surface and updated when

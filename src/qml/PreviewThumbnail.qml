@@ -32,6 +32,9 @@ Item {
     property bool frameSnapshotPending: false
     property double lastFrameSnapshotAt: 0
     property int parentIndex: -1
+    readonly property int parentTaskIndex: parentIndex >= 0
+        ? DockModel.dockPresentationModel.taskIndexForDockIndex(parentIndex)
+        : -1
     property int childIndex: 0
     property bool isKeyboardFocused: false
     property bool showCloseButton: false
@@ -620,7 +623,9 @@ Item {
             readonly property string iconName: {
                 // iconName() is invokable, so track the model's artwork revision.
                 let iconCacheVersion = DockView.iconCacheVersion
-                return DockModel.iconName(root.parentIndex) || "application-x-executable"
+                return root.parentTaskIndex >= 0
+                    ? DockModel.iconName(root.parentTaskIndex) || "application-x-executable"
+                    : "application-x-executable"
             }
             readonly property bool isRawIcon: iconName.startsWith("raw:")
             visible: root.fallbackReason !== "cached-frame" && root.fallbackReason !== "live-frame"
@@ -679,13 +684,11 @@ Item {
             Accessible.ignored: true
 
             onClicked: {
-                // childIndex < 0 = single window (parent row IS the window)
-                let modelIndex = (root.childIndex < 0)
-                    ? DockModel.tasksModel.index(root.parentIndex, 0)
-                    : DockModel.tasksModel.makeModelIndex(root.parentIndex, root.childIndex)
-                if (!modelIndex.valid)
+                // Use the stable window UUID to resolve a fresh TaskManager
+                // index. parentIndex is a DockPresentationModel row, not a
+                // TasksModel row, and child row indices may shift while open.
+                if (!root.winId || !PreviewController.activateWindowByUuid(String(root.winId)))
                     return
-                DockModel.tasksModel.requestActivate(modelIndex)
                 PreviewController.hidePreview()
             }
         }

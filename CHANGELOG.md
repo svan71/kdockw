@@ -20,6 +20,7 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
+- Fixed Window Preview thumbnail clicks so the exact selected window is activated, including a specific window in a group.
 - Kept shadow controls responsive by coalescing continuous setting writes while preserving immediate live updates and flushing pending changes on application exit.
 
 ## [0.7.0] - 2026-11-20
