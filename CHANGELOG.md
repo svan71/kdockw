@@ -8,6 +8,10 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+### Added
+
+- Added Automatic, Player Volume Only, and Computer Volume modes to the media widget, with verified MPRIS writes and a safe default-output fallback.
+
 ### Changed
 
 - Replaced the shadow-light drag scene with a compact live preview, a 0–359°

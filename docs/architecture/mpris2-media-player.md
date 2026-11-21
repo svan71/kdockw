@@ -61,6 +61,40 @@ apply to that session; KDockW does not claim per-tab control or add extensions.
 Applications without MPRIS do not create media sessions. PipeWire is not used
 to discover arbitrary audio streams.
 
+## Volume-control routing
+
+The popup keeps one volume slider and exposes three saved modes: Automatic,
+Player Volume Only, and Computer Volume. The slider commits its value on
+release. Its label and tooltip identify the active source, or explain when
+volume control is unavailable; a system mute is shown explicitly.
+
+Player volume uses MPRIS `Volume` independently of the aggregate `CanControl`
+flag. KDockW tracks volume-write support per service owner and generation. A
+successful `Properties.Set` alone is not considered proof: KDockW checks
+`PropertiesChanged` and asynchronously reads `Volume` back, allowing a short
+application delay and 0.02 normalized tolerance. A transient D-Bus error or
+timeout does not trigger fallback. A missing/read-only property or a successful
+write that remains unchanged across the verification reads is treated as
+unsupported. The probe is driven only by a user slider action; it does not
+write volume during discovery.
+
+Automatic uses MPRIS until it is confirmed unsupported, then reflects the
+current system-output value; only the next user slider action writes to that
+source. Player Volume Only never writes the system output. Computer Volume
+never sends MPRIS commands. The system adapter operates only on the current
+default output using the PulseAudio-compatible `pactl` client exposed by
+PipeWire-WirePlumber. A persistent `pactl subscribe` process triggers debounced
+reads for output, mute, and default-device changes; the slider starts one
+asynchronous write on release. It always targets `@DEFAULT_SINK@`, clamps the
+requested value to 0–100%, and does not change routing or individual app
+streams. `pactl` is optional at runtime: if unavailable or if the output cannot
+be read, system volume is reported unavailable. No PipeWire compile-time
+dependency was added.
+
+New configurations default to Automatic. On first load, an existing config
+without a saved volume mode is migrated to Player Volume Only to preserve the
+v0.7.0 MPRIS-only behavior; an explicit saved choice is retained.
+
 ## QML and popup lifecycle
 
 `MediaPlayerWidget.qml` renders Compact, Controls, or Expanded dock content and

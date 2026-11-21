@@ -606,6 +606,22 @@ The media feature card (`187d5445ee4d474d`) is done. The parent and TaskManager 
 
 Performance comparison remains limited: stable ambient CPU/RSS/PSS was sampled, but the production candidate sample had the cursor over the dock and is not a valid idle comparison. Active MPRIS, ordinary manual-use, and longer-term memory/leak behavior are **NOT VERIFIED**. No numerical performance improvement or regression is claimed; the QA note contains two owner-run console commands for a comparable capture.
 
+## v0.7.1 — Media Player Volume Control Modes (in progress; unpublished)
+
+- [ ] **Media Player Volume Control Modes** (`32f7c810f9d6cc15`, review): add
+  Automatic, Player Volume Only, and Computer Volume choices to the existing
+  media-player settings. Keep one slider; use verified MPRIS Volume where it
+  works, and let Automatic use the current system default output only after
+  MPRIS is confirmed unsupported. The system mode never targets an individual
+  app stream or changes audio routing. Existing v0.7.0 configurations without
+  the new key retain Player Volume Only; new configurations default to
+  Automatic. Automated tests and stage checks are recorded in the QA note;
+  Elisa/Yandex Music behavior, external Plasma volume keys, persistence after a
+  real dock restart, and audible/system effects await owner acceptance. Runtime
+  `pactl` is optional and fail-closed; no build or package dependency was added.
+  Parent task `14827bbd7ddbc5ef` remains in review until real Plasma/Wayland
+  acceptance.
+
 ## Technical debt — Classic Zoom Performance Profile
 
 - [ ] Capture real frame pacing, Qt Quick/QML binding, texture-update, pointer
