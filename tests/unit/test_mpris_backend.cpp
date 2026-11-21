@@ -506,6 +506,68 @@ TEST_CASE("Delayed MPRIS Volume updates and rapid changes are generation-safe", 
     CHECK(system.writes.isEmpty());
 }
 
+TEST_CASE("Automatic volume support is isolated when the selected MPRIS session changes", "[media-player][mpris-integration][volume]")
+{
+    QDBusConnection primaryBus = QDBusConnection::sessionBus();
+    if (!primaryBus.isConnected()) SKIP("A D-Bus session bus is required for the MPRIS fixture test");
+
+    const QString suffix = QString::number(QCoreApplication::applicationPid());
+    const QString ignoredService = QStringLiteral("org.mpris.MediaPlayer2.kdockw_volume_switch_ignored_%1").arg(suffix);
+    const QString supportedService = QStringLiteral("org.mpris.MediaPlayer2.kdockw_volume_switch_supported_%1").arg(suffix);
+    const QString secondConnectionName = QStringLiteral("kdockw-volume-switch-%1").arg(suffix);
+    QDBusConnection secondBus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, secondConnectionName);
+    REQUIRE(secondBus.isConnected());
+
+    REQUIRE(primaryBus.registerService(ignoredService));
+    MprisFixture ignoredFixture;
+    ignoredFixture.ignoreVolumeWrites = true;
+    REQUIRE(primaryBus.registerVirtualObject(QString::fromLatin1(kPath), &ignoredFixture, QDBusConnection::SingleNode));
+    MprisRegistration ignoredRegistration(primaryBus, ignoredService);
+
+    REQUIRE(secondBus.registerService(supportedService));
+    MprisFixture supportedFixture;
+    supportedFixture.volume = 0.45;
+    REQUIRE(secondBus.registerVirtualObject(QString::fromLatin1(kPath), &supportedFixture, QDBusConnection::SingleNode));
+    MprisRegistration supportedRegistration(secondBus, supportedService, secondConnectionName);
+
+    FakeSystemVolumeBackend system;
+    system.publish(true, 0.72, false, QStringLiteral("default-output"));
+    kdockw::MediaPlayerController controller(nullptr, &system);
+    REQUIRE(waitUntil([&] {
+        bool ignoredFound = false;
+        bool supportedFound = false;
+        for (int row = 0; row < controller.rowCount(); ++row) {
+            ignoredFound = ignoredFound || controller.serviceAt(row) == ignoredService;
+            supportedFound = supportedFound || controller.serviceAt(row) == supportedService;
+        }
+        return ignoredFound && supportedFound;
+    }, 3000));
+
+    REQUIRE(controller.selectSession(ignoredService));
+    REQUIRE(waitUntil([&] { return controller.activeVolumeSource() == QLatin1String("player"); }, 1000));
+    controller.setVolumeControlMode(0);
+    REQUIRE(controller.setVolume(0.30));
+    REQUIRE(controller.selectSession(supportedService));
+    REQUIRE(waitUntil([&] {
+        return controller.selectedService() == supportedService
+            && controller.activeVolumeSource() == QLatin1String("player");
+    }, 1000));
+    CHECK(controller.activeVolumeSource() == QLatin1String("player"));
+    CHECK(system.startCount == 0);
+    REQUIRE(waitUntil([&] { return ignoredFixture.methods.contains(QStringLiteral("Set:Volume")); }, 1000));
+    QTest::qWait(1100);
+
+    CHECK(controller.selectedService() == supportedService);
+    CHECK(controller.activeVolumeSource() == QLatin1String("player"));
+    CHECK(system.startCount == 0);
+    CHECK(system.writes.isEmpty());
+
+    REQUIRE(controller.selectSession(ignoredService));
+    CHECK(controller.activeVolumeSource() == QLatin1String("system"));
+    CHECK(system.startCount == 1);
+    CHECK(qAbs(controller.volume() - 0.72) < 0.02);
+}
+
 TEST_CASE("System mode tracks external output, mute, and default-device changes without MPRIS writes", "[media-player][mpris-integration][volume]")
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
