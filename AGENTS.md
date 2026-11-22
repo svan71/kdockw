@@ -118,9 +118,50 @@ Rules that apply to every agent working on this repository, regardless of harnes
 ## CHANGELOG
 
 - Every user-visible change (feature, bug fix, behavior change) adds an entry under `## [Unreleased]` in `CHANGELOG.md`.
-- Categories: `### Added`, `### Changed`, `### Fixed`, `### Removed`.
+- Categories: `### Added`, `### Improved`, `### Fixed`, `### Removed`.
 - Write in English, past tense, from the user's point of view (user benefit, not the commit message).
 - Do not record changes invisible to users (internal refactors, CI, agent configuration).
+
+## Release Notes & Changelog Writing Rules
+
+**Audience:** End users, not developers.
+
+All entries in `CHANGELOG.md` and GitHub Release descriptions MUST follow these rules:
+
+1. Write in clear, natural English understandable to ordinary KDE Plasma users.
+2. Describe **what was added, improved, fixed, or removed**, not how the underlying code works.
+3. Use the sections `Added`, `Improved`, `Fixed`, and `Removed` where applicable.
+4. Keep each item short, specific, and focused on a visible user benefit or behavior.
+5. Combine multiple low-level fixes addressing the same user-facing problem into one meaningful entry.
+6. Avoid implementation details such as internal classes, UUID handling, pointer tracking, QML bindings, D-Bus calls, race conditions, or rendering internals unless essential for users.
+7. Do not copy commit messages, debugging logs, QA reports, or technical implementation summaries into release notes.
+8. Preserve important information about new features, compatibility, changed defaults, configuration migration, known limitations, and removed support.
+9. Never invent features, claim unverified improvements, or attribute a change to the wrong version.
+10. Keep detailed technical explanations in QA reports, architecture documents, and Git commit history.
+11. Maintain the same reader-friendly style in Russian release notes, using natural Russian rather than literal translations.
+12. Before publishing, review every release note from the perspective of a person who has never read the source code.
+
+**Examples**
+
+Bad:
+"Reconciled pointer focus across detached Wayland surfaces."
+
+Good:
+"Fixed dock magnification when moving between the dock and popup windows."
+
+Bad:
+"Resolved grouped TaskManager child-row index mapping."
+
+Good:
+"Fixed selecting a specific window from grouped previews."
+
+Bad:
+"Used bounded asynchronous MPRIS property verification with fallback routing."
+
+Good:
+"Added automatic volume control that works even when a player cannot adjust its own volume."
+
+**Mandatory release gate:** A release is not documentation-ready if its changelog reads like a developer debugging report.
 
 ## Obsidian Project Documentation
 
