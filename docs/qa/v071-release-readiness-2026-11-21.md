@@ -1,14 +1,13 @@
-# KDockW v0.7.1 release readiness — 2026-11-21
+# KDockW v0.7.1 release readiness — 2026-11-21; publication verified 2026-11-22
 
 ## Status
 
-Local release preparation is complete. Feature acceptance is **36/36 PASS** with
-no owner remarks. The Debian 13 screenshot-helper blocker has since been
-closed in local test infrastructure: the latest full Distro E2E passed 221
-tests, skipped 21, and failed none. The original `218/21/1` run remains in the
-historical section below and is not relabeled. No application behavior or
-test criteria were changed. Publication remains unauthorized; no tag, push,
-or release was performed.
+KDockW v0.7.1 was published on 2026-11-22. Feature acceptance is **36/36 PASS**
+with no owner remarks. The Debian 13 screenshot-helper blocker was closed in
+test infrastructure; the final exact-SHA Distro E2E passed all required targets.
+The original `218/21/1` run remains in the historical section below and is not
+relabeled. No application behavior or test criteria were changed. See the final
+publication record below for the signed tag, workflow results, assets, and hashes.
 
 ## Owner acceptance
 
@@ -121,16 +120,18 @@ Evidence after correction:
 The Debian release blocker is closed for local verification. Production and
 Diagnostic CTest remain applicable at **246/246** and **250/250** respectively:
 this change touches only test infrastructure and documentation, not KDockW or
-CTest sources. Exact-pushed-SHA GitHub Actions has not been run because the
-branch has not been pushed.
+CTest sources. At the time of this local gate note, Exact-SHA GitHub Actions had
+not yet run; the subsequent exact-pushed-SHA matrix passed in workflow
+[44988948824](https://github.com/thicking/kdockw/actions/runs/44988948824), as
+recorded in the publication section below.
 
 Package upgrade was verified in an isolated Debian 13 container:
 `kdockw 0.7.0-1` → `kdockw 0.7.1-1`, with the installed executable reporting
 `kdockw 0.7.1`. This did not touch the host installation or configuration.
 
-## Packages and optional pactl
+## Local package artifacts and optional pactl
 
-Built package artifacts:
+Local pre-tag package build artifacts (not the published GitHub assets):
 
 - Debian 13:
   `tests/distro/.cache/packages-v071-release/debian-13/kdockw_0.7.1-1_amd64.deb`
@@ -164,7 +165,7 @@ All three distro package E2E workflows installed the package successfully.
   `docs/releases/v0.7.1.md` and `docs/releases/v0.7.1.ru.md`.
 - No performance improvement is claimed.
 
-## Resource and publication state
+## Resource state at pre-publication snapshot
 
 Preflight after E2E reported 74.7 GB free on the workspace/container/cache
 filesystem, about 14.9 GB available RAM, memory PSI 0%, and no cgroup OOM
@@ -174,18 +175,38 @@ Ubuntu/Fedora/Debian release-test images and QA artifacts are retained for
 release review; temporary test containers are removed. No global prune was
 used. A pre-existing stopped TimeOff MariaDB container was not touched.
 
-Stable v0.7.0 remains installed and active. No tag, push, or release was
-created. GitHub Actions on an exact pushed release SHA are **NOT VERIFIED**:
-push is prohibited until separate owner authorization. Local branch is
-`codex/v0.7.1-shadow-settings`; it has existing local commits ahead of
-`origin/main` and no upstream configured.
+At the time this pre-publication snapshot was written, stable v0.7.0 remained
+installed and active, and no tag, push, or release had yet been created. The
+branch and GitHub Actions state were subsequently updated; see the publication
+record below.
 
 ## Release gate disposition
 
-The application behavior is owner accepted and local Production/Diagnostic
-CTest passed. The Debian 13 blocker is closed by the test-infrastructure fix
-and a green full local Debian run; current targeted Ubuntu/Fedora checks passed.
-This local result does not replace the release process's exact-commit GitHub
-Actions matrix. The branch is not pushed, so remote Exact-SHA Actions remain
-NOT VERIFIED. No tag, push, or GitHub publication was attempted; publication
-still requires the separately authorized release procedure.
+The pre-publication disposition was that local results did not replace the
+exact-commit GitHub Actions matrix. That gate subsequently passed and the signed
+release was published; see below.
+
+## Publication — 2026-11-22
+
+- Public, non-draft, non-prerelease GitHub Release:
+  https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.1.
+- Signed tag `kdockw-v0.7.1` points to
+  `e34a758a88f5cb7f542c9ea45f36db13826285c9`; the pinned-key signature verifies.
+- Exact-SHA Distro E2E [44988948824](https://github.com/thicking/kdockw/actions/runs/44988948824)
+  passed: Debian 13 221 passed / 21 skipped / 0 failed; Ubuntu 26.04 and Fedora
+  45 each 229 passed / 13 skipped / 0 failed, with required multi-output checks
+  passing. Build & Tests [44988904252](https://github.com/thicking/kdockw/actions/runs/44988904252)
+  and CI Images [44988904165](https://github.com/thicking/kdockw/actions/runs/44988904165)
+  succeeded. Local Production/Diagnostic CTest passed 246/246 and 250/250.
+- Published assets: source archive, Debian 13 DEB, Ubuntu 26.04 DEB, Fedora 45
+  RPM, and `SHA256SUMS`. The downloaded public manifest was checked against all
+  four local release artifacts; every checksum passed. GitHub asset digests and
+  release-tool status also report a match.
+- No local installation was performed. Stable `/usr/bin/kdockw` v0.7.0 and its
+  production configuration were left unchanged; stable is active as PID
+  `2612502`.
+- SHA-256: source `ab52830df4e06852c379ef139fdf6820a6387d5de5132438f8bbfc1096f4b83a`;
+  Debian DEB `d0c0edf4004a1253e02e6abcc9dffc5889739ce77cbdfeafe2de675b2be4f768`;
+  Ubuntu DEB `2a909d9a3c6a9c8befd472a817a074d66b5d14cbe25b112f5c4dcfab05c48181`;
+  Fedora RPM `5b45e6079473dc8a1984a8750770662ac12d1cd8f621a72b7b1da475f4beff7f`;
+  `SHA256SUMS` asset `2db0dacc525bf097bd102a6fea9464669c5518d1f92102a93ad7731906af55aa`.

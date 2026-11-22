@@ -30,6 +30,18 @@ passed on Debian 13, Ubuntu 26.04, and Fedora 45. The public GitHub Release
 contains the source archive, all three required packages, and `SHA256SUMS`;
 release tooling verified every asset against the prepared context.
 
+KDockW v0.7.1 was published on 2026-11-22 from commit
+`e34a758a88f5cb7f542c9ea45f36db13826285c9`. The signed tag
+`kdockw-v0.7.1` was verified with the pinned key and matches that commit. Exact-SHA
+Distro E2E [44988948824](https://github.com/thicking/kdockw/actions/runs/44988948824),
+Build & Tests [44988904252](https://github.com/thicking/kdockw/actions/runs/44988904252),
+and CI Images [44988904165](https://github.com/thicking/kdockw/actions/runs/44988904165)
+all succeeded. Production/Diagnostic CTest passed 246/246 and 250/250; owner
+acceptance was 36/36. The public [GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.1)
+contains the source archive, Debian 13 and Ubuntu 26.04 DEBs, Fedora 45 RPM,
+and `SHA256SUMS`; the publisher verified every asset against the release
+context and the published checksum manifest.
+
 AUR, OBS, COPR, and Launchpad/PPA are inactive. Optional adapter scripts may
 remain in the repository, but the release CLI's `all` selection means GitHub
 only. No release preflight or gate may require credentials, accounts, projects,
