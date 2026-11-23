@@ -187,9 +187,25 @@ def gh_available() -> bool:
         return False
 
 
+def issues_enabled(repo: str) -> bool | None:
+    """True/False when the repository's issues state is known; None otherwise."""
+    if not repo:
+        return None
+    command = ["gh", "api", f"repos/{repo}", "--jq", ".has_issues"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    value = result.stdout.strip()
+    return value == "true" if value in ("true", "false") else None
+
+
 def list_issues(repo: str) -> list[dict] | None:
     if not gh_available():
         warn("gh CLI not found; cannot inspect existing issues")
+        return None
+    if repo and issues_enabled(repo) is False:
+        warn(f"GitHub issues are disabled in {repo}; issue sync is unavailable")
         return None
     command = [
         "gh", "issue", "list", "--label", LABEL, "--state", "all", "--limit", "200",
@@ -200,8 +216,12 @@ def list_issues(repo: str) -> list[dict] | None:
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
-    except (subprocess.CalledProcessError, json.JSONDecodeError) as exc:
-        warn(f"gh issue list failed: {exc}")
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        warn(f"gh issue list failed: {detail or exc}")
+        return None
+    except json.JSONDecodeError as exc:
+        warn(f"gh issue list returned invalid JSON: {exc}")
         return None
 
 
@@ -264,12 +284,12 @@ def reconcile(gaps: list[Gap], repo: str, dry_run: bool) -> int:
     return int(bool(failures))
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     parser.add_argument("--targets", type=Path, default=TARGETS_FILE)
     parser.add_argument("--dry-run", action="store_true", help="print actions without changing GitHub issues")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         targets = parse_targets(args.targets)
