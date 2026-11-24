@@ -212,6 +212,11 @@ Q_SIGNALS:
     void screenGeometryChanged();
     void mediaHoverMarkerReceived(const QString &label);
 
+protected:
+    /// A drag over the dock surface, including the hidden dock's edge strip,
+    /// counts as a hover so an auto-hidden dock comes up to take the drop.
+    bool event(QEvent *event) override;
+
 private:
     /// Extra height above the panel needed for zoomed icons.
     [[nodiscard]] int zoomOverflowHeight() const;
