@@ -630,6 +630,16 @@ passed. Full Production/Diagnostic CTest passed 246/246 and 250/250; owner
 acceptance was 36/36. The source archive, both DEBs, Fedora RPM, and
 `SHA256SUMS` were published and verified.
 
+## v0.7.2 — Corrective fixes (under review)
+
+- [ ] Keep an auto-hidden dock visible after an external file drop while the pointer remains over it; verify ordinary auto-hide resumes after pointer leave.
+- [ ] Keep notification badges synchronized with active notifications, including replacements, individual closures, explicit clearing, and app activation without dismissal.
+- [ ] Complete owner acceptance in a real Plasma/Wayland session before considering release readiness.
+
+## v0.8.0 — Follow Active external drag (planned)
+
+- [ ] Support external file drag through EdgeTrigger when Follow Active targets a dock on an inactive monitor. Keep this separate from the v0.7.2 corrective work and verify the drop reaches the selected dock.
+
 ## Technical debt — Classic Zoom Performance Profile
 
 - [ ] Capture real frame pacing, Qt Quick/QML binding, texture-update, pointer
