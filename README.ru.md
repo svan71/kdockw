@@ -1,10 +1,8 @@
 # KDockW
 
-<p align="center"><img src="branding/logo/kdockw-logo.png" alt="Логотип KDockW: значок приложения и док-панель" width="768"></p>
+<p align="center"><img src="branding/logo/kdockw-logo.png" alt="Логотип KDockW: значок приложения и док-панель" width="640"></p>
 
-<p align="center"><strong>KDockW — KDE Dock for Wayland</strong></p>
-
-<p align="center"><strong>Док-панель для KDE Plasma 6 под Wayland.</strong></p>
+<p align="center"><strong>Настраиваемая док-панель для KDE Plasma 6 под Wayland.</strong></p>
 
 <p align="center"><a href="README.ru.md">🇷🇺 Русский</a> · <a href="README.md">🇬🇧 English</a></p>
 
@@ -18,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/thicking/kdockw/releases/latest">Скачать последний релиз</a> ·
   <a href="#установка">Сборка и установка</a> ·
   <a href="ROADMAP.ru.md">План разработки</a> ·
   <a href="ROADMAP.md">English</a> ·
@@ -38,35 +37,25 @@ KDockW — самостоятельная док-панель для KDE Plasma 
 
 ## KDockW в действии
 
-Classic Zoom, анимация док-панели и живые миниатюры окон:
-
-https://github.com/user-attachments/assets/da075b0f-4fcf-4d15-a608-a3b91eddcfcf
+- [Демо док-панели](https://thicking.github.io/kdockw/screenshots/kdockw-v071-demo.webm) — значки увеличиваются при наведении, а окна Konsole из одной группы видны рядом.
+- [Демо виджета медиаплеера](https://thicking.github.io/kdockw/screenshots/kdockw-v071-player.webm) — запускайте и приостанавливайте воспроизведение прямо из дока. Во всплывающей панели можно перемотать трек и изменить громкость.
 
 ## Скриншоты
 
-<p align="center">
-  <img src="docs/screenshots/kdockw-classic-zoom.png" alt="Док KDockW с увеличенным значком Firefox при наведении">
-</p>
-<p align="center"><sub>Classic Zoom увеличивает значок под указателем, сохраняя видимость всего дока.</sub></p>
+![Живой предпросмотр окна Яндекс Браузера над его значком в доке KDockW](branding/kdockw2.png)
 
-<table width="100%">
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/screenshots/kdockw-window-preview.png" alt="Живой предпросмотр окна Яндекс Браузера над доком KDockW" width="560"><br>
-      <sub>Живой предпросмотр открытого окна.</sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/screenshots/kdockw-dock-overview.png" alt="Док KDockW с закреплёнными приложениями и счётчиками уведомлений" width="560"><br>
-      <sub>Общий вид дока с закреплёнными приложениями и счётчиками уведомлений.</sub>
-    </td>
-  </tr>
-</table>
+**Предпросмотр окна.** Посмотрите, что открыто в окне, прежде чем переключиться на него.
+
+![Увеличенный значок VSCodium и соседние значки в доке KDockW](branding/kdockw.png)
+
+**Увеличение значков.** Значок под указателем становится крупнее, а соседние плавно меняют размер.
 
 ## Возможности проекта
 
 - **Для KDE Plasma 6 и Wayland** — док-панель, созданная специально для KDE Plasma 6 и Wayland.
 - **Плавная работа** — Classic Zoom, настраиваемая анимация, анимация запуска приложений и индикаторы запущенных приложений.
 - **Предпросмотр окон** — миниатюры открытых и свёрнутых окон, группы приложений и активация окна щелчком.
+- **Виджет медиаплеера** — управляйте воспроизведением из дока. Во всплывающей панели можно перематывать треки и менять громкость.
 - **Настраиваемый внешний вид** — оформление панели, прозрачность значков, счётчики уведомлений и размеры карточек предпросмотра.
 - **Встроенные виджеты дока** — добавление, сортировка, настройка размера и размещение фиксированных spacer и разделителей в начале, центре или конце дока.
 - **Меню приложений** — Launchpad, Windows Start или KDE Hierarchical; поиск, папки Launchpad и управление избранным.

@@ -1,10 +1,8 @@
 # KDockW
 
-<p align="center"><img src="branding/logo/kdockw-logo.png" alt="KDockW logo with its app icon and dock illustration" width="768"></p>
+<p align="center"><img src="branding/logo/kdockw-logo.png" alt="KDockW logo with its app icon and dock illustration" width="640"></p>
 
-<p align="center"><strong>KDockW — KDE Dock for Wayland</strong></p>
-
-<p align="center"><strong>A native Wayland dock for KDE Plasma 6.</strong></p>
+<p align="center"><strong>A customizable dock for KDE Plasma 6 on Wayland.</strong></p>
 
 <p align="center"><a href="README.ru.md">🇷🇺 Русский</a> · <a href="README.md">🇬🇧 English</a></p>
 
@@ -18,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/thicking/kdockw/releases/latest">Download the latest release</a> ·
   <a href="#installation">Build and install</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="ROADMAP.ru.md">Русский</a> ·
@@ -37,35 +36,25 @@ KDockW started as a personal project. I wanted a modern, customizable dock with 
 
 ## KDockW in Action
 
-Classic Zoom, dock animations, and live window previews:
-
-https://github.com/user-attachments/assets/da075b0f-4fcf-4d15-a608-a3b91eddcfcf
+- [Watch the dock demo](https://thicking.github.io/kdockw/screenshots/kdockw-v071-demo.webm) — icons grow under the pointer and grouped Konsole windows appear side by side.
+- [Watch the Media Player widget demo](https://thicking.github.io/kdockw/screenshots/kdockw-v071-player.webm) — play or pause from the dock, then open the popup to seek through a track or adjust the volume.
 
 ## Screenshots
 
-<p align="center">
-  <img src="docs/screenshots/kdockw-classic-zoom.png" alt="KDockW dock with the Firefox icon enlarged by Classic Zoom">
-</p>
-<p align="center"><sub>Classic Zoom magnifies the hovered app while keeping the full dock visible.</sub></p>
+![Live Yandex Browser window preview above its icon in the KDockW dock](branding/kdockw2.png)
 
-<table width="100%">
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/screenshots/kdockw-window-preview.png" alt="Live Yandex Browser window preview above the KDockW dock" width="560"><br>
-      <sub>Live preview of an open window.</sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/screenshots/kdockw-dock-overview.png" alt="KDockW dock with pinned apps and notification badges" width="560"><br>
-      <sub>Dock overview with pinned applications and notification badges.</sub>
-    </td>
-  </tr>
-</table>
+**Live window preview.** See what’s open before switching to a window.
+
+![The magnified VSCodium icon and its neighbors in the KDockW dock](branding/kdockw.png)
+
+**Icon magnification.** The icon under your pointer grows, and nearby icons scale with it.
 
 ## Project Highlights
 
 - **Native KDE Plasma 6 / Wayland** — A standalone dock that follows KDE and Wayland desktop conventions.
 - **Smooth dock interaction** — Classic Zoom, adjustable animation, launch feedback, and configurable running-app indicators.
 - **Live window previews** — Preview open and minimized windows, browse grouped apps, and activate a window with a click.
+- **Media Player widget** — Control playback from the dock and open the popup to seek or adjust volume.
 - **Personalized appearance** — Adjust panel styling, icon opacity, notification badges, and preview-card sizes.
 - **Verified Linux packages** — Stable releases are published on GitHub Releases for Debian 13, Ubuntu 26.04 LTS, and Fedora 45.
 
