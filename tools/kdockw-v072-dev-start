@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "${script_dir}/.." && pwd -P)"
+
+export KDOCKW_CANDIDATE_VERSION=0.7.2
+export KDOCKW_STABLE_VERSION=0.7.1
+export KDOCKW_DIAGNOSTIC_BUILD_DIR="${repo_root}/build/v072-diagnostic-release"
+export KDOCKW_DIAGNOSTIC_ROOT="${repo_root}/diagnostics/v072-dev"
+export KDOCKW_CANDIDATE_DESKTOP_ID=kdockw-v072-diagnostic-release.desktop
+export KDOCKW_CANDIDATE_SERVICE=kdockw-v072-diagnostic-release.service
+export KDOCKW_RESTORE_SERVICE=kdockw-v072-restored.service
+export KDOCKW_RESTORE_SCRIPT="${repo_root}/tools/kdockw-v072-dev-stop-and-restore"
+
+exec "${script_dir}/kdockw-v070-dev-start" "$@"
