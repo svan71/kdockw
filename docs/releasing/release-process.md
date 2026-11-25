@@ -42,6 +42,24 @@ contains the source archive, Debian 13 and Ubuntu 26.04 DEBs, Fedora 45 RPM,
 and `SHA256SUMS`; the publisher verified every asset against the release
 context and the published checksum manifest.
 
+KDockW v0.7.2 was published on 2026-11-25 from commit
+`36e0c056f297c01a8222aa2e623e679922cb1664` with signed tag
+`kdockw-v0.7.2`, verified using the pinned signing key. Exact-SHA Build & Tests
+[45616429680](https://github.com/thicking/kdockw/actions/runs/45616429680),
+Distro E2E [45616469456](https://github.com/thicking/kdockw/actions/runs/45616469456),
+and Pages deployment [45616429802](https://github.com/thicking/kdockw/actions/runs/45616429802)
+all succeeded. Production/Diagnostic CTest passed 246/246 and 250/250. Debian
+13, Ubuntu 26.04, and Fedora 45 package and E2E jobs passed; the workflow's
+Debian multi-output steps were skipped by its target policy. The public
+[GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.2)
+contains the source archive, both DEBs, Fedora RPM, and `SHA256SUMS`; all four
+archive/package hashes and the manifest hash were verified against GitHub's
+published asset digests. PR #2 by `svan71` remains represented by its original
+commit and was merged without squashing; the owner accepted Drop behavior 6/6.
+The intermittent notification badge that may remain after a notification is
+read or dismissed is a non-blocking Known Issue with unknown root cause; it was
+not declared fixed or changed further for this release.
+
 AUR, OBS, COPR, and Launchpad/PPA are inactive. Optional adapter scripts may
 remain in the repository, but the release CLI's `all` selection means GitHub
 only. No release preflight or gate may require credentials, accounts, projects,

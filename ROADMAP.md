@@ -630,11 +630,11 @@ passed. Full Production/Diagnostic CTest passed 246/246 and 250/250; owner
 acceptance was 36/36. The source archive, both DEBs, Fedora RPM, and
 `SHA256SUMS` were published and verified.
 
-## v0.7.2 — Corrective fixes (under review)
+## v0.7.2 — Corrective fixes (published 2026-11-25; badge follow-up remains open)
 
-- [ ] Keep an auto-hidden dock visible after an external file drop while the pointer remains over it; verify ordinary auto-hide resumes after pointer leave.
-- [ ] Keep notification badges synchronized with active notifications, including replacements, individual closures, explicit clearing, and app activation without dismissal.
-- [ ] Complete owner acceptance in a real Plasma/Wayland session before considering release readiness.
+- [x] Keep an auto-hidden dock visible after an external file drop while the pointer remains over it; the owner accepted the integrated PR #2 and Drop behavior in 6/6 scenarios.
+- [x] Publish the signed v0.7.2 release from commit `36e0c056f297c01a8222aa2e623e679922cb1664` after the required exact-SHA checks passed.
+- [ ] Investigate the intermittent notification badge that can remain after reading or dismissing a notification. The root cause is unknown; this is a documented, non-blocking Known Issue and no further badge changes were made for this release.
 
 ## v0.8.0 — Follow Active external drag (planned)
 
