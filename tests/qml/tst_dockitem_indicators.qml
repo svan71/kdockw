@@ -673,15 +673,14 @@ Item {
             tryVerify(() => !bar.visible)
         }
 
-        function test_activatingWindowClearsTrackerBadge() {
+        function test_activatingWindowDoesNotClearActiveNotifications() {
             let item = makeItem({ IsWindow: true, IsActive: false })
             NotificationTracker.setUnread("org.kde.dolphin", 4)
             tryCompare(item, "_badgeCount", 4)
             DockModel.tasksModel.setTaskData(0, "IsActive", true)
-            tryCompare(item, "_badgeCount", 0)
-            compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 1)
-            compare(NotificationTracker.callsTo("clearUnreadNotifications")[0].args[0], "org.kde.dolphin")
-            verify(!T.badge(item).visible)
+            tryCompare(item, "_badgeCount", 4)
+            compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 0)
+            verify(T.badge(item).visible)
         }
 
         // --- Attention ---

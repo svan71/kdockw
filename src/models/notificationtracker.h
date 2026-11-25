@@ -21,7 +21,7 @@ namespace kdockw
 
 /**
  * Aggregates per-app notification state from multiple sources:
- *   1. D-Bus notification watcher — unread notification count per desktop entry
+ *   1. D-Bus notification watcher — active notification count per desktop entry
  *   2. SNI (StatusNotifierItem) D-Bus — NeedsAttention boolean per app
  *
  * Uses KDE's RegisterWatcher D-Bus protocol to receive all notifications
@@ -46,13 +46,13 @@ public:
     [[nodiscard]] int revision() const;
     [[nodiscard]] bool dndActive() const;
 
-    /// Return the number of unread notifications for the given desktop entry (e.g. "slack").
+    /// Return the number of active notifications for the given desktop entry (e.g. "slack").
     [[nodiscard]] Q_INVOKABLE int unreadCount(const QString &desktopEntry) const;
 
     /// Return true if the SNI item matching @p appId has NeedsAttention status.
     [[nodiscard]] Q_INVOKABLE bool sniNeedsAttention(const QString &appId) const;
 
-    /// Clear all unread notifications for the given app (e.g. when user reads them).
+    /// Clear active notification counts after an explicit user request.
     Q_INVOKABLE void clearUnreadNotifications(const QString &appId);
 
     /// Dump all tracked state to the console (debug tool).

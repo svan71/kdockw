@@ -88,8 +88,11 @@ This is how apps identify themselves to the notification server.
 - **Discord**: May or may not send `desktop-entry` (varies by version/platform)
 - **Electron apps**: Typically send `app_name` but may omit `desktop-entry` hint
 
-**Badge count derivation**: `NotificationTracker` counts notification IDs per desktop entry from
-`Notify()` until `NotificationClosed` (or `clearUnreadNotifications()` when the app is activated).
+**Badge count derivation**: `NotificationTracker` counts active notification IDs per desktop entry
+from `Notify()` until the notification service reports `NotificationClosed`, or the user explicitly
+chooses **Clear Notifications** from the app's dock menu. Opening an app does not clear the count
+because the desktop notification protocol does not report whether the user read the message inside
+that app. Unity LauncherEntry counts remain a separate app-managed source.
 
 This is NOT the same as the app-reported badge count from Unity API, but it's the best
 approximation available for all apps. When the `desktop-entry` hint is missing,
@@ -368,9 +371,10 @@ target_link_libraries(kdockw_lib PRIVATE PW::LibNotificationManager)
 
 2. **Requires plasmashell** — without Plasma's notification server there is no `RegisterWatcher`.
 
-3. **"Unread" is dock-managed** — KDockW clears an app's count when it is focused, from the
-   context menu, or when its SNI returns to `Active`; it does not share read state with the
-   notification bell applet.
+3. **Active notifications are not read state** — KDockW removes IDs when the notification service
+   reports that they closed, or after an explicit **Clear Notifications** command. App focus and
+   SNI status changes do not acknowledge every notification for that app. The watcher tracks events
+   received after registration and does not reconstruct notifications that predate a KDockW restart.
 
 4. **Electron apps** (Discord, VS Code, etc.) — Notification behavior varies by Electron version.
    Older versions may send `app_name` without `desktop-entry`.

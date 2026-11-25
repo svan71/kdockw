@@ -181,11 +181,8 @@ void NotificationTracker::clearUnreadNotifications(const QString &appId)
     const QString normalized = stripDesktopSuffix(appId.toLower());
     bool changed = false;
 
-    // Find and remove all notification entries matching this app
     for (auto it = m_unreadNotifs.begin(); it != m_unreadNotifs.end();) {
         if (desktopEntryMatches(it.key(), normalized)) {
-            qCInfo(lcNotif) << "clearUnreadNotifications: clearing" << it->size() << "notifications for" << it.key() << "(triggered by SNI" << appId << ")";
-            // Remove reverse-lookup entries
             for (uint notifId : *it) {
                 m_notifIdToEntry.remove(notifId);
             }
@@ -197,7 +194,8 @@ void NotificationTracker::clearUnreadNotifications(const QString &appId)
     }
 
     if (changed) {
-        qCInfo(lcNotif) << "clearUnreadNotifications: cleared for" << appId;
+        qCInfo(lcNotif) << "Explicit notification badge clear for" << appId;
+        bumpRevision();
     }
 }
 
@@ -212,7 +210,7 @@ void NotificationTracker::dumpState() const
                                      .arg(badgesEnabled ? QStringLiteral("true") : QStringLiteral("false"));
 
     for (auto it = m_unreadNotifs.cbegin(); it != m_unreadNotifs.cend(); ++it) {
-        qCInfo(lcNotif).noquote() << QStringLiteral("  %1 : %2 unread (IDs: %3)").arg(it.key()).arg(it->size()).arg([&]() {
+        qCInfo(lcNotif).noquote() << QStringLiteral("  %1 : %2 active (IDs: %3)").arg(it.key()).arg(it->size()).arg([&]() {
             QStringList ids;
             for (uint id : *it) {
                 ids << QString::number(id);
@@ -292,7 +290,7 @@ void NotificationTracker::Notify(uint id,
                                  const QString &appName,
                                  uint replacesId,
                                  const QString & /*appIcon*/,
-                                 const QString &summary,
+                                 const QString & /*summary*/,
                                  const QString & /*body*/,
                                  const QStringList & /*actions*/,
                                  const QVariantMap &hints,
@@ -307,7 +305,7 @@ void NotificationTracker::Notify(uint id,
     const QString desktopEntry = rawEntry.toLower();
 
     qCInfo(lcNotif) << ">>> Notify: id=" << id << "appName=" << appName << "desktop-entry hint=" << hints.value(QStringLiteral("desktop-entry")).toString()
-                    << "resolved=" << desktopEntry << "replacesId=" << replacesId << "summary=" << summary;
+                    << "resolved=" << desktopEntry << "replacesId=" << replacesId;
 
     // If replacing, remove old entry first
     if (replacesId > 0) {
@@ -426,7 +424,7 @@ void NotificationTracker::bumpRevision()
             ++sniAttentionCount;
     }
     const bool badgesEnabled = m_notifSettings ? m_notifSettings->badgesInTaskManager() : true;
-    qCInfo(lcNotif) << "bumpRevision:" << m_revision << "| unread:" << (summary.isEmpty() ? QStringLiteral("(none)") : summary.join(QStringLiteral(", ")))
+    qCInfo(lcNotif) << "bumpRevision:" << m_revision << "| activeNotifications:" << (summary.isEmpty() ? QStringLiteral("(none)") : summary.join(QStringLiteral(", ")))
                     << "| sniAttention:" << sniAttentionCount << "| badgesEnabled:" << badgesEnabled;
 
     Q_EMIT revisionChanged();
@@ -555,13 +553,6 @@ void NotificationTracker::onSniNewStatus(const QString &status, const QDBusMessa
             const QString oldStatus = it->status;
             qCInfo(lcNotif) << ">>> SNI status changed:" << it->id << "(" << key << ")" << oldStatus << "->" << status;
             it->status = status;
-
-            // When transitioning away from NeedsAttention, the user has attended
-            // to the app (e.g. opened Slack). Clear notification watcher counts
-            // for this app so badge count reflects the acknowledged state.
-            if (oldStatus == QLatin1String("NeedsAttention") && status != QLatin1String("NeedsAttention") && !it->id.isEmpty()) {
-                clearUnreadNotifications(it->id);
-            }
 
             bumpRevision();
         }

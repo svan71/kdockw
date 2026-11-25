@@ -537,11 +537,9 @@ Item {
             _waitingForWindow = false
             maxLaunchTimer.stop()
         }
-        // Clear fd.o watcher badges when window gains focus.
-        // LauncherEntry count is app-managed (separate source), so always clear fd.o unconditionally.
-        if (_isActive && _appId.length > 0) {
-            NotificationTracker.clearUnreadNotifications(_appId)
-        } else if (!_isActive && _attentionPending) {
+        // Notification badges follow the notification service's close event.
+        // App activation alone does not establish that every message was read.
+        if (!_isActive && _attentionPending) {
             _triggerAttention()
         }
     }

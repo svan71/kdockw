@@ -265,6 +265,64 @@ TEST_CASE("A LauncherEntry count shows as a badge on the dock item", "[launcher-
     }));
 }
 
+TEST_CASE("Closing active notifications immediately updates the dock badge", "[notification][badge][dock]")
+{
+    resetEntries();
+    auto *item = dockItemFor(kKonsole);
+    REQUIRE(item);
+    auto *badge = child(item, QStringLiteral("badge"));
+    REQUIRE(badge);
+
+    auto *tracker = app().tracker.get();
+    const int baseline = tracker->unreadCount(QStringLiteral("org.kde.konsole"));
+    constexpr uint firstId = 0xf0000001U;
+    constexpr uint secondId = 0xf0000002U;
+    const QVariantMap hints{{QStringLiteral("desktop-entry"), QStringLiteral("org.kde.konsole")}};
+    const auto notify = [tracker, &hints](uint id, uint replacesId = 0) {
+        tracker->Notify(id, QStringLiteral("test"), replacesId, QString(), QString(), QString(), {}, hints, -1);
+    };
+
+    const auto cleanup = qScopeGuard([tracker, firstId, secondId] {
+        tracker->NotificationClosed(firstId, 2);
+        tracker->NotificationClosed(secondId, 2);
+    });
+
+    notify(firstId);
+    notify(secondId);
+    REQUIRE(waitFor([&] {
+        return item->property("_badgeCount").toInt() == baseline + 2;
+    }));
+    CHECK(badge->isVisible());
+
+    // Replacing an existing notification keeps one count for that ID.
+    notify(secondId, secondId);
+    CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == baseline + 2);
+
+    const int revisionBeforeClose = tracker->revision();
+    tracker->NotificationClosed(firstId, 2);
+    CHECK(tracker->revision() == revisionBeforeClose + 1);
+    CHECK(waitFor([&] {
+        return item->property("_badgeCount").toInt() == baseline + 1;
+    }));
+
+    tracker->NotificationClosed(secondId, 2);
+    CHECK(waitFor([&] {
+        return item->property("_badgeCount").toInt() == baseline;
+    }));
+    CHECK(badge->isVisible() == (baseline > 0));
+
+    notify(firstId);
+    REQUIRE(waitFor([&] {
+        return item->property("_badgeCount").toInt() == baseline + 1;
+    }));
+    const int revisionBeforeExplicitClear = tracker->revision();
+    tracker->clearUnreadNotifications(QStringLiteral("org.kde.konsole"));
+    CHECK(tracker->revision() == revisionBeforeExplicitClear + 1);
+    CHECK(waitFor([&] {
+        return item->property("_badgeCount").toInt() == baseline;
+    }));
+}
+
 TEST_CASE("A LauncherEntry progress shows as a progress bar on the dock item", "[launcher-entry][dock]")
 {
     auto *item = dockItemFor(kKonsole);

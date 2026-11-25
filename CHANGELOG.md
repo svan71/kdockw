@@ -10,7 +10,8 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
-- Fixed dragging files to an auto-hidden dock: the dock now appears so the files can be dropped on it.
+- Notification badges now update when Plasma closes a notification and remain visible when you open the app without dismissing that notification.
+- Dropping files on an auto-hidden dock now reveals it and keeps it visible under the pointer after the drop. (Thanks to svan71.)
 
 ## [0.7.1] - 2026-11-21
 
