@@ -147,11 +147,11 @@ KDockW — самостоятельная док-панель для KDE Plasma 
 
 ## Установка
 
-KDockW 0.7.1 — последняя стабильная версия. Исходный архив, пакеты и контрольные суммы доступны на странице [релиза KDockW 0.7.1 в GitHub](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.1). Подробнее — в [политике версий](docs/releasing/versioning.md) и [инструкции по выпуску](docs/releasing/release-process.md), а также в [инструкции по сборке на TUXEDO OS](docs/building/tuxedo-os.md).
+KDockW 0.7.2 — последняя стабильная версия. Исходный архив, пакеты и контрольные суммы доступны на странице [релиза KDockW 0.7.2 в GitHub](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.2). Подробнее — в [политике версий](docs/releasing/versioning.md) и [инструкции по выпуску](docs/releasing/release-process.md), а также в [инструкции по сборке на TUXEDO OS](docs/building/tuxedo-os.md).
 
 ### Целевые Linux-дистрибутивы
 
-В релиз v0.7.1 входят пакеты для Debian 13, Ubuntu 26.04 LTS и Fedora 45. Это обязательные цели сборки и Distro E2E; рецепты для проверки совместимости со старыми выпусками доступны для ручных запусков, но не входят в релиз. KDockW распространяется только через GitHub Releases.
+В релиз v0.7.2 входят пакеты для Debian 13, Ubuntu 26.04 LTS и Fedora 45. Это обязательные цели сборки и Distro E2E; рецепты для проверки совместимости со старыми выпусками доступны для ручных запусков, но не входят в релиз. KDockW распространяется только через GitHub Releases.
 
 Для сборки KDockW из исходников требуются Qt версии 6.8 или новее и KDE Frameworks 6 версии 6.0 или новее.
 
@@ -163,9 +163,9 @@ KDockW 0.7.1 — последняя стабильная версия. Исхо�
 Установите загруженный пакет штатным менеджером:
 
 ```bash
-sudo apt install ./kdockw-0.7.1-debian-13.deb
-sudo apt install ./kdockw-0.7.1-ubuntu-26.04.deb
-sudo dnf install ./kdockw-0.7.1-fedora-45.rpm
+sudo apt install ./kdockw-0.7.2-debian-13.deb
+sudo apt install ./kdockw-0.7.2-ubuntu-26.04.deb
+sudo dnf install ./kdockw-0.7.2-fedora-45.rpm
 ```
 
 ```bash

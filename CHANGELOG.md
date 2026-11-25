@@ -8,10 +8,19 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-25
+
+KDockW 0.7.2 improves file drops on auto-hidden docks and notification badge updates.
+
 ### Fixed
 
-- Opening one chat no longer clears the badge for other notifications from the same app.
-- Dropping files on an auto-hidden dock now reveals it and keeps it visible under the pointer after the drop. (Thanks to svan71.)
+- Kept an auto-hidden dock visible under the pointer after a file is dropped.
+- Opening one window no longer clears the badge for every other notification from the same app.
+- Thanks to @svan71 for the first external contribution to KDockW and the auto-hide file drop fix.
+
+### Known Issues
+
+- A notification badge may occasionally remain after a notification is read or removed. It may clear later; the cause is not yet known.
 
 ## [0.7.1] - 2026-11-21
 

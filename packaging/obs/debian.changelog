@@ -1,3 +1,10 @@
+kdockw (0.7.2-1) unstable; urgency=medium
+
+  * Keep the auto-hidden dock visible after a file drop.
+  * Preserve notification badge counts for other notifications when an app window is opened.
+
+ -- thicking <thicking@gmail.com>  Wed, 25 Nov 2026 00:00:00 +0500
+
 kdockw (0.7.1-1) unstable; urgency=medium
 
   * Simplify shadow settings with a responsive direction slider and precise angle control.
