@@ -18,7 +18,7 @@ Local commits on this branch:
 
 The KWin visibility regression sends an external `DragEnter`, performs a `Drop`, waits 50 ms past the test's 10 ms hide delay, and verifies that the dock remains visible. It then ends hover and verifies that the dock hides. The focused KWin test and full CTest suites pass.
 
-**NOT VERIFIED:** real external file transfer and stationary-pointer behavior in the owner's Wayland session; cancellation with Escape/drag-away; all four edges and visibility modes; Folder Stack and internal reordering in the same live session. Existing automated DnD coverage passed, but it is not live external-DnD acceptance.
+**PASSED by owner:** PR #2 and Drop were manually accepted on the running v0.7.2-dev build, 6/6 scenarios, on 2026-11-25. No further changes were made to PR #2 or Drop behavior. Other combinations such as all four edges and visibility modes were not separately enumerated in this 6/6 result.
 
 The Follow Active `EdgeTrigger` route on an inactive monitor is separate and unchanged. The previous PR review found that limitation pre-dates PR #2. It is listed separately as a planned v0.8.0 task; it is not a v0.7.2 blocker.
 
@@ -84,10 +84,10 @@ Suggested checklist:
 1. Drag a file from Dolphin to the auto-hidden dock, drop it on an app, and keep the pointer still over the dock beyond the hide delay; verify the dock remains visible. Move the pointer away; verify auto-hide resumes.
 2. Cancel an external drag with Escape and by leaving the dock. Check ordinary autohide and the relevant visibility modes. Repeat external drop and auto-hide checks on each of the four dock edges.
 3. Reorder a pinned launcher internally and use a Folder Stack; confirm these remain functional.
-4. Receive two notifications for an inactive app. Activate one of its windows; verify the dock badge clears while both entries remain in Plasma. Switch away and back and confirm old entries do not restore the badge.
-5. Receive a new notification while the app is inactive; verify the badge starts at `1`. Dismiss it from Plasma and verify the badge clears. Confirm SNI state changes alone do not clear a badge. **Clear Notifications** clears only KDockW's local badge.
+4. Receive two notifications for one app and verify the badge shows `2`. Open one associated chat and verify the count decreases only when the source reports that notification closed or updates its absolute count; activation by itself must not clear the other chat's badge. Plasma notification entries remain untouched.
+5. Verify a new notification is added to the current source-reported count. Dismiss it from Plasma and verify its close event updates the local count. Confirm SNI status changes alone do not clear a badge. **Clear Notifications** clears only KDockW's local badge.
 
-## Notification badge behavior clarified by owner — 2026-11-25
+## Notification badge behavior clarification — superseded by later owner correction
 
 The owner clarified that the number is KDockW's local count of new notifications requiring attention, not a mirror of Plasma's open-notification count. This supersedes the earlier review interpretation above that app activation should leave the badge visible. The previous implementation intentionally waited for Plasma's close event; it did not implement this accepted local-read behavior.
 
@@ -115,3 +115,26 @@ tools/kdockw-v072-dev-stop-and-restore
 ```
 
 Keep both v0.7.2 tasks in `review` until the owner completes the relevant live checks. A notification that stays visible after reading inside an application cannot be detected as read unless its notification entry is also dismissed.
+
+## Owner acceptance and badge regression correction — 2026-11-25
+
+### PR #2 and Drop
+
+The owner reports manual acceptance of the integrated PR #2 and Drop behavior on the running v0.7.2-dev build: **6/6 PASS**. No code in the PR #2 or Drop paths was changed in this badge-only correction. The external Drop child card is accepted; the pre-existing inactive-monitor Follow Active/EdgeTrigger limitation remains separate and unchanged.
+
+### Badge behavior correction
+
+The owner corrected the badge requirement using stable v0.7.1 as the behavior reference: individual notifications must reduce the count one at a time (`3 → 2 → 1 → 0`). A window becoming active must not clear the whole app count. Commit `b22f05e` added two reset paths on `IsActive`: it cleared every locally tracked notification ID and locally subtracted the current Unity LauncherEntry absolute count. That combination explains the reported `2 → 0` regression. The fix removes those activation resets and restores direct display of app-reported absolute LauncherEntry values. Existing per-ID Plasma notification tracking and the explicit **Clear Notifications** menu action remain; activation does not close or mark Plasma notifications read.
+
+### Live D-Bus observations
+
+- During a successful ChatGPT sequence, the notification sender called watcher `CloseNotification` for ID `1591` twice and broadcast `NotificationClosed(1591, reason=3)` twice. The paired method/signal events refer to one notification ID and must decrement only once. The owner then observed Unity LauncherEntry absolute updates `1 → 2 → 1 → 0`, with the final update carrying `count-visible=false`, and confirmed the badge disappeared.
+- A later ChatGPT notification ID `1592` (`replacesId=1592`) reached KDockW and produced badge `1`. The owner reported that the badge remained after replying. The KDockW journal contains no later close event for ID `1592`. The observer started after that notification was sent, so its Unity updates for that specific interval were **NOT CAPTURED**. Therefore the intermittent original final-`1` case is not fully attributed: the observed missing per-ID close is consistent with it, but an omitted Unity zero update was not ruled out for that interval. Do not infer read state or zero the count without a source event.
+- The owner has since reported the same visible outcome for a new ChatGPT notification generated by an assistant question: after replying, the dock badge remained. No contemporaneous D-Bus trace was recorded for this event. This confirms the owner-visible persistence after a reply, but does not establish whether ChatGPT sent `NotificationClosed` or a Unity absolute zero; the responsible source remains **NOT VERIFIED**.
+- The live successful `1 → 2 → 1 → 0` sequence proves that the stable per-notification/absolute-value paths can reach zero when their sources report it; it does not prove the intermittent final-`1` case is fixed.
+
+### Code and tests
+
+The targeted correction returns activation handling to non-badge behavior, removes the new Unity baseline/suppression API, and keeps `NotificationTracker`'s per-ID close processing and explicit local clear. Regression coverage now verifies: app activation preserves both badge sources; grouped windows keep the shared count; Plasma close method plus broadcast for the same ID decrements once; two IDs transition `2 → 1 → 0`; and Unity absolute values transition `3 → 2 → 1 → 0`, including `count-visible=false` at zero.
+
+Production build targets `kdockw_launcher_entry_tests` and `kdockw_qml_tests` compiled, and the production `kdockw` executable linked successfully. Focused Production tests `kdockw_launcher_entry_tests` and `qml_tst_dockitem_indicators`: **2/2 passed** with `TMPDIR=/tmp`. After the correction, full Production CTest passed **246/246** and full Diagnostic CTest passed **250/250** (`TMPDIR=/tmp`). Diagnostic candidate source and stage both report GNU Build ID `c20952af95f02aff4258f7330064089cafebb3fa`; both report `kdockw 0.7.2-dev`. Source and staged Russian catalogs match (SHA-256 `b1cb4b7877be6c2cb3ba5bb008dfc6d44a3efd97054e648307745ad4da6fb10b`), and `tools/kdockw-v072-dev-start --preflight-only --profile badge-review-20261125` passed while stable remained active. `bash -n`, `msgfmt --check --check-format`, and `git diff --check` passed; `clang-format` is **NOT VERIFIED** because the executable is unavailable. The candidate was not launched; manual acceptance of corrected badge behavior is **NOT VERIFIED**. Stable `/usr/bin/kdockw` was not modified or stopped. PR #2/Drop code remains unchanged. No push, GitHub merge, tag, or release was performed.

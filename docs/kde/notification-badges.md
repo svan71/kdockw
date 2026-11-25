@@ -12,8 +12,8 @@ that do NOT support the Unity Launcher API.
 ## Sources in KDockW
 
 KDockW combines four badge sources:
-1. `LauncherEntryTracker` (C++) — Unity Launcher API `com.canonical.Unity.LauncherEntry` (app-reported count, locally reset on window activation, plus progress and urgency)
-2. `NotificationTracker` (C++) — notification IDs via `RegisterWatcher` (per `desktop-entry`, locally reset on window activation)
+1. `LauncherEntryTracker` (C++) — Unity Launcher API `com.canonical.Unity.LauncherEntry` (app-reported absolute count, plus progress and urgency)
+2. `NotificationTracker` (C++) — notification IDs via `RegisterWatcher` (per `desktop-entry`, removed individually on close events)
 3. `NotificationTracker` (C++) — SNI `NeedsAttention` (boolean)
 4. `model.IsDemandingAttention` — EWMH `_NET_WM_STATE_DEMANDS_ATTENTION` (boolean, all apps)
 
@@ -89,13 +89,15 @@ This is how apps identify themselves to the notification server.
 - **Electron apps**: Typically send `app_name` but may omit `desktop-entry` hint
 
 **Badge count derivation**: `NotificationTracker` counts notification IDs per desktop entry from
-`Notify()` until the notification service reports `NotificationClosed`, or KDockW locally clears the
-badge when a window for that app becomes active or the user chooses **Clear Notifications** from the
-app's dock menu. Local clearing does not close or remove entries from Plasma's notification center.
-Updates to a cleared notification remain suppressed until Plasma closes that notification, so old
-entries cannot restore the badge. A later notification starts the local count again from one. Unity
-LauncherEntry counts remain app-managed upstream, but KDockW locally suppresses the old absolute
-count and shows only increases since the last actual window activation.
+`Notify()` until the notification service sends `CloseNotification` to the watcher or broadcasts
+`NotificationClosed`. Both events may describe the same close; an ID is removed only once. The user
+may also choose **Clear Notifications** from the app's dock menu, which clears only KDockW's local
+badge state and leaves Plasma's notification entries untouched. A window becoming active does not
+clear all notifications for that app, because it does not identify which chats or messages were read.
+After an explicit local clear, already-cleared IDs stay suppressed until their close event so a late
+update cannot restore the badge.
+Unity LauncherEntry counts remain the application's absolute values and are displayed as reported;
+window activation does not establish a local baseline or suppress that count.
 
 This is not the app-reported LauncherEntry count; it is a KDockW-local count of notification IDs
 that still require attention. When the `desktop-entry` hint is missing,
@@ -106,7 +108,7 @@ that still require attention. When the `desktop-entry` hint is missing,
 | Factor | Assessment |
 |--------|-----------|
 | Implementation effort | Medium — D-Bus watcher in C++ |
-| Gives badge COUNT | Yes (KDockW-local notification count; cleared on actual app-window activation) |
+| Gives badge COUNT | Yes (per-ID count while notifications remain active; explicit local menu clear is available) |
 | Works for all apps | Only apps that use `org.freedesktop.Notifications` |
 | Privacy concerns | Low — reading already-delivered notifications |
 | Permission requirements | None — passive watcher |
@@ -285,8 +287,8 @@ ports its backend semantics and applies the same settings.
 ```
 Priority  Source                                     Count    Coverage
 --------  ------                                     -----    --------
-1 (best)  LauncherEntryTracker.count                 Local#   App-reported count since last activation
-2         NotificationTracker.unreadCount            Local#   New notifications since last activation
+1 (best)  LauncherEntryTracker.count                 Absolute  App-reported count
+2         NotificationTracker.unreadCount            Local#    Active notification IDs since watcher registration
 3         NotificationTracker.sniNeedsAttention      Boolean  Discord, Telegram, tray apps
 4         IsDemandingAttention                       Boolean  X11 urgency hint apps
 ```
@@ -296,7 +298,7 @@ Priority  Source                                     Count    Coverage
 ```qml
 readonly property int _badgeCount: {
     let _rev = NotificationTracker.revision  // reactive dependency
-    if (_launcherCountVisible)               // 1st: locally reset Unity API count
+    if (_launcherCountVisible)               // 1st: app-reported absolute Unity count
         return _launcherCount
     if (_appId.length > 0) {                 // 2nd: unread notification count
         let n = NotificationTracker.unreadCount(_appId)

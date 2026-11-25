@@ -144,9 +144,9 @@ Item {
     }
 
     // === New notifications requiring attention ===
-    // Sources: app-reported LauncherEntry count and locally tracked notification IDs.
-    // A real TaskManager activation clears both local badge sources; an icon click
-    // alone does not clear them, and SNI status changes do not imply a read.
+    // Sources: app-reported absolute LauncherEntry count and locally tracked
+    // notification IDs. Window activation alone does not prove that every
+    // notification for the app has been read; badges follow source updates.
     // Unified badge count (priority: LauncherEntry > WatchedNotifications)
     readonly property int _badgeCount: {
         let _rev = NotificationTracker.revision  // reactive dependency
@@ -167,10 +167,10 @@ Item {
     // independent and never trigger this animation.
     //
     // API support matrix:
-    //   fd.o RegisterWatcher: local new-notification count + local clear on activation/menu
+    //   fd.o RegisterWatcher: per-notification count + explicit local menu clear
     //   Portal: transparent (routed to fd.o)
     //   SNI: notification(NeedsAttention→animation only)
-    //   LauncherEntry: inbox(count→badge, app-managed) + notification(urgent→animation) + progress bar
+    //   LauncherEntry: app-reported absolute count + notification(urgent→animation) + progress bar
     //   Window: notification(IsDemandingAttention→animation)
     //   DND: suppresses notification animation (badge persists)
     // Attention condition (Plasma-compatible: IsDemandingAttention OR LauncherEntry urgent OR SNI NeedsAttention)
@@ -532,10 +532,6 @@ Item {
         if (_isActive) {
             _clearAttentionAnimation()
             if (_launchBounceSession) finishLaunchBounce()
-            if (_appId.length > 0) {
-                NotificationTracker.clearUnreadNotifications(_appId)
-            }
-            LauncherEntryTracker.clearBadgeCount(_launcherUrl)
         }
         if (_isActive && manualLaunching) manualLaunching = false
         if (_isActive && _waitingForWindow) {

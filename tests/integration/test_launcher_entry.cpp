@@ -265,7 +265,7 @@ TEST_CASE("A LauncherEntry count shows as a badge on the dock item", "[launcher-
     }));
 }
 
-TEST_CASE("App activation clears only KDockW's local notification badge", "[notification][badge][dock]")
+TEST_CASE("Notification lifecycle decrements one ID at a time and explicit clear stays local", "[notification][badge][dock]")
 {
     resetEntries();
     auto *item = dockItemFor(kKonsole);
@@ -305,11 +305,17 @@ TEST_CASE("App activation clears only KDockW's local notification badge", "[noti
     CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == baseline + 2);
 
     const int revisionBeforeClose = tracker->revision();
-    tracker->NotificationClosed(firstId, 2);
+    // Plasma can notify a watcher by method call and broadcast the resulting
+    // NotificationClosed event. Processing both representations removes the
+    // ID once, matching the live ChatGPT D-Bus trace.
+    tracker->CloseNotification(firstId);
     CHECK(tracker->revision() == revisionBeforeClose + 1);
     CHECK(waitFor([&] {
         return item->property("_badgeCount").toInt() == baseline + 1;
     }));
+    tracker->NotificationClosed(firstId, 3);
+    CHECK(tracker->revision() == revisionBeforeClose + 1);
+    CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == baseline + 1);
 
     tracker->NotificationClosed(secondId, 2);
     CHECK(waitFor([&] {
@@ -355,64 +361,37 @@ TEST_CASE("App activation clears only KDockW's local notification badge", "[noti
     }));
 }
 
-TEST_CASE("Local LauncherEntry badge reset suppresses stale absolute counts", "[launcher-entry][badge][tracker]")
+TEST_CASE("LauncherEntry badge follows app-reported absolute count down to zero", "[launcher-entry][badge][tracker]")
 {
     resetEntries();
     auto *tracker = app().launcherEntries.get();
-    FakeApp konsole(QStringLiteral("launcher-entry-local-clear"));
+    FakeApp konsole(QStringLiteral("launcher-entry-absolute-count"));
 
     konsole.update(kKonsoleUri,
-                   {{QStringLiteral("count"), 7},
+                   {{QStringLiteral("count"), 3},
                     {QStringLiteral("count-visible"), true},
                     {QStringLiteral("progress"), 0.4},
                     {QStringLiteral("progress-visible"), true},
                     {QStringLiteral("urgent"), true}});
     REQUIRE(waitFor([tracker] {
-        return tracker->count(kKonsole) == 7 && tracker->countVisible(kKonsole);
+        return tracker->count(kKonsole) == 3 && tracker->countVisible(kKonsole);
     }));
-
-    tracker->clearBadgeCount(kKonsole);
-    CHECK(tracker->count(kKonsole) == 0);
-    CHECK_FALSE(tracker->countVisible(kKonsole));
     CHECK(tracker->progress(kKonsole) == 40);
     CHECK(tracker->progressVisible(kKonsole));
     CHECK(tracker->urgent(kKonsole));
 
-    // A delayed repeat of the old value stays hidden. The next increase is
-    // shown as a fresh local count, not as the app's old total.
-    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 7}});
-    settle();
-    CHECK(tracker->count(kKonsole) == 0);
-    CHECK_FALSE(tracker->countVisible(kKonsole));
-    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 8}});
+    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 2}});
+    CHECK(waitFor([tracker] {
+        return tracker->count(kKonsole) == 2 && tracker->countVisible(kKonsole);
+    }));
+    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 1}});
     CHECK(waitFor([tracker] {
         return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
     }));
 
-    // A reconnect that repeats the stale app total must keep the local reset.
-    konsole.quit();
+    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 0}, {QStringLiteral("count-visible"), false}});
     REQUIRE(waitFor([tracker] {
-        return !tracker->countVisible(kKonsole);
-    }));
-    FakeApp restarted(QStringLiteral("launcher-entry-local-clear-restarted"));
-    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 7}, {QStringLiteral("count-visible"), true}});
-    settle();
-    CHECK(tracker->count(kKonsole) == 0);
-    CHECK_FALSE(tracker->countVisible(kKonsole));
-    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 8}});
-    CHECK(waitFor([tracker] {
-        return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
-    }));
-
-    // Once the app reports that its old count reached zero, counting starts
-    // from the raw app value again.
-    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 0}});
-    REQUIRE(waitFor([tracker] {
-        return tracker->count(kKonsole) == 0;
-    }));
-    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 1}});
-    CHECK(waitFor([tracker] {
-        return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
+        return tracker->count(kKonsole) == 0 && !tracker->countVisible(kKonsole);
     }));
     resetEntries();
 }

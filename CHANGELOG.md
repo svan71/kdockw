@@ -10,7 +10,7 @@ carried forward from the Krema-based development period.
 
 ### Fixed
 
-- Opening an app now clears its KDockW badge without dismissing notifications from Plasma; new notifications start a fresh count.
+- Opening one chat no longer clears the badge for other notifications from the same app.
 - Dropping files on an auto-hidden dock now reveals it and keeps it visible under the pointer after the drop. (Thanks to svan71.)
 
 ## [0.7.1] - 2026-11-21
