@@ -883,8 +883,14 @@ bool DockView::event(QEvent *event)
             m_visibilityController->setHovered(true);
             break;
         case QEvent::DragLeave:
-        case QEvent::Drop:
             m_visibilityController->setHovered(false);
+            break;
+        case QEvent::Drop:
+            // A successful drop ends the drag, but the pointer is still over
+            // this dock surface. Keep it hovered until normal pointer leave
+            // handling resumes; otherwise an auto-hide timer can hide a dock
+            // underneath a stationary pointer.
+            m_visibilityController->setHovered(true);
             break;
         default:
             break;

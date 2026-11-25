@@ -634,11 +634,15 @@ TEST_CASE("An external drag reveals an auto-hidden dock", "[hit-test][visibility
     QCoreApplication::sendEvent(view, &leave);
     CHECK(QTest::qWaitFor(hidden, 1000));
 
-    // Dropping ends the drag without a leave event.
+    // A successful drop ends the drag while the pointer remains over the
+    // surface. It must stay visible past the hide delay until pointer leave.
     enter();
     CHECK(QTest::qWaitFor(shown, 1000));
     QDropEvent drop(edge, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(view, &drop);
+    QTest::qWait(50);
+    CHECK(shown());
+    visibility->setHovered(false);
     CHECK(QTest::qWaitFor(hidden, 1000));
 }
 
