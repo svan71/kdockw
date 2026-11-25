@@ -12,9 +12,11 @@ images renamed with an `.svg` extension. The current installed application
 icon uses the supplied raster master instead. PNG icons under `src/icons/`
 are the application resources.
 
-The current website social preview is `../website/og-image.png`; release notes
-reuse that existing KDockW artwork. The repository does not currently ship a
-KDockW screenshot gallery or a separate vector wordmark. Historic Krema assets
-were removed from active branding directories. Krema's origin, original author
+The GitHub Pages homepage uses the README lockup, `kdockw.webm` for the dock
+demo, `kdockw1.webm` for the Media Player widget demo, and `kdockw.png` and
+`kdockw2.png` for the v0.7.1 gallery. The player poster,
+`kdockw-player-poster.png`, is a frame from the widget demo. The website
+social preview is `../website/og-image.png`. Release notes reuse that artwork.
+Historic Krema assets were removed from active branding directories. Krema's origin, original author
 Byeonghoon Yoo, source history, copyright notices, and GPL license remain
 preserved in the project history and legal files.

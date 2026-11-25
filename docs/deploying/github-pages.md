@@ -2,9 +2,21 @@
 
 KDockW's static website is deployed by
 [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) from the
-`main` branch. The workflow assembles a small allowlist of files from
-`website/` into `_site/`; it does not publish the repository or its `branding/`
-and documentation directories.
+`main` branch. The workflow assembles a small allowlist from `website/`,
+`branding/`, and `docs/screenshots/` into `_site/`.
+
+From the repository root, preview the same files locally:
+
+```sh
+site_dir=$(mktemp -d)
+bash scripts/assemble_website.sh "$site_dir/kdockw"
+python3 scripts/check_website.py "$site_dir/kdockw"
+python3 -m http.server 8000 --bind 127.0.0.1 --directory "$site_dir"
+```
+
+Open <http://127.0.0.1:8000/kdockw/>. The preview requires the media files
+from Git LFS. In a fresh checkout, run `git lfs pull` if the checker finds
+LFS pointers instead of media.
 
 The repository must have GitHub Pages configured with **Source: GitHub
 Actions**. `actions/configure-pages` runs with `enablement: false`: its

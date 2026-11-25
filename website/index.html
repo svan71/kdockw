@@ -7,7 +7,7 @@
 <meta name="description" content="KDockW is a customizable KDE Plasma 6 dock for Wayland with parabolic zoom, live previews of open and minimized windows, and macOS-style interactions.">
 <meta name="google-site-verification" content="BUpTYGmliIL-CjFLdldreVUQhRZ9RgEqmtydkThLo4c" />
 <link rel="canonical" href="https://thicking.github.io/kdockw/">
-<meta name="theme-color" content="#17264e">
+<meta name="color-scheme" content="light dark">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="KDockW">
 <meta property="og:url" content="https://thicking.github.io/kdockw/">
@@ -20,47 +20,68 @@
 <link rel="icon" href="favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
+<script src="js/theme.js"></script>
 <link rel="stylesheet" href="css/site.css">
 </head>
 <body>
 <main>
-  <header class="brand">
-    <img src="favicon.svg" width="96" height="96" alt="">
-    <div><p class="eyebrow">KDE PLASMA 6 · WAYLAND</p><h1>KDockW</h1></div>
+  <div class="theme-picker" hidden>
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </div>
+  <header class="hero">
+    <div class="hero-copy">
+      <h1>A dock for Plasma&nbsp;6 on Wayland</h1>
+      <p class="lead">KDockW brings parabolic zoom, grouped apps, and live previews of open and minimized windows to your KDE desktop.</p>
+      <nav class="actions" aria-label="Download and source">
+        <a class="primary" href="https://github.com/thicking/kdockw/releases/latest">Download the latest release</a>
+        <a href="https://github.com/thicking/kdockw">Source code</a>
+      </nav>
+    </div>
+    <img class="hero-logo" src="kdockw-logo.png" width="1672" height="941" alt="KDockW wordmark and dock artwork">
   </header>
-  <p class="lead">A customizable KDE Plasma 6 dock for Wayland, with parabolic zoom, grouped apps, and live previews of open and minimized windows.</p>
-  <p>Looking for a Latte Dock alternative for Plasma 6? KDockW is an independent spiritual successor based on Krema, with its own application identity and continued development. The original project’s Git history and copyright notices are preserved.</p>
-  <nav aria-label="Project links">
-    <a class="primary" href="https://github.com/thicking/kdockw/releases/latest">Download the latest release</a>
-    <a href="https://github.com/thicking/kdockw">Source code</a>
+  <nav class="guides" aria-label="Project guides">
     <a href="https://github.com/thicking/kdockw/blob/main/README.md">Build and installation guide</a>
     <a href="https://github.com/thicking/kdockw/blob/main/docs/troubleshooting/nvidia-prime-wayland.md">NVIDIA PRIME guide</a>
     <a href="https://github.com/thicking/kdockw/blob/main/docs/migration/krema-to-kdockw.md">Migration guide</a>
   </nav>
   <section class="demo" aria-labelledby="demo-title">
     <h2 id="demo-title">KDockW in action</h2>
-    <video controls playsinline preload="metadata" poster="screenshots/kdockw-classic-zoom.png">
-      <source src="screenshots/kdockw-demo.mp4" type="video/mp4">
-      Your browser does not support embedded video. <a href="screenshots/kdockw-demo.mp4">Download the MP4 demo</a>.
-    </video>
-    <p class="caption">Classic Zoom, dock animations, and live window previews in KDE Plasma 6 on Wayland.</p>
+    <figure class="media">
+      <video class="dock-video" controls playsinline preload="none" poster="screenshots/kdockw-v071-zoom.png"
+             width="1339" height="327" aria-label="Dock overview demo" aria-describedby="demo-caption">
+        <source src="screenshots/kdockw-v071-demo.webm" type="video/webm">
+        Your browser does not support embedded video. <a href="screenshots/kdockw-v071-demo.webm">Download the WebM demo</a>.
+      </video>
+      <figcaption id="demo-caption"><strong>Dock overview.</strong> In KDockW v0.7.1, icons grow under the pointer and grouped Konsole windows appear side by side.</figcaption>
+    </figure>
+    <figure class="media">
+      <video class="player-video" controls playsinline preload="none" poster="screenshots/kdockw-v071-player-poster.png"
+             width="1416" height="392" aria-label="Media Player widget demo" aria-describedby="player-caption">
+        <source src="screenshots/kdockw-v071-player.webm" type="video/webm">
+        Your browser does not support embedded video. <a href="screenshots/kdockw-v071-player.webm">Download the Media Player demo</a>.
+      </video>
+      <figcaption id="player-caption"><strong>Media Player widget.</strong> Play or pause from the dock, then open the popup to seek through a track or adjust the volume.</figcaption>
+    </figure>
   </section>
   <section aria-labelledby="screenshots-title">
     <h2 id="screenshots-title">Screenshots</h2>
-    <figure class="shot shot-featured">
-      <img src="screenshots/kdockw-classic-zoom.png" width="1370" height="169" alt="KDockW dock with the Firefox icon enlarged by Classic Zoom">
-      <figcaption>Classic Zoom magnifies the hovered application while keeping the dock visible.</figcaption>
+    <figure class="media shot">
+      <a href="screenshots/kdockw-v071-preview.png" aria-label="Open the full-size window preview screenshot">
+        <img src="screenshots/kdockw-v071-preview.png" width="1232" height="384" loading="lazy" alt="A Yandex Browser window preview above its icon in the KDockW dock">
+      </a>
+      <figcaption><strong>Live window preview.</strong> See what’s open before switching to a window.</figcaption>
     </figure>
-    <div class="shot-grid">
-      <figure class="shot">
-        <img src="screenshots/kdockw-window-preview.png" width="1365" height="388" alt="Live Yandex Browser window preview above the KDockW dock">
-        <figcaption>Live preview of an open window.</figcaption>
-      </figure>
-      <figure class="shot">
-        <img src="screenshots/kdockw-dock-overview.png" width="1346" height="107" alt="KDockW dock with pinned applications and notification badges">
-        <figcaption>Dock overview with pinned applications and notification badges.</figcaption>
-      </figure>
-    </div>
+    <figure class="media shot">
+      <a href="screenshots/kdockw-v071-zoom.png" aria-label="Open the full-size magnification screenshot">
+        <img src="screenshots/kdockw-v071-zoom.png" width="1241" height="362" loading="lazy" alt="The VSCodium icon grows above its neighbors as the pointer moves over the dock">
+      </a>
+      <figcaption><strong>Icon magnification.</strong> The icon under your pointer grows, and nearby icons scale with it.</figcaption>
+    </figure>
   </section>
   <section>
     <h2>Made for Plasma on Wayland</h2>
@@ -73,9 +94,9 @@
   </section>
   <section>
     <h2>Origins and license</h2>
-    <p>KDockW is based on <a href="https://github.com/isac322/krema">Krema</a>, originally created by Byeonghoon Yoo. It is developed independently and remains licensed under GPL-3.0-or-later.</p>
+    <p>KDockW is an independently developed spiritual successor to Latte Dock. It’s based on <a href="https://github.com/isac322/krema">Krema</a>, originally created by Byeonghoon Yoo, and preserves the project’s Git history and copyright notices. KDockW is licensed under GPL-3.0-or-later.</p>
   </section>
-  <footer><a href="https://github.com/thicking/kdockw/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/thicking/kdockw/issues">Report an issue</a></footer>
+  <footer><a href="https://github.com/thicking/kdockw/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/thicking/kdockw/issues">Report an issue</a></footer>
 </main>
 </body>
 </html>

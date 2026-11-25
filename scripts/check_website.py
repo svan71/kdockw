@@ -136,9 +136,16 @@ def main() -> int:
 
     video = site / "screenshots/kdockw-demo.mp4"
     if video.is_file():
-        head = video.read_bytes()[:64]
-        if len(head) < 12 or head[4:8] != b"ftyp" or head.startswith(b"version https://git-lfs.github.com/spec/v1"):
+        with video.open("rb") as stream:
+            head = stream.read(12)
+        if len(head) < 12 or head[4:8] != b"ftyp":
             failures.append("screenshots/kdockw-demo.mp4 is not a real MP4 file (possible Git LFS pointer)")
+
+    for asset in site.rglob("*.webm"):
+        with asset.open("rb") as stream:
+            header = stream.read(64)
+        if not header.startswith(b"\x1a\x45\xdf\xa3") or b"\x42\x82\x84webm" not in header:
+            failures.append(f"{asset.relative_to(site)} is not a real WebM file (possible Git LFS pointer)")
 
     if failures:
         print("Website checks failed:")
@@ -146,7 +153,7 @@ def main() -> int:
             print(f"- {failure}")
         return 1
 
-    print(f"Website checks passed: {len(pages)} pages, {total_refs} references, canonical/indexing metadata, accessible image alt attributes, and valid PNG/ICO/SVG/MP4 assets in {site}")
+    print(f"Website checks passed: {len(pages)} pages, {total_refs} references, canonical/indexing metadata, accessible image alt attributes, and valid PNG/ICO/SVG/MP4/WebM assets in {site}")
     return 0
 
 

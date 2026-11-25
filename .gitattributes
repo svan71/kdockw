@@ -5,6 +5,7 @@
 # Build inputs stay out of LFS: src/icons/*.png is installed by CMake and
 # must be real files in every source checkout and release tarball.
 branding/**/*.png filter=lfs diff=lfs merge=lfs -text
+branding/**/*.webm filter=lfs diff=lfs merge=lfs -text
 website/**/*.png filter=lfs diff=lfs merge=lfs -text
 website/**/*.ico filter=lfs diff=lfs merge=lfs -text
 website/**/*.webp filter=lfs diff=lfs merge=lfs -text

@@ -66,8 +66,8 @@
 Before any public announcement:
 
 - [x] All M7 and M8 items complete (attention animations, icon normalization, multi-monitor)
-- [x] Three owner-provided KDockW screenshots are in the README gallery; the site build publishes these same files
-- [x] Existing KDockW demo video is linked from README and included in the Pages site
+- [x] Three owner-provided KDockW screenshots are in the README gallery
+- [x] The Pages homepage build includes the v0.7.1 screenshots and both demos from `branding/`
 - [x] GitHub Releases is the only publication channel; platform package builds remain attached to releases
 - [x] Positioning manifest current (`marketing/positioning.yml`)
 - [ ] Blog post drafted (origin story + features)

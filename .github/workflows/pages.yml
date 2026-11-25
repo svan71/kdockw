@@ -8,6 +8,7 @@ on:
       - "branding/**"
       - "docs/screenshots/**"
       - "scripts/check_website.py"
+      - "scripts/assemble_website.sh"
       - ".gitattributes"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -41,26 +42,7 @@ jobs:
 
       - name: Assemble site
         shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf _site
-          mkdir -p _site/css _site/screenshots
-          cp website/index.html website/404.html website/favicon.ico website/favicon.svg \
-            website/favicon-32.png website/apple-touch-icon.png website/maskable-512.png \
-            website/icon-192.png website/icon-512.png website/site.webmanifest \
-            website/robots.txt website/sitemap.xml website/og-image.png _site/
-          cp website/css/site.css _site/css/site.css
-          cp docs/screenshots/kdockw-classic-zoom.png \
-            docs/screenshots/kdockw-window-preview.png \
-            docs/screenshots/kdockw-dock-overview.png \
-            docs/screenshots/kdockw-demo.mp4 _site/screenshots/
-
-          if [[ ! -f _site/og-image.png ]]; then
-            echo "::error file=website/index.html::website/og-image.png is missing but referenced by og:image"
-            exit 1
-          fi
-
-          find _site -type f | sort
+        run: bash scripts/assemble_website.sh _site
 
       - name: Check assembled site and media
         run: python3 scripts/check_website.py _site
