@@ -16,6 +16,7 @@
 // Must run under run-with-kwin.sh, which provides WAYLAND_DISPLAY, a private
 // session bus and throwaway XDG directories.
 
+#include "../dockqmltypes.h"
 #include "kdockw.h"
 #include "models/dockactions.h"
 #include "models/dockentry.h"
@@ -25,9 +26,9 @@
 #include "platform/pointerfocustracker.h"
 #include "shell/dockshell.h"
 #include "shell/dockview.h"
+#include "shell/dockvisibilitycontroller.h"
 #include "shell/multidockmanager.h"
 #include "shell/outputordermonitor.h"
-#include "../dockqmltypes.h"
 
 #include <KAboutData>
 #include <catch2/catch_session.hpp>
@@ -36,8 +37,10 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDir>
+#include <QDropEvent>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QMimeData>
 #include <QProcess>
 #include <QQuickItem>
 #include <QQuickStyle>
@@ -583,6 +586,60 @@ TEST_CASE("Authoritative Wayland samples restore Compact magnification after med
     SECTION("top") { runAuthoritativePointerReturn(Edge::Top); }
     SECTION("left") { runAuthoritativePointerReturn(Edge::Left); }
     SECTION("right") { runAuthoritativePointerReturn(Edge::Right); }
+}
+
+TEST_CASE("An external drag reveals an auto-hidden dock", "[hit-test][visibility][drag]")
+{
+    pinLaunchers();
+    REQUIRE(QTest::qWaitFor(
+        [] {
+            return kdockw::OutputOrderMonitor::instance()->orderReady();
+        },
+        kTimeoutMs));
+    kdockw::PointerFocusTrackerFactory factory = [](QWindow *window) {
+        return std::make_unique<TestPointerFocusTracker>(window, false);
+    };
+    auto manager = std::make_unique<kdockw::MultiDockManager>(app().settings.get(), app().model.get(), app().tracker.get(), nullptr, std::move(factory));
+    manager->initialize();
+    auto *shell = manager->primaryShell();
+    REQUIRE(shell);
+    auto *view = shell->view();
+    REQUIRE(QTest::qWaitForWindowExposed(view, kTimeoutMs));
+
+    auto *visibility = view->visibilityController();
+    REQUIRE(visibility);
+    visibility->setShowDelay(10);
+    visibility->setHideDelay(10);
+    visibility->setHovered(false);
+    visibility->setMode(kdockw::DockPlatform::VisibilityMode::AutoHide);
+    const auto shown = [visibility] {
+        return visibility->isDockVisible();
+    };
+    const auto hidden = [visibility] {
+        return !visibility->isDockVisible();
+    };
+    REQUIRE(QTest::qWaitFor(hidden, kTimeoutMs));
+
+    QMimeData mime;
+    mime.setUrls({QUrl::fromLocalFile(QStringLiteral("/tmp/kdockw-drag.txt"))});
+    const QPoint edge(view->width() / 2, view->height() - 1);
+    const auto enter = [&] {
+        QDragEnterEvent event(edge, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(view, &event);
+    };
+
+    enter();
+    CHECK(QTest::qWaitFor(shown, 1000));
+    QDragLeaveEvent leave;
+    QCoreApplication::sendEvent(view, &leave);
+    CHECK(QTest::qWaitFor(hidden, 1000));
+
+    // Dropping ends the drag without a leave event.
+    enter();
+    CHECK(QTest::qWaitFor(shown, 1000));
+    QDropEvent drop(edge, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(view, &drop);
+    CHECK(QTest::qWaitFor(hidden, 1000));
 }
 
 int main(int argc, char *argv[])

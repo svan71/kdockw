@@ -8,6 +8,10 @@ carried forward from the Krema-based development period.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed dragging files to an auto-hidden dock: the dock now appears so the files can be dropped on it.
+
 ## [0.7.1] - 2026-11-21
 
 KDockW 0.7.1 makes shadow settings easier to adjust, adds flexible media volume control, and improves window selection from previews.

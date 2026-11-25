@@ -873,6 +873,26 @@ DockPlatform *DockView::platform() const
     return m_platform.get();
 }
 
+bool DockView::event(QEvent *event)
+{
+    if (m_visibilityController) {
+        // Wayland sends no pointer enter/leave while a drag is in progress.
+        switch (event->type()) {
+        case QEvent::DragEnter:
+        case QEvent::DragMove:
+            m_visibilityController->setHovered(true);
+            break;
+        case QEvent::DragLeave:
+        case QEvent::Drop:
+            m_visibilityController->setHovered(false);
+            break;
+        default:
+            break;
+        }
+    }
+    return QQuickView::event(event);
+}
+
 DockVisibilityController *DockView::visibilityController() const
 {
     return m_visibilityController;
