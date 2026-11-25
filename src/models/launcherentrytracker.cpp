@@ -139,7 +139,9 @@ int LauncherEntryTracker::count(const QUrl &launcherUrl) const
     if (storageId.isEmpty() || !countAllowed(storageId)) {
         return 0;
     }
-    return m_entries.value(storageId).count;
+    const Entry entry = m_entries.value(storageId);
+    const int baseline = m_clearedCountBaseline.value(storageId, 0);
+    return std::max(0, entry.count - baseline);
 }
 
 bool LauncherEntryTracker::countVisible(const QUrl &launcherUrl) const
@@ -148,7 +150,34 @@ bool LauncherEntryTracker::countVisible(const QUrl &launcherUrl) const
     if (storageId.isEmpty() || !countAllowed(storageId)) {
         return false;
     }
-    return m_entries.value(storageId).countVisible;
+    const Entry entry = m_entries.value(storageId);
+    const int baseline = m_clearedCountBaseline.value(storageId, 0);
+    return entry.countVisible && entry.count > baseline;
+}
+
+void LauncherEntryTracker::clearBadgeCount(const QUrl &launcherUrl)
+{
+    const QString storageId = storageIdFor(launcherUrl);
+    auto it = m_entries.find(storageId);
+    if (storageId.isEmpty() || it == m_entries.end()) {
+        return;
+    }
+
+    // This changes only KDockW's cached badge state. It does not send a Unity
+    // LauncherEntry update or affect the app's own notification state.
+    const int oldBaseline = m_clearedCountBaseline.value(storageId, 0);
+    if (it->countReceived) {
+        if (it->count > 0) {
+            m_clearedCountBaseline.insert(storageId, it->count);
+        } else {
+            m_clearedCountBaseline.remove(storageId);
+        }
+    }
+    if (oldBaseline == m_clearedCountBaseline.value(storageId, 0)) {
+        return;
+    }
+    qCInfo(lcLauncherEntry) << "Cleared local LauncherEntry badge for" << storageId;
+    bumpRevision();
 }
 
 int LauncherEntryTracker::progress(const QUrl &launcherUrl) const
@@ -201,6 +230,17 @@ void LauncherEntryTracker::update(const QString &appUri, const QVariantMap &prop
         // Out-of-range counts are ignored, as in Plasma.
         if (value >= 0 && value < std::numeric_limits<int>::max()) {
             entry.count = static_cast<int>(value);
+            entry.countReceived = true;
+            // After activation, ignore the old absolute count. If the app
+            // reports a lower count, treat that as its reconciliation of old
+            // notifications and rebase so later increments start at one.
+            if (m_clearedCountBaseline.contains(storageId) && entry.count < m_clearedCountBaseline.value(storageId)) {
+                if (entry.count == 0) {
+                    m_clearedCountBaseline.remove(storageId);
+                } else {
+                    m_clearedCountBaseline[storageId] = entry.count;
+                }
+            }
         }
     }
     if (const auto it = properties.constFind(QStringLiteral("count-visible")); it != properties.constEnd()) {

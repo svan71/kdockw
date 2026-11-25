@@ -265,7 +265,7 @@ TEST_CASE("A LauncherEntry count shows as a badge on the dock item", "[launcher-
     }));
 }
 
-TEST_CASE("Closing active notifications immediately updates the dock badge", "[notification][badge][dock]")
+TEST_CASE("App activation clears only KDockW's local notification badge", "[notification][badge][dock]")
 {
     resetEntries();
     auto *item = dockItemFor(kKonsole);
@@ -277,14 +277,20 @@ TEST_CASE("Closing active notifications immediately updates the dock badge", "[n
     const int baseline = tracker->unreadCount(QStringLiteral("org.kde.konsole"));
     constexpr uint firstId = 0xf0000001U;
     constexpr uint secondId = 0xf0000002U;
+    constexpr uint replacementId = 0xf0000003U;
+    constexpr uint newFirstId = 0xf0000004U;
+    constexpr uint newSecondId = 0xf0000005U;
     const QVariantMap hints{{QStringLiteral("desktop-entry"), QStringLiteral("org.kde.konsole")}};
     const auto notify = [tracker, &hints](uint id, uint replacesId = 0) {
         tracker->Notify(id, QStringLiteral("test"), replacesId, QString(), QString(), QString(), {}, hints, -1);
     };
 
-    const auto cleanup = qScopeGuard([tracker, firstId, secondId] {
+    const auto cleanup = qScopeGuard([tracker, firstId, secondId, replacementId, newFirstId, newSecondId] {
         tracker->NotificationClosed(firstId, 2);
         tracker->NotificationClosed(secondId, 2);
+        tracker->NotificationClosed(replacementId, 2);
+        tracker->NotificationClosed(newFirstId, 2);
+        tracker->NotificationClosed(newSecondId, 2);
     });
 
     notify(firstId);
@@ -319,8 +325,96 @@ TEST_CASE("Closing active notifications immediately updates the dock badge", "[n
     tracker->clearUnreadNotifications(QStringLiteral("org.kde.konsole"));
     CHECK(tracker->revision() == revisionBeforeExplicitClear + 1);
     CHECK(waitFor([&] {
-        return item->property("_badgeCount").toInt() == baseline;
+        return item->property("_badgeCount").toInt() == 0;
     }));
+
+    // Plasma still owns the original notifications. Late updates and
+    // replacement requests for those IDs must not restore their old badge.
+    notify(firstId);
+    notify(replacementId, firstId);
+    CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == 0);
+    tracker->CloseNotification(secondId);
+    tracker->NotificationClosed(firstId, 2);
+    CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == 0);
+
+    // A genuinely new notification starts from one, independent of the old
+    // IDs; normal notification-center dismissals continue to update the count.
+    notify(newFirstId);
+    REQUIRE(waitFor([&] {
+        return item->property("_badgeCount").toInt() == 1;
+    }));
+    notify(newSecondId);
+    CHECK(tracker->unreadCount(QStringLiteral("org.kde.konsole")) == 2);
+    tracker->NotificationClosed(newFirstId, 2);
+    CHECK(waitFor([&] {
+        return item->property("_badgeCount").toInt() == 1;
+    }));
+    tracker->NotificationClosed(newSecondId, 2);
+    CHECK(waitFor([&] {
+        return item->property("_badgeCount").toInt() == 0;
+    }));
+}
+
+TEST_CASE("Local LauncherEntry badge reset suppresses stale absolute counts", "[launcher-entry][badge][tracker]")
+{
+    resetEntries();
+    auto *tracker = app().launcherEntries.get();
+    FakeApp konsole(QStringLiteral("launcher-entry-local-clear"));
+
+    konsole.update(kKonsoleUri,
+                   {{QStringLiteral("count"), 7},
+                    {QStringLiteral("count-visible"), true},
+                    {QStringLiteral("progress"), 0.4},
+                    {QStringLiteral("progress-visible"), true},
+                    {QStringLiteral("urgent"), true}});
+    REQUIRE(waitFor([tracker] {
+        return tracker->count(kKonsole) == 7 && tracker->countVisible(kKonsole);
+    }));
+
+    tracker->clearBadgeCount(kKonsole);
+    CHECK(tracker->count(kKonsole) == 0);
+    CHECK_FALSE(tracker->countVisible(kKonsole));
+    CHECK(tracker->progress(kKonsole) == 40);
+    CHECK(tracker->progressVisible(kKonsole));
+    CHECK(tracker->urgent(kKonsole));
+
+    // A delayed repeat of the old value stays hidden. The next increase is
+    // shown as a fresh local count, not as the app's old total.
+    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 7}});
+    settle();
+    CHECK(tracker->count(kKonsole) == 0);
+    CHECK_FALSE(tracker->countVisible(kKonsole));
+    konsole.update(kKonsoleUri, {{QStringLiteral("count"), 8}});
+    CHECK(waitFor([tracker] {
+        return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
+    }));
+
+    // A reconnect that repeats the stale app total must keep the local reset.
+    konsole.quit();
+    REQUIRE(waitFor([tracker] {
+        return !tracker->countVisible(kKonsole);
+    }));
+    FakeApp restarted(QStringLiteral("launcher-entry-local-clear-restarted"));
+    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 7}, {QStringLiteral("count-visible"), true}});
+    settle();
+    CHECK(tracker->count(kKonsole) == 0);
+    CHECK_FALSE(tracker->countVisible(kKonsole));
+    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 8}});
+    CHECK(waitFor([tracker] {
+        return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
+    }));
+
+    // Once the app reports that its old count reached zero, counting starts
+    // from the raw app value again.
+    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 0}});
+    REQUIRE(waitFor([tracker] {
+        return tracker->count(kKonsole) == 0;
+    }));
+    restarted.update(kKonsoleUri, {{QStringLiteral("count"), 1}});
+    CHECK(waitFor([tracker] {
+        return tracker->count(kKonsole) == 1 && tracker->countVisible(kKonsole);
+    }));
+    resetEntries();
 }
 
 TEST_CASE("A LauncherEntry progress shows as a progress bar on the dock item", "[launcher-entry][dock]")

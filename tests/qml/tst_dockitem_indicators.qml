@@ -673,14 +673,69 @@ Item {
             tryVerify(() => !bar.visible)
         }
 
-        function test_activatingWindowDoesNotClearActiveNotifications() {
+        function test_onlyActualWindowActivationClearsLocalBadgeSources() {
             let item = makeItem({ IsWindow: true, IsActive: false })
             NotificationTracker.setUnread("org.kde.dolphin", 4)
-            tryCompare(item, "_badgeCount", 4)
-            DockModel.tasksModel.setTaskData(0, "IsActive", true)
-            tryCompare(item, "_badgeCount", 4)
+            LauncherEntryTracker.setEntry(launcherUrl, { count: 7, countVisible: true })
+            tryCompare(item, "_badgeCount", 7)
+
+            // Requesting activation by clicking the app icon does not itself
+            // clear the badge; TaskManager must report the active window.
+            DockActions.activate(0)
+            compare(item._badgeCount, 7)
             compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 0)
-            verify(T.badge(item).visible)
+            compare(LauncherEntryTracker.callsTo("clearBadgeCount").length, 0)
+
+            DockModel.tasksModel.setTaskData(0, "IsActive", true)
+            tryCompare(item, "_badgeCount", 0)
+            verify(!T.badge(item).visible)
+            compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 1)
+            compare(NotificationTracker.callsTo("clearUnreadNotifications")[0].args[0], "org.kde.dolphin")
+            compare(LauncherEntryTracker.callsTo("clearBadgeCount").length, 1)
+            compare(LauncherEntryTracker.callsTo("clearBadgeCount")[0].args[0].toString(), launcherUrl)
+        }
+
+        function test_activatingAnyWindowInAnAppGroupClearsSharedBadge() {
+            DockModel.tasksModel.addTask({ display: "Dolphin one", AppId: "org.kde.dolphin",
+                                           LauncherUrlWithoutIcon: launcherUrl, IsWindow: true,
+                                           IsGroupParent: true, ChildCount: 2, IsActive: false })
+            DockModel.tasksModel.addTask({ display: "Dolphin two", AppId: "org.kde.dolphin",
+                                           LauncherUrlWithoutIcon: launcherUrl, IsWindow: true,
+                                           IsActive: false })
+            let row = createTemporaryObject(rowComponent, stage)
+            verify(row)
+            tryCompare(row, "count", 2)
+            let first = row.itemAt(0)
+            let second = row.itemAt(1)
+            NotificationTracker.setUnread("org.kde.dolphin", 3)
+            tryCompare(first, "_badgeCount", 3)
+            tryCompare(second, "_badgeCount", 3)
+
+            DockModel.tasksModel.setTaskData(1, "IsActive", true)
+            tryCompare(first, "_badgeCount", 0)
+            tryCompare(second, "_badgeCount", 0)
+
+            // A later notification starts a fresh local count for every
+            // launcher representing the same application.
+            NotificationTracker.setUnread("org.kde.dolphin", 1)
+            tryCompare(first, "_badgeCount", 1)
+            tryCompare(second, "_badgeCount", 1)
+        }
+
+        function test_sniStatusChangesDoNotClearNotificationBadge() {
+            let item = makeItem({ IsWindow: true, IsActive: false })
+            NotificationTracker.setUnread("org.kde.dolphin", 2)
+            tryCompare(item, "_badgeCount", 2)
+
+            NotificationTracker.setSniAttention("org.kde.dolphin", true)
+            tryCompare(item, "_isDemandingAttention", true)
+            compare(item._badgeCount, 2)
+            compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 0)
+
+            NotificationTracker.setSniAttention("org.kde.dolphin", false)
+            tryCompare(item, "_isDemandingAttention", false)
+            compare(item._badgeCount, 2)
+            compare(NotificationTracker.callsTo("clearUnreadNotifications").length, 0)
         }
 
         // --- Attention ---

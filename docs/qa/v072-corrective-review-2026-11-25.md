@@ -22,15 +22,15 @@ The KWin visibility regression sends an external `DragEnter`, performs a `Drop`,
 
 The Follow Active `EdgeTrigger` route on an inactive monitor is separate and unchanged. The previous PR review found that limitation pre-dates PR #2. It is listed separately as a planned v0.8.0 task; it is not a v0.7.2 blocker.
 
-## Notification badge lifecycle
+## Notification badge lifecycle — initial implementation (superseded)
 
-The numerical badge combines notification IDs tracked from Plasma's notification watcher with independent app-managed Unity LauncherEntry counts. `DockItem.qml` previously called `clearUnreadNotifications()` when a window became active. The tracker removed the IDs but did not increment its `revision`, which QML uses to refresh the badge. That left the displayed count stale; a later unrelated revision could make it disappear after an unpredictable delay. SNI changing from `NeedsAttention` to `Active` also cleared every tracked notification for the app, although that state does not identify which messages were read.
+The initial v0.7.2 implementation tracked notification IDs from Plasma's watcher and app-managed Unity LauncherEntry counts. It removed notification IDs on a Plasma close event and did not clear badges when an app window became active. The owner later clarified that activation must clear KDockW's local attention badge while leaving Plasma's notification entries intact; the initial interpretation below is superseded by the 2026-11-25 update.
 
-The badge now follows notification lifecycle events: the tracker removes an ID on `NotificationClosed`, keeps replacements deduplicated, and increments the revision after an explicit **Clear Notifications** menu action. Merely opening or focusing an app, or changing its SNI status, no longer clears all active notifications. Notification content is not written to the notification summary log.
+The tracker removes IDs on `NotificationClosed`, deduplicates replacements, and updates its revision after explicit local clear. Notification content is not written to the notification summary log.
 
-The freedesktop notification protocol's `NotificationClosed` reasons mean expired, dismissed by the user, or closed by the notification sender; it does not report that a person read a message inside its app. Therefore app focus is not treated as an acknowledgment. See the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification/latest-single/).
+The freedesktop notification protocol's `NotificationClosed` reasons mean expired, dismissed by the user, or closed by the notification sender; it does not report whether a person read a message inside its app. KDockW therefore applies the owner's local badge policy without calling the notification service to close entries. See the [Desktop Notifications Specification](https://specifications.freedesktop.org/notification/latest-single/).
 
-Regression coverage includes multiple notifications for one app, replacement without duplicate count, closing one and then all notifications, an immediate revision update after explicit clear, and activation without clearing the badge. The production integration test calls the real tracker and checks the QML badge property; the QML indicator test checks the focus transition.
+The earlier regression coverage included multiple notifications, replacement, close events, explicit clear, and app activation. The updated regression coverage and results are recorded below.
 
 **NOT VERIFIED:** live Plasma notification-server behavior and owner-visible badge acceptance. The watcher receives events after registration and does not reconstruct notifications that predate a KDockW restart. The protocol cannot reveal in-app read state when a notification remains open.
 
@@ -84,7 +84,34 @@ Suggested checklist:
 1. Drag a file from Dolphin to the auto-hidden dock, drop it on an app, and keep the pointer still over the dock beyond the hide delay; verify the dock remains visible. Move the pointer away; verify auto-hide resumes.
 2. Cancel an external drag with Escape and by leaving the dock. Check ordinary autohide and the relevant visibility modes. Repeat external drop and auto-hide checks on each of the four dock edges.
 3. Reorder a pinned launcher internally and use a Folder Stack; confirm these remain functional.
-4. Receive two notifications for one app. Verify the badge count, open the app without dismissing them, close one notification from Plasma, then close the remaining notification. Confirm the count decrements and reaches zero immediately.
-5. Replace a notification and confirm the count does not increase. Use **Clear Notifications** and confirm the badge clears. Confirm an app focus/SNI status change alone does not clear active notifications.
+4. Receive two notifications for an inactive app. Activate one of its windows; verify the dock badge clears while both entries remain in Plasma. Switch away and back and confirm old entries do not restore the badge.
+5. Receive a new notification while the app is inactive; verify the badge starts at `1`. Dismiss it from Plasma and verify the badge clears. Confirm SNI state changes alone do not clear a badge. **Clear Notifications** clears only KDockW's local badge.
+
+## Notification badge behavior clarified by owner — 2026-11-25
+
+The owner clarified that the number is KDockW's local count of new notifications requiring attention, not a mirror of Plasma's open-notification count. This supersedes the earlier review interpretation above that app activation should leave the badge visible. The previous implementation intentionally waited for Plasma's close event; it did not implement this accepted local-read behavior.
+
+On an actual TaskManager `IsActive` transition, `DockItem.qml` now clears KDockW's local notification IDs and locally suppresses the current Unity LauncherEntry count. It does not close notifications or call the Plasma notification service. A click/request to activate from the dock icon is not treated as activation; SNI status changes remain attention-only. Any activated window belonging to the app clears the shared app badge.
+
+Cleared notification IDs remain suppressed until Plasma reports them closed, including late updates/replacements, so they cannot restore a cleared count. A new notification ID starts the notification-derived count at one. Unity LauncherEntry reports an absolute count rather than event IDs; KDockW records the local count baseline and shows only increases after activation, rebasing if the app reports a lower value and removing the baseline when it reports zero. Progress and urgency are unchanged.
+
+Regression coverage checks one and multiple notifications, replacements, late updates and close events, a fresh count after local reset, real LauncherEntry state including stale absolute-value repeats, retained progress/urgency, app-icon activation requests without a TaskManager activation, actual `IsActive`, two windows of one app, and SNI transitions that do not clear badges. The full Production Release CTest passed **246/246** and Diagnostic Release CTest passed **250/250** with `TMPDIR=/tmp`. Focused Production tracker/QML tests passed **2/2**.
+
+Diagnostic stage was installed at `build/v072-diagnostic-release/stage`. Diagnostic source and stage ELF GNU Build ID: `e2a05dd14bdbbfa9b66f4504dbd793cbb52057a4`; version `0.7.2-dev`. The staged Russian catalog matches the generated catalog (SHA-256 `b1cb4b7877be6c2cb3ba5bb008dfc6d44a3efd97054e648307745ad4da6fb10b`), and candidate launcher preflight passed without starting a second dock. The candidate was not launched; owner-visible behavior remains **NOT VERIFIED** pending manual Plasma/Wayland acceptance. No push, GitHub merge, release, or tag was made.
+
+For manual acceptance, first stop the active stable user service temporarily, then start the isolated candidate:
+
+```bash
+systemctl --user stop app-com.thicking.kdockw.autostart@autostart.service
+tools/kdockw-v072-dev-start --profile v072-badge-reset-review
+```
+
+While the candidate is running, receive several notifications for an inactive app, activate one of its windows and verify the dock badge disappears while Plasma's notification-center entries remain. Switch away and back; old notices must not restore the badge. Receive one new notification while the app is inactive and verify the badge shows `1`. Repeat by activating a second window of the same app. Dismiss new notifications from Plasma and verify the local count follows its close events. SNI state changes alone must not clear it.
+
+After the review is complete, restore stable and stop the candidate with:
+
+```bash
+tools/kdockw-v072-dev-stop-and-restore
+```
 
 Keep both v0.7.2 tasks in `review` until the owner completes the relevant live checks. A notification that stays visible after reading inside an application cannot be detected as read unless its notification entry is also dismissed.

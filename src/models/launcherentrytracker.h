@@ -49,6 +49,8 @@ public:
     /// settings hide badges for it.
     [[nodiscard]] Q_INVOKABLE int count(const QUrl &launcherUrl) const;
     [[nodiscard]] Q_INVOKABLE bool countVisible(const QUrl &launcherUrl) const;
+    /// Clear only the locally cached badge count; keep progress and urgency.
+    Q_INVOKABLE void clearBadgeCount(const QUrl &launcherUrl);
     /// Task progress in percent (0..100).
     [[nodiscard]] Q_INVOKABLE int progress(const QUrl &launcherUrl) const;
     [[nodiscard]] Q_INVOKABLE bool progressVisible(const QUrl &launcherUrl) const;
@@ -63,6 +65,7 @@ private Q_SLOTS:
 private:
     struct Entry {
         int count = 0;
+        bool countReceived = false;
         bool countVisible = false;
         int progress = 0;
         bool progressVisible = false;
@@ -80,6 +83,10 @@ private:
 
     std::unique_ptr<NotificationManager::Settings> m_settings;
     QStringList m_badgeBlacklist; // desktop entries without ".desktop"
+    // Per-app raw LauncherEntry count at the last local clear. Keeping this
+    // outside Entry also prevents a stale count from returning after the app
+    // drops its D-Bus connection and reconnects.
+    QHash<QString, int> m_clearedCountBaseline;
 
     QDBusServiceWatcher m_serviceWatcher;
     QHash<QString, QString> m_appUriToService; // latest sender's unique bus name

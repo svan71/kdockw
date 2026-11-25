@@ -184,6 +184,7 @@ void NotificationTracker::clearUnreadNotifications(const QString &appId)
     for (auto it = m_unreadNotifs.begin(); it != m_unreadNotifs.end();) {
         if (desktopEntryMatches(it.key(), normalized)) {
             for (uint notifId : *it) {
+                m_clearedNotificationIds.insert(notifId);
                 m_notifIdToEntry.remove(notifId);
             }
             it = m_unreadNotifs.erase(it);
@@ -194,7 +195,7 @@ void NotificationTracker::clearUnreadNotifications(const QString &appId)
     }
 
     if (changed) {
-        qCInfo(lcNotif) << "Explicit notification badge clear for" << appId;
+        qCInfo(lcNotif) << "Cleared local notification badge for" << appId;
         bumpRevision();
     }
 }
@@ -307,6 +308,18 @@ void NotificationTracker::Notify(uint id,
     qCInfo(lcNotif) << ">>> Notify: id=" << id << "appName=" << appName << "desktop-entry hint=" << hints.value(QStringLiteral("desktop-entry")).toString()
                     << "resolved=" << desktopEntry << "replacesId=" << replacesId;
 
+    // A notification cleared on app activation may still be open in Plasma.
+    // Ignore updates/replacements for that old notification until its close
+    // event arrives; a genuinely new notification has a new server ID.
+    if (m_clearedNotificationIds.contains(id) || (replacesId > 0 && m_clearedNotificationIds.contains(replacesId))) {
+        m_clearedNotificationIds.insert(id);
+        if (replacesId > 0) {
+            m_clearedNotificationIds.insert(replacesId);
+        }
+        qCInfo(lcNotif) << "    ignored update for locally cleared notification id=" << id;
+        return;
+    }
+
     // If replacing, remove old entry first
     if (replacesId > 0) {
         if (auto it = m_notifIdToEntry.find(replacesId); it != m_notifIdToEntry.end()) {
@@ -332,6 +345,10 @@ void NotificationTracker::Notify(uint id,
 
 void NotificationTracker::CloseNotification(uint id)
 {
+    if (m_clearedNotificationIds.remove(id) > 0) {
+        return;
+    }
+
     auto it = m_notifIdToEntry.find(id);
     if (it == m_notifIdToEntry.end()) {
         return;
@@ -354,6 +371,11 @@ void NotificationTracker::CloseNotification(uint id)
 
 void NotificationTracker::NotificationClosed(uint id, uint /*reason*/)
 {
+    if (m_clearedNotificationIds.remove(id) > 0) {
+        qCInfo(lcNotif) << "<<< NotificationClosed: locally cleared id=" << id;
+        return;
+    }
+
     auto it = m_notifIdToEntry.find(id);
     if (it == m_notifIdToEntry.end()) {
         return;

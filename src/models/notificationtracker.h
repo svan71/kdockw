@@ -52,7 +52,7 @@ public:
     /// Return true if the SNI item matching @p appId has NeedsAttention status.
     [[nodiscard]] Q_INVOKABLE bool sniNeedsAttention(const QString &appId) const;
 
-    /// Clear active notification counts after an explicit user request.
+    /// Clear KDockW's local badge state for an app without closing Plasma notifications.
     Q_INVOKABLE void clearUnreadNotifications(const QString &appId);
 
     /// Dump all tracked state to the console (debug tool).
@@ -102,6 +102,9 @@ private:
     QHash<uint, QString> m_notifIdToEntry;
     // desktopEntry -> set of active notification IDs
     QHash<QString, QSet<uint>> m_unreadNotifs;
+    // IDs cleared locally remain suppressed until Plasma closes them. This
+    // prevents a late replacement/update from restoring an old badge.
+    QSet<uint> m_clearedNotificationIds;
 
     // SNI tracking: "busName/objectPath" -> {id, status}
     struct SniEntry {

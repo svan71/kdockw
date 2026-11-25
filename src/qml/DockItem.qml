@@ -143,9 +143,10 @@ Item {
         return isFolderStack || isBuiltInWidget ? "" : DockModel.appId(taskIndex)
     }
 
-    // === Inbox (persistent badge) ===
-    // Sources: LauncherEntry count (1st, app-managed), fd.o watcher unreadCount (2nd, dock-managed)
-    // Clear: focus → fd.o auto-clear, context menu → manual clear, SNI→Active → fd.o clear
+    // === New notifications requiring attention ===
+    // Sources: app-reported LauncherEntry count and locally tracked notification IDs.
+    // A real TaskManager activation clears both local badge sources; an icon click
+    // alone does not clear them, and SNI status changes do not imply a read.
     // Unified badge count (priority: LauncherEntry > WatchedNotifications)
     readonly property int _badgeCount: {
         let _rev = NotificationTracker.revision  // reactive dependency
@@ -166,9 +167,9 @@ Item {
     // independent and never trigger this animation.
     //
     // API support matrix:
-    //   fd.o RegisterWatcher: inbox(badge count) + clear(focus/menu/SNI)
+    //   fd.o RegisterWatcher: local new-notification count + local clear on activation/menu
     //   Portal: transparent (routed to fd.o)
-    //   SNI: notification(NeedsAttention→animation) + clear(→Active clears fd.o)
+    //   SNI: notification(NeedsAttention→animation only)
     //   LauncherEntry: inbox(count→badge, app-managed) + notification(urgent→animation) + progress bar
     //   Window: notification(IsDemandingAttention→animation)
     //   DND: suppresses notification animation (badge persists)
@@ -531,14 +532,16 @@ Item {
         if (_isActive) {
             _clearAttentionAnimation()
             if (_launchBounceSession) finishLaunchBounce()
+            if (_appId.length > 0) {
+                NotificationTracker.clearUnreadNotifications(_appId)
+            }
+            LauncherEntryTracker.clearBadgeCount(_launcherUrl)
         }
         if (_isActive && manualLaunching) manualLaunching = false
         if (_isActive && _waitingForWindow) {
             _waitingForWindow = false
             maxLaunchTimer.stop()
         }
-        // Notification badges follow the notification service's close event.
-        // App activation alone does not establish that every message was read.
         if (!_isActive && _attentionPending) {
             _triggerAttention()
         }

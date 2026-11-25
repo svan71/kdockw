@@ -12,8 +12,8 @@ that do NOT support the Unity Launcher API.
 ## Sources in KDockW
 
 KDockW combines four badge sources:
-1. `LauncherEntryTracker` (C++) — Unity Launcher API `com.canonical.Unity.LauncherEntry` (exact count, progress, urgent)
-2. `NotificationTracker` (C++) — unread notifications via `RegisterWatcher` (per `desktop-entry`)
+1. `LauncherEntryTracker` (C++) — Unity Launcher API `com.canonical.Unity.LauncherEntry` (app-reported count, locally reset on window activation, plus progress and urgency)
+2. `NotificationTracker` (C++) — notification IDs via `RegisterWatcher` (per `desktop-entry`, locally reset on window activation)
 3. `NotificationTracker` (C++) — SNI `NeedsAttention` (boolean)
 4. `model.IsDemandingAttention` — EWMH `_NET_WM_STATE_DEMANDS_ATTENTION` (boolean, all apps)
 
@@ -31,7 +31,7 @@ App → Notify() → org.freedesktop.Notifications (plasmashell owns it)
                         ↓ forwards to every registered watcher
               RegisterWatcher() → KDockW NotificationTracker (passive)
                                         ↓
-                          per-desktop-entry unread counts → QML (badge counts)
+                          per-desktop-entry local attention counts → QML (badge counts)
 ```
 
 A watcher is **passive**: it does NOT own the notification service. It calls
@@ -88,14 +88,17 @@ This is how apps identify themselves to the notification server.
 - **Discord**: May or may not send `desktop-entry` (varies by version/platform)
 - **Electron apps**: Typically send `app_name` but may omit `desktop-entry` hint
 
-**Badge count derivation**: `NotificationTracker` counts active notification IDs per desktop entry
-from `Notify()` until the notification service reports `NotificationClosed`, or the user explicitly
-chooses **Clear Notifications** from the app's dock menu. Opening an app does not clear the count
-because the desktop notification protocol does not report whether the user read the message inside
-that app. Unity LauncherEntry counts remain a separate app-managed source.
+**Badge count derivation**: `NotificationTracker` counts notification IDs per desktop entry from
+`Notify()` until the notification service reports `NotificationClosed`, or KDockW locally clears the
+badge when a window for that app becomes active or the user chooses **Clear Notifications** from the
+app's dock menu. Local clearing does not close or remove entries from Plasma's notification center.
+Updates to a cleared notification remain suppressed until Plasma closes that notification, so old
+entries cannot restore the badge. A later notification starts the local count again from one. Unity
+LauncherEntry counts remain app-managed upstream, but KDockW locally suppresses the old absolute
+count and shows only increases since the last actual window activation.
 
-This is NOT the same as the app-reported badge count from Unity API, but it's the best
-approximation available for all apps. When the `desktop-entry` hint is missing,
+This is not the app-reported LauncherEntry count; it is a KDockW-local count of notification IDs
+that still require attention. When the `desktop-entry` hint is missing,
 `NotificationTracker` falls back to `app_name` (normalized through KService).
 
 ### Feasibility Assessment
@@ -103,7 +106,7 @@ approximation available for all apps. When the `desktop-entry` hint is missing,
 | Factor | Assessment |
 |--------|-----------|
 | Implementation effort | Medium — D-Bus watcher in C++ |
-| Gives badge COUNT | Yes (unread notification count, not app-reported) |
+| Gives badge COUNT | Yes (KDockW-local notification count; cleared on actual app-window activation) |
 | Works for all apps | Only apps that use `org.freedesktop.Notifications` |
 | Privacy concerns | Low — reading already-delivered notifications |
 | Permission requirements | None — passive watcher |
@@ -282,8 +285,8 @@ ports its backend semantics and applies the same settings.
 ```
 Priority  Source                                     Count    Coverage
 --------  ------                                     -----    --------
-1 (best)  LauncherEntryTracker.count                 Exact    KDE apps, Slack (Unity API)
-2         NotificationTracker.unreadCount            Unread#  Apps using org.freedesktop.Notifications
+1 (best)  LauncherEntryTracker.count                 Local#   App-reported count since last activation
+2         NotificationTracker.unreadCount            Local#   New notifications since last activation
 3         NotificationTracker.sniNeedsAttention      Boolean  Discord, Telegram, tray apps
 4         IsDemandingAttention                       Boolean  X11 urgency hint apps
 ```
@@ -293,7 +296,7 @@ Priority  Source                                     Count    Coverage
 ```qml
 readonly property int _badgeCount: {
     let _rev = NotificationTracker.revision  // reactive dependency
-    if (_launcherCountVisible)               // 1st: Unity API exact count
+    if (_launcherCountVisible)               // 1st: locally reset Unity API count
         return _launcherCount
     if (_appId.length > 0) {                 // 2nd: unread notification count
         let n = NotificationTracker.unreadCount(_appId)
@@ -371,10 +374,12 @@ target_link_libraries(kdockw_lib PRIVATE PW::LibNotificationManager)
 
 2. **Requires plasmashell** — without Plasma's notification server there is no `RegisterWatcher`.
 
-3. **Active notifications are not read state** — KDockW removes IDs when the notification service
-   reports that they closed, or after an explicit **Clear Notifications** command. App focus and
-   SNI status changes do not acknowledge every notification for that app. The watcher tracks events
-   received after registration and does not reconstruct notifications that predate a KDockW restart.
+3. **The badge is local attention state, not Plasma's notification count** — KDockW clears its local
+   badge when a window for the app becomes active or after the explicit **Clear Notifications** dock
+   command. Neither action dismisses entries from Plasma's notification center. SNI status changes
+   alone do not clear the badge. Plasma close events still remove individual active IDs. The watcher
+   tracks events received after registration and does not reconstruct notifications that predate a
+   KDockW restart.
 
 4. **Electron apps** (Discord, VS Code, etc.) — Notification behavior varies by Electron version.
    Older versions may send `app_name` without `desktop-entry`.

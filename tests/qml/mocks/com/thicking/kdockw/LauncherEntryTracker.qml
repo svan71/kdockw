@@ -12,10 +12,22 @@ import QtQuick
 QtObject {
     property int revision: 0
     property var entries: ({})
+    property var calls: []
+
+    function _record(name, args) { calls = calls.concat([{ name: name, args: Array.from(args) }]) }
+    function callsTo(name) { return calls.filter(c => c.name === name) }
 
     function _entry(url) { return entries[url.toString()] || {} }
     function count(url) { return _entry(url).count || 0 }
     function countVisible(url) { return !!_entry(url).countVisible }
+    function clearBadgeCount(url) {
+        _record("clearBadgeCount", arguments)
+        let e = Object.assign({}, entries)
+        const key = url.toString()
+        e[key] = Object.assign({}, e[key] || {}, { count: 0, countVisible: false })
+        entries = e
+        revision++
+    }
     function urgent(url) { return !!_entry(url).urgent }
     function progress(url) { return _entry(url).progress || 0 }
     function progressVisible(url) { return !!_entry(url).progressVisible }
@@ -28,6 +40,7 @@ QtObject {
     }
 
     function reset() {
+        calls = []
         entries = {}
         revision++
     }
