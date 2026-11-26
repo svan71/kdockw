@@ -24,10 +24,9 @@ signed release tag. A stable release is not considered published until its
 tagged source passes the full Distro E2E gate and all GitHub assets are
 verified. GitHub Releases is the only publication channel. From v0.3.2,
 packages are built for the required targets in
-`tests/distro/release-targets.txt`. Fedora 45 was excluded from the published
-v0.5.0 gate. It passed the full Qt 6.11.2 Distro E2E for the v0.5.1 candidate
-and is included in that candidate's required matrix. Manual compatibility rows
-are not required gates or release assets.
+`tests/distro/release-targets.txt`. The published v0.7.2 release passed the
+required exact-SHA Distro E2E on Debian 13, Ubuntu 26.04 LTS, and Fedora 45.
+Manual compatibility rows are not required gates or release assets.
 
 ## Package version forms
 
@@ -50,11 +49,10 @@ required target in `release-targets.txt`; only artifacts from the full
 successful matrix for the exact release commit are eligible for GitHub Release
 uploads. `SHA256SUMS` covers the source archive and every package asset.
 
-KDockW v0.5.0 release packages target Debian 13 and Ubuntu 26.04 LTS. Fedora
-45 was not included in those release assets; its full Qt 6.11.2 E2E has passed
-for the v0.5.1 candidate and it is now a required candidate target. Arch Linux
-packaging was removed. Existing signed tags and historical release assets
-remain unchanged.
+Historical matrix note: v0.5.0 release packages targeted Debian 13 and Ubuntu
+26.04 LTS; Fedora 45 was added to the required matrix later and is included in
+the published v0.7.2 release. Arch Linux packaging was removed. Existing
+signed tags and historical release assets remain unchanged.
 
 The JSON and research files under `packaging/submissions/` and the local
 Flatpak validation package are historical receipts for earlier Krema or

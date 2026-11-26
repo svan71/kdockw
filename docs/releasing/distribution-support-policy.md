@@ -1,6 +1,6 @@
 # Distribution Support Policy
 
-## Latest published release before v0.5.0: KDockW v0.4.3
+## Historical release baseline before v0.5.0: KDockW v0.4.3
 
 Published on 2026-11-11 from commit `17347884f98e35cb4f9919edb265ebad3529f84c`
 with signed tag `kdockw-v0.4.3`. The full required Distro E2E run passed all
@@ -11,27 +11,23 @@ and `SHA256SUMS`.
 
 ## Required release targets
 
-GitHub Releases is the only publication channel. Starting with KDockW v0.3.2,
-the package-build and Distro E2E gates use the owner-approved representatives
-listed in `tests/distro/release-targets.txt`. Fedora 45 was experimental and
-excluded from the published v0.5.0 assets. For the v0.5.1 candidate, Fedora 45
-Qt 6.11.2 package build and full Distro E2E passed (214 passed, 13 skipped,
-0 failed), so it has been added to the candidate matrix. The platform remains
-candidate-verified until the remaining release gates and owner acceptance pass.
-The complete candidate matrix is not yet green: Ubuntu 26.04 had one Preview
-fast-pointer timing failure in its full run, although an isolated retry passed.
+GitHub Releases is the only package publication channel. Starting with KDockW
+v0.3.2, package-build and Distro E2E gates use the owner-approved representatives
+listed in `tests/distro/release-targets.txt`. As of the published v0.7.2 release,
+the required targets are Debian 13, Ubuntu 26.04 LTS, and Fedora 45; the full
+exact-SHA Distro E2E passed on all three targets. Earlier candidate and release
+snapshots below are historical records, not the current matrix status.
 
 | Family | Required representative | Selection rule |
 | --- | --- | --- |
 | Debian | Current Debian stable | Update when Debian stable changes. |
 | Ubuntu | Current Ubuntu LTS | Follow LTS releases only; skip interim YY.10 releases. |
-| Fedora | Current stable Fedora | Add to a release matrix only after owner approval and a green full E2E run; Fedora 45 passed this gate for the v0.5.1 candidate. |
+| Fedora | Current stable Fedora | Add to a release matrix after owner approval and a green full E2E run; Fedora 45 is currently required. |
 
-The versioned list is `tests/distro/release-targets.txt`; the selected package
-metadata and pinned base image live in `tests/distro/targets.tsv`. The published
-v0.5.0 release representatives were Debian 13 and Ubuntu 26.04 LTS. Fedora 45
-is included in the v0.5.1 candidate matrix after its full compatibility run.
-Do not add separate mandatory packages for older point or distribution releases.
+The versioned list is `tests/distro/release-targets.txt`; selected package
+metadata and pinned base images live in `tests/distro/targets.tsv`. The v0.7.2
+release assets cover all three current required representatives. Do not add
+separate mandatory packages for older point or distribution releases.
 
 `targets.tsv` may retain additional legacy compatibility rows and packaging
 recipes for explicit manual investigation. Those rows are not selected by
@@ -47,8 +43,8 @@ assets. Keeping a manual row does not make it a required release target.
   projects, credentials, keys, or publication steps for them. Optional adapters
   may remain in the repository but must not enter the release gate.
 - Arch Linux is unsupported. Its package recipe and CI/build/test paths were
-  removed by owner decision. The published v0.5.0 release targets were Debian
-  13 and Ubuntu 26.04 LTS; the v0.5.1 candidate matrix also includes Fedora 45.
+  removed by owner decision. Older per-release target lists remain historical;
+  use `tests/distro/release-targets.txt` for the current release matrix.
 - An upstream EOL event alone does not delete a packaging recipe or manual
   compatibility target. It also does not add that target to future release
   packages. Required representatives are governed by the current stable/LTS

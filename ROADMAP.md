@@ -85,7 +85,7 @@ tracked separately as technical debt. No measurements are marked complete; see
   targeting across monitor removal, reconnection, reordering, mixed scaling,
   and primary-screen changes in a real Wayland session.
 
-## v0.3.0 — Window Appearance & Interactions (in progress) ⬅️ Current feature-development priority
+## v0.3.0 — Window Appearance & Interactions (published; review follow-ups open)
 
 ### P0 — Window Preview for Minimized Windows (accepted by owner)
 
@@ -175,7 +175,8 @@ functionality. No release publication is implied.
 
 The implementation is in `DockActions::activateOrMinimize`; QML and KWin
 integration tests cover settings dispatch and grouped-window behavior. The
-owner marked the task done; the v0.3.0 milestone remains in progress.
+v0.3.0 release was published on 2026-11-07. Follow-ups 11.7 and 11.8 remain
+open in `review`; this is no longer the active development milestone.
 
 **Priority order:** Window Preview for Minimized Windows → Window Preview Redesign
 → Application Name Tooltip → Toggle Minimize on Click. This is an implementation
@@ -630,15 +631,19 @@ passed. Full Production/Diagnostic CTest passed 246/246 and 250/250; owner
 acceptance was 36/36. The source archive, both DEBs, Fedora RPM, and
 `SHA256SUMS` were published and verified.
 
-## v0.7.2 — Corrective fixes (published 2026-11-25; badge follow-up remains open)
+## v0.7.2 — Corrective fixes (done, published 2026-11-25)
 
 - [x] Keep an auto-hidden dock visible after an external file drop while the pointer remains over it; the owner accepted the integrated PR #2 and Drop behavior in 6/6 scenarios.
 - [x] Publish the signed v0.7.2 release from commit `36e0c056f297c01a8222aa2e623e679922cb1664` after the required exact-SHA checks passed.
-- [ ] Investigate the intermittent notification badge that can remain after reading or dismissing a notification. The root cause is unknown; this is a documented, non-blocking Known Issue and no further badge changes were made for this release.
 
-## v0.8.0 — Follow Active external drag (planned)
+## Open Known Issue — Notification badges (unversioned, non-blocking)
 
-- [ ] Support external file drag through EdgeTrigger when Follow Active targets a dock on an inactive monitor. Keep this separate from the v0.7.2 corrective work and verify the drop reaches the selected dock.
+- [ ] Investigate the intermittent badge that can remain after reading or dismissing a notification. The root cause is unknown. This issue is separate from the completed v0.7.2 release and remains non-blocking.
+
+## v0.8.0 — Adaptive Dock Sizing & Follow Active (planned) ⬅️ Current approved milestone
+
+- [ ] **Adaptive Dock Sizing (High / TODO):** calculate available dock length and proportionally reduce effective icon size and spacing when needed, restoring the user's configured size when space returns. Cover all four edges, screen geometry/orientation/scaling and monitor changes, every dock entry type, magnification allowance, live layout changes, smooth transitions, hit testing, DnD, badges, indicators and previews. Define a minimum icon size; after reaching it, research overflow options without selecting a design.
+- [ ] **Follow Active external drag (TODO):** support external file drag through EdgeTrigger when Follow Active targets a dock on an inactive monitor. Keep this separate from the v0.7.2 Drop fix.
 
 ## Technical debt — Classic Zoom Performance Profile
 
