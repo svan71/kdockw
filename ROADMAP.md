@@ -85,7 +85,7 @@ tracked separately as technical debt. No measurements are marked complete; see
   targeting across monitor removal, reconnection, reordering, mixed scaling,
   and primary-screen changes in a real Wayland session.
 
-## v0.3.0 — Window Appearance & Interactions (published; review follow-ups open)
+## v0.3.0 — Window Appearance & Interactions (done, published)
 
 ### P0 — Window Preview for Minimized Windows (accepted by owner)
 
@@ -124,7 +124,7 @@ and open and minimized CPU-only previews work. DMA-BUF/auto, RAM/VRAM profiling,
 and exhaustive multi-monitor validation are not claimed. It depends on accepted
 v0.2.0 geometry.
 
-Follow-up refinement ([[11.7-Window-Preview-Spacing-And-Sharpness]], `review`):
+Unversioned follow-up ([[11.7-Window-Preview-Spacing-And-Sharpness]], `review`):
 the owner accepted the fixed maximum-Classic-Zoom anchor and the latest preview
 position. The earlier Wayland coordinate mix was fixed by keeping icon anchors
 local to the dock surface and deriving output-edge margins from that surface
@@ -141,7 +141,7 @@ Nearest and disables mipmap filtering for that node. A diagnostic Linear A/B is
 available, but its visual quality and resource/performance effects remain
 unmeasured.
 
-### P0 — Window Preview Size Presets (review)
+### Unversioned follow-up — Window Preview Size Presets (review)
 
 - [x] Add Compact 180×113, Standard 220×138, Enlarged 260×163, and Large
   320×200 logical-pixel presets on top of the existing width/height settings.
@@ -175,8 +175,9 @@ functionality. No release publication is implied.
 
 The implementation is in `DockActions::activateOrMinimize`; QML and KWin
 integration tests cover settings dispatch and grouped-window behavior. The
-v0.3.0 release was published on 2026-11-07. Follow-ups 11.7 and 11.8 remain
-open in `review`; this is no longer the active development milestone.
+v0.3.0 release was published on 2026-11-07. Follow-ups 11.7 and 11.8 are
+tracked as separate unversioned backlog tasks; the milestone itself is complete
+and is no longer the active development milestone.
 
 **Priority order:** Window Preview for Minimized Windows → Window Preview Redesign
 → Application Name Tooltip → Toggle Minimize on Click. This is an implementation
@@ -483,7 +484,11 @@ Ninth owner review (2026-11-16) scored **16/17**. The widget manager, all three 
 
 The owner accepted all **5/5** remaining visual and functional checks on the candidate with Build ID `aee2f5832d9f00eb46a9ef8f808686d8ed454f4d`. A controlled live TaskManager A/B then confirmed the earlier `DecorationRole` INVALID result was a diagnostic false negative: `DockPresentationModel` forwarded the icon role, but its diagnostic trace gate omitted DecorationRole-only notifications. The accepted candidate's existing runtime path also advanced icon revisions and refreshed TaskIconProvider URLs. A trace-only gate now records the event without widening the forwarded role list; the preflight parser also correctly treats Qt's empty `dataChanged` role list as “all roles changed”. Stable v0.5.1 and the candidate each observed the fixture's changed icon pixels and live role transition. The repaired diagnostic candidate has GNU Build ID `2fa8516ffcb730d00f29e5fe263f14b2acad98da` and live functional preflight passed 6/6. Diagnostic Release CTest passed 230/230. Production Release CTest ended **222/223** due to the parabolic settings-preview hover case; its isolated retry passed 67 assertions, but the full-run failure remains recorded. The milestone is therefore still in progress and the parent and feature cards remain `review`; release readiness is not claimed. Full details: `docs/qa/v060-dev-performance-icon-theme-2026-11-14.md`.
 
-## v0.7.0 — Media Player Controls (MPRIS2, published; review follow-up open)
+## v0.7.0 — Media Player Controls (MPRIS2, done, published)
+
+Final status: `done`, published 2026-11-21. The cycle-by-cycle review notes
+below are historical. Remaining TaskManager indicator and performance work is a
+separate unversioned follow-up.
 
 - [x] **Media Player Controls Widget** (`187d5445ee4d474d`, done): one persisted
   built-in widget and backend serves all MPRIS2 sessions; default placement is at
@@ -573,7 +578,8 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
   `a3fd741b95b5d2211bca9a61c2b492daf4c5c41b`; owner review is pending. Live
   compositor behavior remains NOT VERIFIED and the card stays `review`.
 - [ ] **TaskManager Grouped Window Indicator Count** (`0e49c255c0f6ce27`, review):
-  a separate grouped-window regression card tracks stale running-dot counts.
+  a separate unversioned follow-up, not part of the completed v0.7.0 milestone,
+  tracks stale running-dot counts.
   The dev-side mismatch between preview child rows and forwarded `ChildCount`
   was corrected and has unit/rendered-QML coverage; candidate functional
   preflight passed 6/6. Stable-v0.6.0 versus dev visible-indicator A/B and
@@ -583,8 +589,8 @@ The owner accepted all **5/5** remaining visual and functional checks on the can
 
 The owner accepted unified Wayland pointer/magnification (14/14) and Popup
 Handoff (12/12) on the reviewed candidate builds. The Media Player Controls
-feature card is done; the v0.7.0 parent and TaskManager indicator card remain in
-review. Final local Production Release CTest passed 231/231 and Diagnostic
+feature card and the v0.7.0 parent are done; the TaskManager indicator card is a
+separate unversioned review follow-up. Final local Production Release CTest passed 231/231 and Diagnostic
 Release CTest passed 236/236. Release tooling, AppStream/Desktop Entry,
 `msgfmt`, and Russian production/stage catalog checks passed. Live candidate
 TaskManager preflight passed 6/6, isolated VLC MPRIS passed 10/10, and the
@@ -603,7 +609,7 @@ verified below on 2026-11-21.
 
 KDockW v0.7.0 was published at the [GitHub Release](https://github.com/thicking/kdockw/releases/tag/kdockw-v0.7.0). Signed tag `kdockw-v0.7.0` points to `2819cb61b0ec441fe56fc643273d95d763855a55`; the pinned signing key verified locally and on the remote tag. Exact-SHA Distro E2E run [44794230126](https://github.com/thicking/kdockw/actions/runs/44794230126) passed all required targets: Debian 13, Ubuntu 26.04, and Fedora 45. The release publisher verified the source archive, three target packages, and `SHA256SUMS`; all five public asset digests matched.
 
-The media feature card (`187d5445ee4d474d`) is done. The parent and TaskManager grouped-indicator card (`0e49c255c0f6ce27`) remain `review` for the separate rendered stable/dev indicator A/B and pinned/unpinned Plasma acceptance; this is follow-up acceptance, not an open publication gate. The installed stable remains v0.6.0 and was restored as `/usr/bin/kdockw` PID `2009894`; production config and its permission-preserving backup still match SHA-256 `851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
+The media feature card (`187d5445ee4d474d`) and the v0.7.0 parent are done. The TaskManager grouped-indicator card (`0e49c255c0f6ce27`) is a separate unversioned `review` follow-up for the rendered stable/dev indicator A/B and pinned/unpinned Plasma acceptance; this is follow-up acceptance, not an open publication gate. The installed stable remains v0.6.0 and was restored as `/usr/bin/kdockw` PID `2009894`; production config and its permission-preserving backup still match SHA-256 `851ea2f30263fa2962d75a184008f9ce3dfb9c91a76b72398f236d51d9913ba7`.
 
 Performance comparison remains limited: stable ambient CPU/RSS/PSS was sampled, but the production candidate sample had the cursor over the dock and is not a valid idle comparison. Active MPRIS, ordinary manual-use, and longer-term memory/leak behavior are **NOT VERIFIED**. No numerical performance improvement or regression is claimed; the QA note contains two owner-run console commands for a comparable capture.
 
@@ -685,9 +691,15 @@ release date is assigned.
   it and restarting KDockW does not.
 - **Classic Zoom Performance Profiling (`research`):** capture frame pacing and
   QML/CPU/GPU behavior; instrumented measurements have not been run.
-- **Window Preview Spacing and Sharpness (`review`):** accepted positioning is
-  preserved; further filtering experiments are deferred because the remaining
-  softness has not been isolated.
+- **Window Preview Spacing and Sharpness (`review`, `1090d5bbada02e2e`):**
+  accepted positioning is preserved; further filtering experiments are deferred
+  because the remaining softness has not been isolated.
+- **Window Preview Size Presets (`review`, `da02c8c0328a5825`):** presets are
+  implemented and shipped; visual verification of DPR, grouped windows, screen
+  bounds, and all four dock edges remains pending. No release assignment is implied.
+- **TaskManager Grouped Window Indicator Count (`review`, `0e49c255c0f6ce27`):**
+  separate follow-up after v0.7.0; stable/dev visual A/B and pinned/unpinned
+  Plasma acceptance remain NOT VERIFIED. No release assignment is implied.
 - **Preview Close Button (placement review):** the accepted idle/hover/pressed
   appearance remains; the button is in the top-right of the card header,
   opposite the app icon, and awaits visual verification. This work is not
