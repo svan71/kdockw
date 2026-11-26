@@ -640,10 +640,25 @@ acceptance was 36/36. The source archive, both DEBs, Fedora RPM, and
 
 - [ ] Investigate the intermittent badge that can remain after reading or dismissing a notification. The root cause is unknown. This issue is separate from the completed v0.7.2 release and remains non-blocking.
 
-## v0.8.0 — Adaptive Dock Sizing & Follow Active (planned) ⬅️ Current approved milestone
+## v0.8.0 — Adaptive Dock Sizing, Overflow Protection & Downloads Stack (planned) ⬅️ Current approved milestone
 
-- [ ] **Adaptive Dock Sizing (High / TODO):** calculate available dock length and proportionally reduce effective icon size and spacing when needed, restoring the user's configured size when space returns. Cover all four edges, screen geometry/orientation/scaling and monitor changes, every dock entry type, magnification allowance, live layout changes, smooth transitions, hit testing, DnD, badges, indicators and previews. Define a minimum icon size; after reaching it, research overflow options without selecting a design.
-- [ ] **Follow Active external drag (TODO):** support external file drag through EdgeTrigger when Follow Active targets a dock on an inactive monitor. Keep this separate from the v0.7.2 Drop fix.
+- [ ] **Adaptive Dock Sizing (`9e388f987f05ee44`, High / TODO):** calculate
+  available dock length and proportionally reduce effective icon size and spacing
+  when needed, restoring the user's configured size when space returns. Cover all
+  four edges, screen geometry/orientation/scaling and monitor changes, every dock
+  entry type, magnification allowance, live layout changes, smooth transitions,
+  hit testing, DnD, badges, indicators and previews. Define the minimum icon size.
+- [ ] **Dock Overflow Protection (`08f9576485df21a7`, TODO; depends on Adaptive
+  Dock Sizing):** protect the dock when it still overflows at the minimum icon
+  size. Research scrolling and overflow-container options; no concrete UX design
+  is approved yet.
+- [ ] **Downloads Stack (`a75ec7a3ccd54b4e`, TODO):** add a Downloads folder with
+  a real download-progress indicator and a neutral state when no progress is
+  available. Detailed requirements will be agreed before implementation.
+
+Follow Active external drag (`9a617a384d89dd4b`) is cancelled and is not part of
+v0.8.0: the owner declined further development of automatic dock movement that
+follows the active monitor. The existing Follow Active mode remains unchanged.
 
 ## Technical debt — Classic Zoom Performance Profile
 
@@ -657,13 +672,8 @@ acceptance was 36/36. The source archive, both DEBs, Fedora RPM, and
 
 ### Backlog — no release assignment
 
-- [ ] **Downloads Stack & Progress Indicator:** extend 13.1 Folder Stacks with
-  a navigable Downloads grid, automatic refresh, file opening and Dolphin
-  navigation. Investigate KDE JobViewServer/KIO for actual progress; show an
-  indeterminate or neutral state when no progress is available.
-
-Downloads Stack and Flexible Spacer remain in the unversioned backlog. The
-v0.6.0 widget model is a prerequisite for future dock-widget extensions. No
+Flexible Spacer and the remaining widget ideas stay in the unversioned backlog.
+The v0.6.0 widget model is a prerequisite for future dock-widget extensions. No
 release date is assigned.
 
 - **Badge Appearance (implemented and owner accepted):** default badge colors
